@@ -74,6 +74,7 @@ alter table public.personal_subscriptions add column if not exists last_payment_
 alter table public.personal_subscriptions enable row level security;
 
 grant select on public.personal_subscriptions to authenticated;
+grant select, insert, update, delete on public.personal_subscriptions to service_role;
 
 drop policy if exists "Users can read own subscription" on public.personal_subscriptions;
 create policy "Users can read own subscription"

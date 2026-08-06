@@ -76,9 +76,9 @@ const DEV_ACTIVE_PLAN_EMAILS = (import.meta.env.VITE_DEV_ACTIVE_PLAN_EMAILS || '
   .map((email) => email.trim().toLowerCase())
   .filter(Boolean);
 const SALES_PLANS = [
-  { id: 'mensal', name: 'Mensal', price: '€--', value: null, interval: 'Mensal', note: 'Plano mensal editável', highlight: false },
-  { id: 'trimestral', name: 'Trimestral', price: '€--', value: null, interval: 'Trimestral', note: 'Placeholder com desconto trimestral', highlight: true },
-  { id: 'anual', name: 'Anual', price: '€--', value: null, interval: 'Anual', note: 'Placeholder com melhor custo anual', highlight: false },
+  { id: 'mensal', name: 'Mensal', price: '€13,90', value: 13.90, interval: 'Mensal', note: 'Cobrança mensal recorrente', highlight: false },
+  { id: 'trimestral', name: 'Trimestral', price: '€39,90', value: 39.90, interval: 'Trimestral', note: 'Cobrança a cada 3 meses', highlight: true },
+  { id: 'anual', name: 'Anual', price: '€129,90', value: 129.90, interval: 'Anual', note: 'Cobrança anual recorrente', highlight: false },
 ];
 
 // Todos os pontos de dobra cutânea possíveis, usados por um ou mais protocolos abaixo.
@@ -681,6 +681,31 @@ function LoginScreen() {
 
 function SalesPlansPage({ onSignOut, onRefresh }) {
   const whatsappReady = Boolean(SALES_WHATSAPP_URL);
+  const [checkoutPlan, setCheckoutPlan] = useState(null);
+  const [checkoutError, setCheckoutError] = useState('');
+
+  async function startCheckout(planId) {
+    setCheckoutError('');
+    if (!supabaseConfigured || !supabase) {
+      setCheckoutError('Configure o Supabase para ativar pagamentos.');
+      return;
+    }
+    setCheckoutPlan(planId);
+    const { data, error } = await supabase.functions.invoke('create-checkout-session', {
+      body: {
+        planId,
+        successUrl: `${window.location.origin}?checkout=success`,
+        cancelUrl: `${window.location.origin}?checkout=cancelled`,
+      },
+    });
+    setCheckoutPlan(null);
+    if (error || !data?.url) {
+      setCheckoutError(error?.message || 'Não foi possível iniciar o checkout. Verifique a função no Supabase.');
+      return;
+    }
+    window.location.href = data.url;
+  }
+
   return (
     <div className="min-h-screen bg-base flex flex-col">
       <header className="border-b border-hair bg-surface">
@@ -698,9 +723,15 @@ function SalesPlansPage({ onSignOut, onRefresh }) {
           <div className="text-2xs uppercase tracking-wide text-faint font-mono">Planos para personal trainers</div>
           <h1 className="font-display text-3xl sm:text-4xl font-semibold text-primary">Escolha seu plano para liberar o painel</h1>
           <p className="text-sm sm:text-base text-muted font-body max-w-2xl">
-            Organize alunos, agenda, avaliações físicas, reposições e finanças em um só lugar. A ativação é feita após contratação pelo WhatsApp.
+            Organize alunos, agenda, avaliações físicas, reposições e finanças em um só lugar. O pagamento é processado com segurança pela Stripe.
           </p>
         </section>
+
+        {checkoutError && (
+          <div className="border rounded-xl p-4 text-sm font-body" style={{ borderColor: 'var(--rust)', backgroundColor: 'rgba(214,83,74,0.10)', color: 'var(--rust)' }}>
+            {checkoutError}
+          </div>
+        )}
 
         <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {SALES_PLANS.map((plan) => (
@@ -719,14 +750,19 @@ function SalesPlansPage({ onSignOut, onRefresh }) {
                 <li>Avaliações físicas com fotos</li>
                 <li>Controle financeiro do personal</li>
               </ul>
-              {whatsappReady ? (
-                <a href={SALES_WHATSAPP_URL} target="_blank" rel="noreferrer" className="mt-auto text-center px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
-                  Contratar pelo WhatsApp
+              <button
+                type="button"
+                onClick={() => startCheckout(plan.id)}
+                disabled={checkoutPlan === plan.id}
+                className="mt-auto px-4 py-2.5 rounded-lg text-sm font-body font-medium disabled:opacity-60"
+                style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}
+              >
+                {checkoutPlan === plan.id ? 'Abrindo checkout...' : 'Pagar com Stripe'}
+              </button>
+              {whatsappReady && (
+                <a href={SALES_WHATSAPP_URL} target="_blank" rel="noreferrer" className="text-center text-xs font-body link-sky">
+                  Falar pelo WhatsApp
                 </a>
-              ) : (
-                <button type="button" disabled className="mt-auto px-4 py-2.5 rounded-lg text-sm font-body border border-hair text-faint cursor-not-allowed">
-                  WhatsApp não configurado
-                </button>
               )}
             </div>
           ))}

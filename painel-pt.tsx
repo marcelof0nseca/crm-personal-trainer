@@ -611,6 +611,14 @@ function LoadingScreen() {
   );
 }
 
+function DeveloperCredit() {
+  return (
+    <div className="px-4 py-4 text-center text-2xs font-body text-faint" style={{ opacity: 0.55 }}>
+      Developed by Marcelo Fonseca
+    </div>
+  );
+}
+
 function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -640,7 +648,8 @@ function LoginScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-base flex items-center justify-center px-4">
+    <div className="min-h-screen bg-base flex flex-col px-4">
+      <div className="flex-1 flex items-center justify-center">
       <form onSubmit={submit} className="bg-surface border border-hair rounded-xl p-5 w-full max-w-sm flex flex-col gap-4">
         <div className="flex items-center gap-2.5">
           <img src={LOGO_SRC} alt="PTMANAGER" style={{ width: 34, height: 34, flexShrink: 0 }} />
@@ -664,6 +673,8 @@ function LoginScreen() {
           {mode === 'signup' ? 'Já tenho conta' : 'Criar primeira conta'}
         </button>
       </form>
+      </div>
+      <DeveloperCredit />
     </div>
   );
 }
@@ -729,6 +740,7 @@ function SalesPlansPage({ onSignOut, onRefresh }) {
           <button onClick={onRefresh} type="button" className="px-3.5 py-2 rounded-lg text-xs font-body border border-hair btn-surface text-muted">Verificar assinatura</button>
         </div>
       </main>
+      <DeveloperCredit />
     </div>
   );
 }
@@ -2848,6 +2860,7 @@ function AppInner() {
         {view === 'finances' && <FinancesView finances={finances} monthCursor={financeMonthCursor} setMonthCursor={setFinanceMonthCursor} onOpenTransaction={openEditTransaction} onNewTransaction={openNewTransaction} onQuickComplete={quickCompleteTransaction} />}
         {view === 'profile' && <ProfileView user={user} subscription={subscription} onSignOut={supabaseConfigured ? signOut : null} onRefreshSubscription={refreshSubscription} />}
       </main>
+      <DeveloperCredit />
 
       {showSessionModal && (
         <SessionFormModal session={sessionModal?.session} students={students} defaultDate={sessionModal?.defaultDate} onSave={saveSession} onClose={() => setShowSessionModal(false)} onDelete={deleteSession} />

@@ -3,17 +3,19 @@ import {
   LayoutDashboard, CalendarDays, CalendarRange, Users, Plus, UserPlus, X, Trash2,
   TrendingUp, AlertTriangle, CheckCircle2, RotateCcw, Shuffle, Repeat, ClipboardCheck,
   Sparkles, UserX, ChevronLeft, ChevronRight, Search, Wallet, Percent, Building2,
-  Loader2, Settings, Check, Info, ChevronDown, ChevronUp, Activity, Ban, Download, Upload,
+  Loader2, Settings, Check, Info, Activity, Ban, Download, Upload,
+  Camera, ArrowLeft, LineChart as LineChartIcon,
 } from 'lucide-react';
 import {
-  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
+  PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
 } from 'recharts';
 import { supabase, supabaseConfigured } from './src/supabaseClient';
+import logoSrc from './src/assets/ptmanager-logo.png';
 
 /* ============================== LOGO ============================== */
 
-const LOGO_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAMAAABrrFhUAAAAP1BMVEX7sQEYGBoAAAD9/f2YbhBoThNIORa4hAycnJz9sQX+wwBfX18YFxn/9AUYGBn/yBYAAAAAAAAAAAAAAAAAAAChwVwRAAAAEHRSTlP+/gD//v7+/v8L//9gCJ5csQjetwAAGmhJREFUeNrVXYt246oOhVSC1Ekz//+3x7wFBoFt7Pb4rnumk0kT743eElg8brh+vr9F+PHn598/0bj+/Vv/2b9RfH//3HFv4vIvCOBX5A6mBgBEJbNLIa4va0+Ep0Ek4v6fBKwr7/50i64hh61W1OZS+avoeFjFwf7yxZIgLlz6HwfeoInQV3hhnbfXKhvkfU4WHJHi/0aAQ2/Ba3CYVuRi8Fp5cCxYriwJl3EgLpF8EdA78Kq96O1Lh98NHIhLdEFcYPQ8eo1u4cWJy4kCas/BBUZRzF58j97euYIBhGBlnnuL8jw6Dn7+MAEGvghrX0OvPVKQ0r+izE/xr6ohL44DIwdiNgUTCTDiaRe/ufbWskFBgEp/NbwhJwdeDMT3HyTAyv66xv4+8wvtS97ROwJ0hQDJECA8s+vv/fiv+0sEmPvxi18gAIds/UObf4PwIwQCcJgALyNGDOZRICbCx+3iO7zrv3iYi3AQ4xslIQDW2LBDQOR4GgUTCDBGycFX1N2vltACVIEAt+xW5usErIqCXQKcljkKfr7/AAHGIDn4WMqqAemwYVp2lLJFwPpftPR0LwwUnI8LxHnH14LvXvIIVQ42vt/+4EjR4wRQCn5+k4BvswYb+O4VHX8Ui0MdLL6uE7CKyTJMQPjW77Om4AwBqz/6toiw4vFh8RprftQeYZT+kgBvF/YQYD8PDAU/4ncIsNK/QpOVTEfFSEdYzx+8f4CsEgGQCBALpt9rXJRt9+X/TgmBOLf8WIl68ljX/UjCH0+AKgmACgFqE1EWwSJ4PTguBOLM8kM7bnGiDeFH6UPB4AYiUP+S5WR9o8wI0NvIKAaTmR6cEIJjBPzY5ZeMvK5wlAzuXa5/hcziWdMYjYVVCCk34GwCAKXao8wNhf2d78fPz30EhOUHPmALq2dvOhCwBFE3lVF792A+ybzsCkGiEkpngrUxFHBGCMQh/N8hxGOMVeJnVXgXCaFDK0Og4HDbZXf2fwHeCKJ3p86iQG5zvw8xsJ8AIR6is/zpXpM0YNJg8C+p8FMKjjtewL5Vh3SCLIG7H3NvlxNgah6i760yimS4WZCSZ46XACoAKPPPsqwcUANxTPz7KQt9E0rZZ0yMfOTqRyFE1AjZp+IxNdhHgPkCRvxxs1walScDzuNH4iikj7ChkLnvvfmR2On9/rXzlSIoMmuk6hJvGiBZc8y0iKBbOw/vhvBd5VIYd/pvpz/cQ4CpxrXFf6PeUm7imLI5tr1CY6xO8KoAiNEabgMRK3X2Rq8g4PtBE/mV7qbOb1LCVOInndCE1LRLs35pVWGI1Tfx0bJgrLDGm3JGdI8hELvMXypmiopwL80YJoIP/THXIU5XpAPIW/MPhwzm+u8Yqk1U0LQ3BPMJ8PjzytxQiwsDIO0AKlYBwGmK/x1dRLy5MZBh/RVJSXcyIHbgT+YPZTcQytDbpK6r/4SG2FZMHKj4jVb0wx1IUmpNpnCcATGu/6RgaRzyMuq3DBxiAAYv8ltYMQYhaFYkz0xfi+N2QAzjpxVrGAhs3AqaBQQlD11GbpwIZWUBRcpLvhqn8tuxojrIgNiLfwGVvhg1mw1iiPqPX1EOIK+BOJ/gFyIUJfUBBsQwfsi+34qeaskBesk9iZ7GPVETUkKwiGQHA+eRpVEGxBj+uAIxY5ey2cjyK6ZRTrpQk4zS9tLBF9ZCzzFWICQNCEYYEPvWH2Uo5ehWYoeuhQly6gWu7YrEJy5IhDGWVnCnDIjd+MNXQLUkcg38DQXKVNIyA4AhOBT7GBBD/h+y/AZTPFpvYF8An1AALspcXFiqZfSHRTwOQ/GAGMGfEntXxUOSnvuSd+harrd3EXwZP9z3YMEGI8kmKTp3EOKBLgOiU/z/tkQ2qn3my3X8K14NP1EQiq22ju56UK7TAC5XJHMZ352Wgei0Pn1f00a1UDIAMtWl3H1pefmlYyAeK89Q6UWl8Jlvn4q+A8z73RkDqdaF8dYuvxzNmGowmNruwT3JyEXPEIo9+APu1BAMIZj04y/3XOD5pqFZIADyBlOXATGMH0nlIeUCkJZfydsulYQgtVZluDOgtYMeA4IpgH3HAABc/KMrDDj1u3H5iRCoOGi2+BAorBEtnijTN9tPgNnkkBxA6POllZdU5+DO5Q9CAF4NwFWHQjisi2KhdQVtQygYBdAk1HPfQFpXIQOD4Atvv3QwxormTMYp5kmKWt/ZVgIxYAAIA4RaV/HHXxD/TA0w2qDYLAr4lZ9SYc2A4AzANsovo1/1K+KfqYHKhiglHc+KroAxA6JhAFL3FbNaLGyDQvmLF7FFGKqDyRwmg9WOh0RbAVSoRpNcaNP6COr/ep6/XkcNATXTfvQeXTigUg+joQSilQKlGZYs/aAMhBUw19f560ViPdGtoCdDEByAKrpSegGSt7XSItHwgJiH+/6DdN6CSPjlczb81FNRAwxoUhB0t6ayIQWbGleVQLQ8IJJAE2SWgYUvUST2f86Cr3S7t9LKDVQ+qkeKg8RCNnyh4BUghNpIbSts8Z8j4MnCL3rjXQZazYS6EghWASIDS8gGFxFCwgz/GQKeWQG412hoMpCpf2rVLwKIEogBAsTjn8j5cwzYek9KiHP8xwkYhc+KAUan70aOSK8MkpsU/x4DBJgiUFnujwknjTHym3neAJ+hAEltHGlrWqZZKqME2/KQqFhASOUOr5N+PhEgFeKLOzlEwLNl+rl2K8/AZoxUkgwWKnZQtHMAakyiEQyzbGX4/5zo+Q4JAcTNOLKYtCVjuZVwqCTgx3kMX/dPdTBSZKnhP0DAQfhNIYC4IQOz2bRFp0IWui1nDAE/jziQ7nRHkZgC0jCWPEvAcfjZhESZF8T5KTJojaSvt4rAD0fAT5r9QV9vjikQxokErNzA82jcc2xiruoRQ98UM/1VdLTEfN0PR0CKAQv91yJOfKvaAjynhX1nGPDhgJtAhlAqotUhXYqAyF0gqYKk7Nf1QZdoAPEUAbs937gWoEgFElXtYBt0uSsUDRcoqP4nEwg1A7iHgEnwGwyAoGbA0IGYmnpVVyhaApAJQawzNwsgz5vhN3yB354amxV+dA9II6MQAZFbAChuLOh/3POCjQLQc1/cM2FyuC6Jyeun3UVAzK0VgZ86AUQAoNy2kwaT8CgBz3Oeb6cZ0FnT0kY0UBUBUbgAiDWAbTip/YaPQwRMh28jnIoZCHvTyA4Ft2c5WLHcEYhMAFQ2/wOFMWwrQJeA+fD9OEJLCcCm7u4tGGdoQyxAREDkWQDmymXn8xafUkJbAToE3Ajf79Fb7OQy0i9VMcXLMgJBNQBl2vMWhN1w4EIARgFYAmbEPXsKRBB344ee9WbvKdEBkX4g21KBjOcZCxKasHI/ATM93wh8FxAi8QKl3FkREBsCrA/MLCyKJd/nxX3v88/Aj0pg61hxbIaKAPWEggpAWUuwnwJpz7PcScDV8FsTSXTPftV9EhEQzSAI/KYEF0yBSzX2EHAJfCg+tNEzDCLQ+AwiAiL+sdkD4wDruA2B7YE/r497cvjIVAakhu2mMioCSlDkGxOYfV86+knuIeAe+E17EERAN7Qo6YComkBqC/3GP4AdBFzs+LGTECRX2Aqikw6IugksNgN2BSAj4D74TR2QgjU8xAyKVApsnGOGIwJACLg47ik/VB4RAUjFwegNUPJbmuUYAc+Lwz4Yqo/2RQALN9jSgOgCYIiA6x3/WHGwKwJuh2kkgNGAkRggEPAL8NthoWJFIOlA4AEkV4HtDwLdFPfsiIuLmZGKH4gSIB7vjgb0p6Bfr2vh4+7EAHuY3h58KwrK9h3smeW+Ez63MU0gC8o7QnsA7gNAaoYsDX8VPkcAaEYE9GolrREQXSc44ANvjHt2EMB7wuAIxYAGwNgosJoGn/icbjTBWCcNAzoguk5wxATeF/fsG56SsusIrRxo4N6oRjQAfgc+Xx4iW+5rjlDHOGBbCsiCgBET+EvwBRuhARcK2KKANQC8CRjUAD3b9I+KVK842DMCwvUD4KwP0HPhj/sTXi4lh8z2B4wYcFHAqA/QvwO/QwDnB2wk4CNBJgpwU5fXE3AQfmezCnKxkIsE1v+zicBoFHSOgPG4Z2ePoAPt7Q/Ha38rjOYBeg783dFEzzlh2wg4Kyh+Hii4NwFcTQCeiSZ64QlwiyvQnsbK2cBBJ3iCgFPwu/vVOEforKAhAM+bgKME4MlYsh+gsVYQXDGkTcCwCThGwFn4Axs2OSOwgnt3qkHDJuAIAUc937gP6BgBXxXinIC6joAJ8Ac0gE0HQjDMOIFhG7iXgCnwR+6Ns4LgCECeAHkBAXPgi6F74wnAlQDGCw7WAnYScCbu2Y2fqwlYP2gJOO8EdhBw2vSPxgADbsAQ8NY4wQkMEzAN/uiZBawbQP0WXBigZhMwD74YFU3ODZhAYP1fux427gSGCJgJf7hVw7mBlZq3+HBvkMOHI+jbTP8+/NaMM/g+hgB13gt2CZgLf8+hDQwByhOAlxMwGf6uQyvYSH+Fr9oE6PEwgCVgNvx9Z7bYU2SaBCiOAJhCwLS4Z0cAPBgJWQKYSHhHHNQmQE3uHu0+soiJhEws3CFAnyQAJ8M/cF6d/kUCpsM/cmLTCQLQnx5ykIA/AV9yzzDsEwDHCcDZcxP64IFVTDJwIQFwIfwnHUj7mwRMh785r+f1lwm4Hv4uBu4mYHrc0zit6TmLACYSPOAFqKWaDf/V3JFz1Av0Q+G9ccClnm+zKel0HGAJkCwB46Hwcrnj53ZlHQuFVwLkLAJuiHu+jjEwQICakA3ipY7/VSdgyBcw2aDyBMh24rX/vMzp8F8B6NcxBkTbHJt/NCUROaEidJXjfyWc1b25pypCq4SbkhjOKIpeCZ8joGsG2KIoGgIAZ5TFr4h7Xrmkfx0SAbYsjvARb6Y1Njojd03c8/waIaAnAtyk3Bolvi0BekIsPNvzPTe27uuQCDCRsHYEzEkG1IXweQKep1KBt3ioKZGQuhA+T8DXmThIPcRDco0BeRcBWdzztYuA19EwwASCjoAJgYCaGffsI+B5OAxwBHQCAbyBAOThdwj4Ou4FxccQwPjB8QEBdSH8HgGvo+MBAIYA4weZwri+mIAB+D0Cnnw1oG3iVy9oCGBbI6P5oJoZ9+wk4OtYLmi9oJkVlnyDXF1HAOf55hCg+Oa4fDgC1PlgWJ2C33s+wWEC2EBYeQI+M+bE1Cn4Jwl4HZ0R+zgCZoxKqsOOH64koDMm6QgwVvC0EVBH4ft5l1MEPA+aAHy7XWOSnZMa0wF1yPRjHPi5hgDuIBFlbaDdPy0FZwTG8iF1FP6lBHBnKBhg/kQtzgiM5kPqKPxrCZAMMGsCLAFvfmJ+yBGqnfAV/YarCOCcoAuD/O5xzggM6oDa5fmy8uF1BHAa4E2A2zor2X1Tcg4BzZ3hFxIg2R1TMhyiYo0ApwNwngBmY/xlBACrAc4EOALeTFlsUAfUDsd/FwGcBphy2DudJMWlA3ooFlJH4V9HgGJ8gE8EEgH89tmBWEjt8nyTCXjtjoKME6QEsNHwUD6gjsK/jgDuCBUfB6fD1Hob7fEgAX34MwjYXQ109VBCwLfkj9Hom0F1FP5lBHAm0GrAN5WAD548SUYNxz03EdA7QQY/+cHKkj9LqCsC6ij8CQQ8GwLAniEk8yM1rQ6wZ+moXQTsGZY8TcCr4QOBi4K8BkQJ+CgmHxg4U1IVocOdBFQFAFg4Qn3K0+Vl70g9NUpAMdb9KwSo3lF6cnO8vkT+SLmOCKiK6Qe4hYBnXQDYg+RwS8Bb8ofPdRyBqni+RdxCwKvuAtgDAuV7+4QJ1gx2HYGqOX59CwGMC1CIUDeB2ydMdMyg7oiAqsU9txDQEABNfJFCgLoJzJ4zxJrBziNG3HPQS8d/CwH1LCDVmzfWmJrAjAA+GhwukMvNY6ouJeDZTgOhOsZFosCCgHdPBIZ6JFDGAxcTUHeB4VGTRjUBNwLwrj9rTFZEAGn9vp8TgRD3EvCsWkDyvDUpFvu8GCQCIOvPGquIAFJczWcNNmOeGwiorUFaBwyD7LCIugDkzxssRaBYWeQLxFhzHRcT8KqWgnGzglkeKFvPGyxFYGNBuHgQ677zWgKe3RjQP22uKQDFM0czEYi2AwaUQIlfIODJK0BiQDUFoHjqbCYCdOXTw6gb4dCvEFAPgeKzchVsGNgIQEFAJgJJd+hPKP4MAZLxAEX7GVoCUD552oqADiEjeaS9jJDqZuAXCGgkgTqZL5L9+PvZCEBJgCC1tPScqfTw6qYZuJ8AyRiA+KBN4Wq9QGqbgn/4+lumh64lGnPHUjMDtxMgOQOQaS9NAzcCsCFAkPHi0oWEj1SVkPhmAp5VIVQEtnvWINLo1EHrELCKAITHj3sGhH1+J8SMsmoI7yWgVQeWpf0GcgNo2tylAGwJeHyIKzTlPZPcahrpQ80Q3krAq1EGlUA+UkVZIC7w8+gT8Nj2FDAP92oM3EhAvRdM8ScjSFRA0kogSwC1g0WhK3kFrX+JgMYsgLkf900aa1F83QLWCXDDkWU4rVxanVwB/AYBz1crDc+y9k0e55pBUgwRsIpApgThY5YUGFh7C7cT0B6IFPEOwiphOYy4vlIRgCoBxg4C9R7BFxKgJQM3EMCMRCf8JPlHsv5WAT6PUQIemRIEePZh54q8Shm4gQAWP6kBrRHA5nasAjzGCciUwMMr2xzmS/U9BDw7e3YD/sW7/c1O1qYCtAhYlSA9nsO7EiiLfsp/97UEPJ+dMwLMtyjyfWDjVFg00F0Puq4ATQIedMtlq+6jSDygli0yLzMLC39pE/B8jZyPAIn9pJLumdnxZWwpQJuAB5m1h1LQdQoQIOQFunK5WoTmL/fpT3K9Xq/Rc5JsPwY3fXkkybzf8/DYS8Dbrm7OAIb4mLRC8cARf9MudHdQipPUSx4CQsMAcAQYM6Czpq+PgxVVecibYjdf4LSQLEasZCZ1VQbH57GfgIdlrjBhoAqjB1bSfgc/LXbREkh2h2gl+XGEgMdm7znUDkyw34u/If6QboOWLiBPAZDFzxLwjn3mDL599hZmuRLerwaQqb9lZPU3rmiR1TCbEUCfgNUMQBYPyXqcATYaUXfCV9bgA81XVwsYg1/MDODncZSAhyQMaOJ4C9Og5c1C4HROiyxaB5L+aYJfPo4T8HCBViypwMYC0CW4SwhUVugJFfyqedKig79HwCOfuFs0CQgAlcpqMDcJAeSlTpQuB3C7pEj846cbH+cIeBczhzqVyouJALzHHWChgsr+Bf29LJgIcPjfJwnwDGRfaEFv0wNw0onXwo83kFcrwM2DEXJwCH+fAMtAmjwPbbLqVIiPv/BC+FhaYIi3sCA1AW7Gv4t/gIDVGRIGdKq2mq+CwiJeScEWPqQ5mFQEo/g/jxkEeAYU7TRmlmCzQeoKCvxn0tl7a/X8wod7UnSucwD/EAGWgWAJbaEBytEBLNKF2RQE+LAd4IFYqYI4F+rs3wj+MQI8A1IU9i5UyGn7OFKgU+Z01u+D0Bv4JcOwGe0ewj9IQMkAKY+uEuGy8GxAMASlMMPtu09BvZ1froY/u/CPEhAY0DT5EADkTmobpsxN40nRd2Rmlh9XFY+uGAsG9C78wwRYBlKdTdMgIHoiwG3twHBwTBeMxDv0uexjHMf3RdAi/7X3OYp/nAATD5ARLFp2iKVPWexV9ScPmNVa4+Zd4N3vyIrsq5QSuBB4TQPTeVF+guX9mE+AY0Blo/AkJtB1TfAcKDBNdhhSB3TvVbKq+bhxDbKYad+Ffw8BhgEkUwjB68T73g4LUw7cqppJi5YwhLH++AbU9S4CJLLLZo29wR34dxFgckOV9eE3trh5SDUSkOEkeohXeiWSU9nqgehLDwtBnjUAXZl0F6R9BARTmDh3ahh3ErBnKNCVV7heAb/5WRUGoLoPNza/UiwGZAhwn/k7RIBhAIgapJVQQ20wRgG2e1u21WhcxGZ8FXwz2GfKO/HvJsAZAsgn0rOcZOzSfuHdlbSAPX8DqdLn3wd+Yd6PqwkwhiBXg1SNn3OsfqPJasodS/oiKKbgXZdgP5oDBEQ1KDMTVV89hCOHTmtUqeKmfNEfwtFjSlHC4aD4HyXAqIESYrNdNE0jQOm3ca9wqGLCyc8Bytj+K6ZVzH/ej7sIsGqQCwHSgURZHpQl5c6zx8scJ0sO8lpcWH55DMlBAowaqCz21apYPFKy9/Uj68MUqxEqBdcSVTaaSEBjCpJ0qMd/HvcSYNTA5SFY91lk2nYVWxV71jF59yTp1QmI2M3OC21YiADWggOXDL0fdxNghWBdf6x6f5S0SOgmacSCNMlPgcxq39ArCYl2lizMg9qsif1uIwOf4yhOEGAtAQrao+eU2Ve0tcbY3EkE+LFsV9ZfYu0z27VYhhkQq/BnMJwiwOoB5n3KFgFRwEMwlxEgSN/R0yHKMn8uahDk77j0TyDA6QGQzSWVGC79M8ng6gQo8reVqYU2gaQsipLucz8nAZwloEOBE+kFym4K1gmg/ybzVM+k+jAd/gwCrB74+8GaBqx+z7YsF515d0qAMw8Y45vqKIrOmpD2Le/HXyAgUmBw5jUMOlOferguhMsJQDJ6m9V99La6ovQ0+JMIiBTkjWsX0efVbRAZActC5lC9N6R9rsrxRH4r6xz40wjwFPiby6u4Jq1ByEoaOpp17VfZm4JUVjQBEmzjq1CDfM+672kEeApCF6eW/aio/JiPnJHNPa2sGpB2m97z7noiAd4jWDFQNQ40IJIdqVlgHDWjeu5LaIzZX/lMveW5BCQxcBwoaJTFgDDg9yG1kqT4QdMX/xICVgo+kQPslgI0nySnT3DoP+/ptzufgIyDMFq8uyASasjkQy5AfxUBQRX88oemwGBtTKf3k19+X3SjVxEQ5cDj0KQ1gtUasOmKkLaIJuA/7+vu8kICCAf9tlizPXYp+ssJyEgw6xqWHrK2gOsRJUGIv3Ax+HsIKFlwbTHbEQwtQe35oNJxA/Y7CXAsZDQ0r8/7feNN3UlA5OH9+WyoWF9634rcX/8B91NeLORS5YcAAAAASUVORK5CYII=';
-const LOGO_SRC = `data:image/png;base64,${LOGO_B64}`;
+const LOGO_B64 = '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';
+const LOGO_SRC = logoSrc;
 
 /* ============================== CONSTANTS ============================== */
 
@@ -38,7 +40,7 @@ const STATUS_OPTIONS = [
 
 const STUDENT_COLORS = ['#5DA9E9', '#C77DFF', '#4EC5D4', '#EF88AD', '#7EC4CF', '#8FA6C2', '#A78BFA', '#7FB3B3', '#6FCF97', '#E8735A'];
 const PLAN_TYPES = ['1x por semana', '2x por semana', '3x por semana', '4x por semana', '5x por semana', 'Personalizado'];
-const ACCENT_HEX = { brass: '#FFB300', rust: '#D6534A', slate: '#8C8C8C', sky: '#E0B85C' };
+const ACCENT_HEX = { brass: '#1EA6B4', rust: '#D6534A', slate: '#8C8C8C', sky: '#5FC4D0' };
 
 const EXPENSE_CATEGORIES = [
   { id: 'moradia', label: 'Moradia', color: '#5DA9E9' },
@@ -52,9 +54,8 @@ const EXPENSE_CATEGORIES = [
   { id: 'impostos', label: 'Impostos Pessoais', color: '#D6534A' },
   { id: 'outros_gasto', label: 'Outros', color: '#7FB3B3' },
 ];
-
 const INCOME_CATEGORIES = [
-  { id: 'rendimento_pt', label: 'Rendimento PT', color: '#FFB300' },
+  { id: 'rendimento_pt', label: 'Rendimento PT', color: '#1EA6B4' },
   { id: 'freelance', label: 'Freelance / Extra', color: '#5DA9E9' },
   { id: 'investimentos', label: 'Investimentos', color: '#6FCF97' },
   { id: 'reembolsos', label: 'Reembolsos', color: '#7EC4CF' },
@@ -62,39 +63,138 @@ const INCOME_CATEGORIES = [
   { id: 'outros_entrada', label: 'Outros', color: '#8FA6C2' },
 ];
 
-const FOLD_SITES = [
+const PAYMENT_MODES = [
+  { id: 'mensal', label: 'Valor por mês' },
+  { id: 'quinzenal', label: 'Valor por quinzena' },
+  { id: 'quinzenas_pagas', label: 'Registar quinzenas pagas' },
+];
+
+const SALES_WHATSAPP_URL = import.meta.env.VITE_SALES_WHATSAPP_URL || '';
+const CREATOR_ACTIVE_PLAN_EMAILS = ['maf@cesar.school', 'bfpersonal@live.com'];
+const DEV_ACTIVE_PLAN_EMAILS = (import.meta.env.VITE_DEV_ACTIVE_PLAN_EMAILS || '')
+  .split(',')
+  .map((email) => email.trim().toLowerCase())
+  .filter(Boolean);
+const SALES_PLANS = [
+  { id: 'mensal', name: 'Mensal', price: '€--', value: null, interval: 'Mensal', note: 'Plano mensal editável', highlight: false },
+  { id: 'trimestral', name: 'Trimestral', price: '€--', value: null, interval: 'Trimestral', note: 'Placeholder com desconto trimestral', highlight: true },
+  { id: 'anual', name: 'Anual', price: '€--', value: null, interval: 'Anual', note: 'Placeholder com melhor custo anual', highlight: false },
+];
+
+// Todos os pontos de dobra cutânea possíveis, usados por um ou mais protocolos abaixo.
+const ALL_FOLD_SITES = [
   { id: 'assessFoldChest', label: 'Peitoral' },
   { id: 'assessFoldMidaxillary', label: 'Axilar Média' },
   { id: 'assessFoldTriceps', label: 'Tríceps' },
+  { id: 'assessFoldBiceps', label: 'Bíceps' },
   { id: 'assessFoldSubscapular', label: 'Subescapular' },
   { id: 'assessFoldAbdominal', label: 'Abdominal' },
   { id: 'assessFoldSuprailiac', label: 'Supra-ilíaca' },
   { id: 'assessFoldThigh', label: 'Coxa' },
 ];
+function foldLabel(id) { return (ALL_FOLD_SITES.find((f) => f.id === id) || {}).label || id; }
+
+// 5 protocolos de dobras cutâneas, com os pontos exigidos por sexo e a fórmula embutida.
+// Todas as fórmulas convertem para % de gordura pela equação de Siri, exceto Faulkner (direta).
+const FOLD_PROTOCOLS = [
+  {
+    id: 'jp7', label: 'Jackson-Pollock 7 Dobras', needsAge: true,
+    sites: { M: ['assessFoldChest', 'assessFoldMidaxillary', 'assessFoldTriceps', 'assessFoldSubscapular', 'assessFoldAbdominal', 'assessFoldSuprailiac', 'assessFoldThigh'], F: ['assessFoldChest', 'assessFoldMidaxillary', 'assessFoldTriceps', 'assessFoldSubscapular', 'assessFoldAbdominal', 'assessFoldSuprailiac', 'assessFoldThigh'] },
+    calc: (sum, age, sex) => {
+      const d = sex === 'F' ? 1.097 - 0.00046971 * sum + 0.00000056 * sum * sum - 0.00012828 * age
+        : 1.112 - 0.00043499 * sum + 0.00000055 * sum * sum - 0.00028826 * age;
+      return siriFat(d);
+    },
+  },
+  {
+    id: 'jp3', label: 'Jackson-Pollock 3 Dobras', needsAge: true,
+    sites: { M: ['assessFoldChest', 'assessFoldAbdominal', 'assessFoldThigh'], F: ['assessFoldTriceps', 'assessFoldSuprailiac', 'assessFoldThigh'] },
+    calc: (sum, age, sex) => {
+      const d = sex === 'F' ? 1.0994921 - 0.0009929 * sum + 0.0000023 * sum * sum - 0.0001392 * age
+        : 1.10938 - 0.0008267 * sum + 0.0000016 * sum * sum - 0.0002574 * age;
+      return siriFat(d);
+    },
+  },
+  {
+    id: 'durnin', label: 'Durnin-Womersley 4 Dobras', needsAge: true,
+    sites: { M: ['assessFoldBiceps', 'assessFoldTriceps', 'assessFoldSubscapular', 'assessFoldSuprailiac'], F: ['assessFoldBiceps', 'assessFoldTriceps', 'assessFoldSubscapular', 'assessFoldSuprailiac'] },
+    calc: (sum, age, sex) => {
+      if (sum <= 0) return null;
+      const table = sex === 'F'
+        ? [{ max: 16, c: 1.1369, m: 0.0598 }, { max: 19, c: 1.1549, m: 0.0678 }, { max: 29, c: 1.1599, m: 0.0717 }, { max: 39, c: 1.1423, m: 0.0632 }, { max: 49, c: 1.1333, m: 0.0612 }, { max: 999, c: 1.1339, m: 0.0645 }]
+        : [{ max: 16, c: 1.1533, m: 0.0643 }, { max: 19, c: 1.1620, m: 0.0630 }, { max: 29, c: 1.1631, m: 0.0632 }, { max: 39, c: 1.1422, m: 0.0544 }, { max: 49, c: 1.1620, m: 0.0700 }, { max: 999, c: 1.1715, m: 0.0779 }];
+      const band = table.find((b) => age <= b.max) || table[table.length - 1];
+      const d = band.c - band.m * Math.log10(sum);
+      return siriFat(d);
+    },
+  },
+  {
+    id: 'faulkner', label: 'Faulkner 4 Dobras', needsAge: false,
+    sites: { M: ['assessFoldTriceps', 'assessFoldSubscapular', 'assessFoldSuprailiac', 'assessFoldAbdominal'], F: ['assessFoldTriceps', 'assessFoldSubscapular', 'assessFoldSuprailiac', 'assessFoldAbdominal'] },
+    calc: (sum) => (sum > 0 ? 5.783 + 0.153 * sum : null),
+  },
+  {
+    id: 'guedes', label: 'Guedes 3 Dobras', needsAge: false,
+    sites: { M: ['assessFoldTriceps', 'assessFoldSuprailiac', 'assessFoldAbdominal'], F: ['assessFoldSubscapular', 'assessFoldSuprailiac', 'assessFoldThigh'] },
+    calc: (sum, age, sex) => {
+      if (sum <= 0) return null;
+      const d = sex === 'F' ? 1.16650 - 0.07063 * Math.log10(sum) : 1.17136 - 0.06706 * Math.log10(sum);
+      return siriFat(d);
+    },
+  },
+];
 
 const BIA_FIELDS = [
-  { id: 'assessMuscleMass', label: '% Massa Muscular', suffix: '%' },
-  { id: 'assessBodyWater', label: '% Água Corporal', suffix: '%' },
-  { id: 'assessVisceralFat', label: 'Gordura Visceral', suffix: '' },
-  { id: 'assessBoneMass', label: 'Massa Óssea (kg)', suffix: '' },
-  { id: 'assessBMR', label: 'TMB (kcal)', suffix: '' },
-  { id: 'assessMetabolicAge', label: 'Idade Metabólica', suffix: '' },
+  { id: 'assessMuscleMassPct', label: '% Massa Muscular' },
+  { id: 'assessSkeletalMuscleKg', label: 'Massa Musc. Esquelética (kg)' },
+  { id: 'assessFatMassKg', label: 'Massa Gorda (kg)' },
+  { id: 'assessLeanMassKg', label: 'Massa Livre de Gordura (kg)' },
+  { id: 'assessBodyWater', label: '% Água Corporal' },
+  { id: 'assessProteinPct', label: '% Proteína' },
+  { id: 'assessMineralsKg', label: 'Minerais (kg)' },
+  { id: 'assessBoneMass', label: 'Massa Óssea (kg)' },
+  { id: 'assessVisceralFat', label: 'Gordura Visceral (índice)' },
+  { id: 'assessObesityDegree', label: 'Grau de Obesidade (%)' },
+  { id: 'assessBMR', label: 'TMB (kcal)' },
+  { id: 'assessMetabolicAge', label: 'Idade Metabólica (anos)' },
 ];
 
 const EMPTY_ASSESS_FIELDS = {
-  assessWeight: '', assessBodyFat: '', assessMuscleMass: '', assessBodyWater: '',
-  assessVisceralFat: '', assessBoneMass: '', assessBMR: '', assessMetabolicAge: '',
-  assessFoldChest: '', assessFoldMidaxillary: '', assessFoldTriceps: '', assessFoldSubscapular: '',
-  assessFoldAbdominal: '', assessFoldSuprailiac: '', assessFoldThigh: '', assessNotes: '',
+  assessMethod: 'bioimpedancia', assessAge: '', assessProtocol: 'jp7',
+  assessWeight: '', assessBodyFat: '',
+  assessMuscleMassPct: '', assessSkeletalMuscleKg: '', assessFatMassKg: '', assessLeanMassKg: '',
+  assessBodyWater: '', assessProteinPct: '', assessMineralsKg: '', assessBoneMass: '',
+  assessVisceralFat: '', assessObesityDegree: '', assessBMR: '', assessMetabolicAge: '',
+  assessFoldChest: '', assessFoldMidaxillary: '', assessFoldTriceps: '', assessFoldBiceps: '',
+  assessFoldSubscapular: '', assessFoldAbdominal: '', assessFoldSuprailiac: '', assessFoldThigh: '',
+  assessNotes: '', photoIds: [],
 };
 
 /* ============================== HELPERS ============================== */
 
 function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
 function currency(v) { return (Number(v) || 0).toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' }); }
+function siriFat(d) { return d > 0 ? (495 / d) - 450 : null; }
 
-function studentFinance(student) {
-  const gross = Number(student.planValue) || 0;
+function monthKeyOf(date) {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function studentGross(student, monthKey) {
+  const mode = student.paymentMode || 'mensal';
+  if (mode === 'quinzenal') return (Number(student.biweeklyValue) || 0) * 2;
+  if (mode === 'quinzenas_pagas') {
+    const mk = monthKey || monthKeyOf(new Date());
+    const marks = (student.quinzenasPagas && student.quinzenasPagas[mk]) || [false, false, false, false];
+    const paidCount = marks.filter(Boolean).length;
+    return (Number(student.biweeklyValue) || 0) * paidCount;
+  }
+  return Number(student.planValue) || 0;
+}
+
+function studentFinance(student, monthKey) {
+  const gross = studentGross(student, monthKey);
   const tax = (gross * (Number(student.taxPercent) || 0)) / 100;
   const gymFee = student.gymFeeType === 'fixed' ? (Number(student.gymFeeValue) || 0) : (gross * (Number(student.gymFeeValue) || 0)) / 100;
   const net = gross - tax - gymFee;
@@ -105,10 +205,6 @@ function pendingFaltas(studentId, sessions) {
   const faltas = sessions.filter((s) => s.studentId === studentId && s.status === 'falta').length;
   const reposicoes = sessions.filter((s) => s.studentId === studentId && s.type === 'reposicao' && s.status !== 'falta' && s.status !== 'cancelado').length;
   return Math.max(0, faltas - reposicoes);
-}
-
-function foldSum(form) {
-  return FOLD_SITES.reduce((sum, f) => sum + (parseFloat(form[f.id]) || 0), 0);
 }
 
 function bmiOf(weightKg, heightCm) {
@@ -123,6 +219,93 @@ function bmiLabel(bmi) {
   if (bmi < 25) return 'Peso normal';
   if (bmi < 30) return 'Sobrepeso';
   return 'Obesidade';
+}
+
+// Calcula a % de gordura pelo protocolo de dobras escolhido, usando o sexo do aluno e a idade da avaliação.
+function calcFoldBodyFat(form, sex) {
+  const protocol = FOLD_PROTOCOLS.find((p) => p.id === form.assessProtocol);
+  if (!protocol) return null;
+  const sexKey = sex === 'F' ? 'F' : 'M';
+  const sites = protocol.sites[sexKey];
+  const sum = sites.reduce((s, id) => s + (parseFloat(form[id]) || 0), 0);
+  if (sum <= 0) return null;
+  const age = parseFloat(form.assessAge);
+  if (protocol.needsAge && !age) return null;
+  const result = protocol.calc(sum, age, sexKey);
+  return typeof result === 'number' && !Number.isNaN(result) ? result : null;
+}
+
+function startOfWeek(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay();
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+  return d;
+}
+function addDays(date, n) { const d = new Date(date); d.setDate(d.getDate() + n); return d; }
+function fmtDateISO(date) {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function fmtDateBR(date) {
+  const d = new Date(date);
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+function periodBounds() {
+  const now = new Date();
+  const weekStartD = startOfWeek(now);
+  return {
+    weekStart: fmtDateISO(weekStartD), weekEnd: fmtDateISO(addDays(weekStartD, 6)),
+    monthStart: fmtDateISO(new Date(now.getFullYear(), now.getMonth(), 1)), monthEnd: fmtDateISO(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
+    yearStart: fmtDateISO(new Date(now.getFullYear(), 0, 1)), yearEnd: fmtDateISO(new Date(now.getFullYear(), 11, 31)),
+  };
+}
+function countActiveSessions(studentId, startIso, endIso, sessions) {
+  return sessions.filter((s) => s.studentId === studentId && s.date >= startIso && s.date <= endIso && (s.status === 'agendado' || s.status === 'realizado')).length;
+}
+
+function categoryFor(type, categoryId) {
+  const list = type === 'entrada' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+  return list.find((c) => c.id === categoryId) || list[list.length - 1];
+}
+function statusLabel(type, status) {
+  if (type === 'entrada') return status === 'concluido' ? 'Recebido' : 'Previsto';
+  return status === 'concluido' ? 'Pago' : 'Pendente';
+}
+
+function downloadBackup(students, sessions, finances, photos) {
+  const data = { exportedAt: new Date().toISOString(), alunos: students, agenda: sessions, financas: finances, fotos: photos };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `ptmanager-backup-${fmtDateISO(new Date())}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function resizePhoto(file, maxDim, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Falha ao ler o arquivo.'));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Falha ao carregar a imagem.'));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > height && width > maxDim) { height = Math.round(height * (maxDim / width)); width = maxDim; }
+        else if (height > maxDim) { width = Math.round(width * (maxDim / height)); height = maxDim; }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 function browserStorageAvailable() {
@@ -178,55 +361,51 @@ async function writeStoredValue(key, value) {
   return null;
 }
 
-function startOfWeek(date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const day = d.getDay();
-  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
-  return d;
-}
-function addDays(date, n) { const d = new Date(date); d.setDate(d.getDate() + n); return d; }
-function fmtDateISO(date) {
-  const d = new Date(date);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-function fmtDateBR(date) {
-  const d = new Date(date);
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-function periodBounds() {
-  const now = new Date();
-  const weekStartD = startOfWeek(now);
+async function readSubscriptionStatus() {
+  if (!supabaseConfigured || !supabase) return { active: true, status: 'local' };
+  const { data: userData } = await supabase.auth.getUser();
+  const email = userData.user?.email?.toLowerCase() || '';
+  if (CREATOR_ACTIVE_PLAN_EMAILS.includes(email)) {
+    return {
+      active: true, status: 'creator', tier: 'vitalicio', value: 0, interval: 'Vitalício',
+      currentPeriodStart: null, currentPeriodEnd: null, cancelAtPeriodEnd: false,
+      paymentMethodBrand: null, paymentMethodLast4: null, stripeCustomerId: null,
+      stripeSubscriptionId: null, lastPaymentStatus: 'creator', updatedAt: null,
+    };
+  }
+  if (import.meta.env.DEV && DEV_ACTIVE_PLAN_EMAILS.includes(email)) {
+    return {
+      active: true, status: 'dev_override', tier: 'mensal', value: null, interval: 'Mensal',
+      currentPeriodStart: null, currentPeriodEnd: null, cancelAtPeriodEnd: false,
+      paymentMethodBrand: null, paymentMethodLast4: null, stripeCustomerId: null,
+      stripeSubscriptionId: null, lastPaymentStatus: 'dev_override', updatedAt: null,
+    };
+  }
+  const userId = await currentSupabaseUserId();
+  if (!userId) return { active: false, status: 'signed_out' };
+  const { data, error } = await supabase
+    .from('personal_subscriptions')
+    .select('plan_status, plan_tier, plan_value, billing_interval, current_period_start, current_period_end, cancel_at_period_end, payment_method_brand, payment_method_last4, stripe_customer_id, stripe_subscription_id, last_payment_status, updated_at')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  const status = data?.plan_status || 'inactive';
   return {
-    weekStart: fmtDateISO(weekStartD), weekEnd: fmtDateISO(addDays(weekStartD, 6)),
-    monthStart: fmtDateISO(new Date(now.getFullYear(), now.getMonth(), 1)), monthEnd: fmtDateISO(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
-    yearStart: fmtDateISO(new Date(now.getFullYear(), 0, 1)), yearEnd: fmtDateISO(new Date(now.getFullYear(), 11, 31)),
+    active: status === 'active',
+    status,
+    tier: data?.plan_tier || null,
+    value: data?.plan_value ?? null,
+    interval: data?.billing_interval || null,
+    currentPeriodStart: data?.current_period_start || null,
+    currentPeriodEnd: data?.current_period_end || null,
+    cancelAtPeriodEnd: Boolean(data?.cancel_at_period_end),
+    paymentMethodBrand: data?.payment_method_brand || null,
+    paymentMethodLast4: data?.payment_method_last4 || null,
+    stripeCustomerId: data?.stripe_customer_id || null,
+    stripeSubscriptionId: data?.stripe_subscription_id || null,
+    lastPaymentStatus: data?.last_payment_status || null,
+    updatedAt: data?.updated_at || null,
   };
-}
-function countActiveSessions(studentId, startIso, endIso, sessions) {
-  return sessions.filter((s) => s.studentId === studentId && s.date >= startIso && s.date <= endIso && (s.status === 'agendado' || s.status === 'realizado')).length;
-}
-
-function categoryFor(type, categoryId) {
-  const list = type === 'entrada' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
-  return list.find((c) => c.id === categoryId) || list[list.length - 1];
-}
-function statusLabel(type, status) {
-  if (type === 'entrada') return status === 'concluido' ? 'Recebido' : 'Previsto';
-  return status === 'concluido' ? 'Pago' : 'Pendente';
-}
-
-function downloadBackup(students, sessions, finances) {
-  const data = { exportedAt: new Date().toISOString(), alunos: students, agenda: sessions, financas: finances };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `painel-pt-backup-${fmtDateISO(new Date())}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 
 /* ============================== GLOBAL STYLES ============================== */
@@ -236,17 +415,17 @@ function GlobalStyles() {
     <style>{`
       :root {
         color-scheme: dark;
-        --bg-base: #0D0D0D;
-        --bg-surface: #181818;
-        --bg-elevated: #222222;
-        --border-hair: #363636;
-        --text-primary: #F5F5F0;
-        --text-muted: #9A9A9A;
-        --text-faint: #656565;
-        --brass: #FFB300;
+        --bg-base: #0A0A0A;
+        --bg-surface: #151515;
+        --bg-elevated: #1F1F1F;
+        --border-hair: #333333;
+        --text-primary: #F5F5F5;
+        --text-muted: #999999;
+        --text-faint: #636363;
+        --brass: #1EA6B4;
         --rust: #D6534A;
         --slate-acc: #8C8C8C;
-        --sky: #E0B85C;
+        --sky: #5FC4D0;
       }
 
       * { box-sizing: border-box; }
@@ -271,7 +450,7 @@ function GlobalStyles() {
       .text-sky { color: var(--sky); }
 
       .card-hover { transition: filter 0.15s ease; }
-      .card-hover:hover { filter: brightness(1.12); }
+      .card-hover:hover { filter: brightness(1.15); }
       .btn-surface { transition: background-color 0.15s ease; }
       .btn-surface:hover { background-color: var(--bg-elevated); }
       .link-sky { color: var(--brass); transition: opacity 0.15s ease; background: none; border: none; cursor: pointer; padding: 0; }
@@ -326,7 +505,7 @@ function GlobalStyles() {
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { error: null }; }
   static getDerivedStateFromError(error) { return { error }; }
-  componentDidCatch(error, info) { console.error('Erro no Painel PT:', error, info); }
+  componentDidCatch(error, info) { console.error('Erro no PTMANAGER:', error, info); }
   render() {
     if (this.state.error) {
       if (this.props.compact) {
@@ -342,7 +521,7 @@ class ErrorBoundary extends React.Component {
           <AlertTriangle size={32} className="text-rust" />
           <div className="font-display font-semibold text-lg text-primary">Algo deu errado ao carregar o painel</div>
           <p className="text-sm text-muted font-body max-w-md">{String((this.state.error && this.state.error.message) || this.state.error)}</p>
-          <button onClick={() => this.setState({ error: null })} type="button" className="px-4 py-2 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0D0D0D' }}>
+          <button onClick={() => this.setState({ error: null })} type="button" className="px-4 py-2 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
             Tentar novamente
           </button>
         </div>
@@ -363,12 +542,15 @@ function FormField({ label, children }) {
   );
 }
 
-function Modal({ title, onClose, children }) {
+function Modal({ title, onClose, children, onBack }) {
   return (
-    <div className="fixed inset-0 flex items-end sm:items-center justify-center animate-in" style={{ backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 40 }} onClick={onClose}>
+    <div className="fixed inset-0 flex items-end sm:items-center justify-center animate-in" style={{ backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 40 }} onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} className="bg-surface border border-hair rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md overflow-y-auto" style={{ maxHeight: '90vh' }}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-hair sticky top-0 bg-surface">
-          <h2 className="font-display font-medium text-lg text-primary">{title}</h2>
+          <div className="flex items-center gap-2">
+            {onBack && <button onClick={onBack} type="button" className="p-1 rounded-lg btn-surface" aria-label="Voltar"><ArrowLeft size={16} className="text-muted" /></button>}
+            <h2 className="font-display font-medium text-lg text-primary">{title}</h2>
+          </div>
           <button onClick={onClose} type="button" className="p-1.5 rounded-lg btn-surface" aria-label="Fechar">
             <X size={18} className="text-muted" />
           </button>
@@ -381,13 +563,13 @@ function Modal({ title, onClose, children }) {
 
 function ConfirmDialog({ title, message, onConfirm, onCancel }) {
   return (
-    <div className="fixed inset-0 flex items-center justify-center px-4 animate-in" style={{ backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 50 }} onClick={onCancel}>
+    <div className="fixed inset-0 flex items-center justify-center px-4 animate-in" style={{ backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 50 }} onClick={onCancel}>
       <div onClick={(e) => e.stopPropagation()} className="bg-surface border border-hair rounded-2xl w-full max-w-sm p-5">
         <h3 className="font-display font-medium text-base text-primary mb-2">{title}</h3>
         <p className="text-sm text-muted font-body mb-5">{message}</p>
         <div className="flex gap-2 justify-end">
           <button onClick={onCancel} type="button" className="px-4 py-2 rounded-lg text-sm font-body text-muted border border-hair btn-surface">Cancelar</button>
-          <button onClick={onConfirm} type="button" className="px-4 py-2 rounded-lg text-sm font-body" style={{ backgroundColor: 'var(--rust)', color: '#0D0D0D' }}>Excluir</button>
+          <button onClick={onConfirm} type="button" className="px-4 py-2 rounded-lg text-sm font-body" style={{ backgroundColor: 'var(--rust)', color: '#0A0A0A' }}>Excluir</button>
         </div>
       </div>
     </div>
@@ -398,9 +580,9 @@ function Toast({ toast }) {
   if (!toast) return null;
   const isError = toast.type === 'error';
   return (
-    <div className="fixed bottom-5 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-lg border font-body text-sm flex items-center gap-2 animate-in" style={{ backgroundColor: 'var(--bg-elevated)', borderColor: isError ? 'var(--rust)' : 'var(--brass)', color: 'var(--text-primary)', zIndex: 60 }}>
-      {isError ? <AlertTriangle size={15} className="text-rust" /> : <CheckCircle2 size={15} className="text-brass" />}
-      {toast.msg}
+    <div className="fixed bottom-5 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-lg border font-body text-sm flex items-center gap-2 animate-in" style={{ backgroundColor: 'var(--bg-elevated)', borderColor: isError ? 'var(--rust)' : 'var(--brass)', color: 'var(--text-primary)', zIndex: 60, maxWidth: '90vw' }}>
+      {isError ? <AlertTriangle size={15} className="text-rust" style={{flexShrink:0}} /> : <CheckCircle2 size={15} className="text-brass" style={{flexShrink:0}} />}
+      <span className="truncate">{toast.msg}</span>
     </div>
   );
 }
@@ -411,7 +593,7 @@ function EmptyState({ message, cta, onCta, icon: Icon = Info }) {
       <Icon size={26} className="text-faint mb-3" />
       <p className="text-sm text-muted font-body max-w-xs">{message}</p>
       {cta && (
-        <button onClick={onCta} type="button" className="mt-4 px-4 py-2 rounded-lg text-sm font-body border border-hair" style={{ backgroundColor: 'rgba(255,179,0,0.12)', color: 'var(--brass)' }}>
+        <button onClick={onCta} type="button" className="mt-4 px-4 py-2 rounded-lg text-sm font-body border border-hair" style={{ backgroundColor: 'rgba(30,166,180,0.12)', color: 'var(--brass)' }}>
           {cta}
         </button>
       )}
@@ -422,9 +604,9 @@ function EmptyState({ message, cta, onCta, icon: Icon = Info }) {
 function LoadingScreen() {
   return (
     <div className="min-h-screen bg-base flex flex-col items-center justify-center gap-4">
-      <img src={LOGO_SRC} alt="Coach Bruno Fonseca" style={{ width: 72, height: 72 }} />
+      <img src={LOGO_SRC} alt="PTMANAGER" style={{ width: 64, height: 64 }} />
       <Loader2 size={24} className="text-brass spin" />
-      <span className="font-body text-sm text-muted">Carregando painel...</span>
+      <span className="font-body text-sm text-muted">Carregando...</span>
     </div>
   );
 }
@@ -461,12 +643,12 @@ function LoginScreen() {
     <div className="min-h-screen bg-base flex items-center justify-center px-4">
       <form onSubmit={submit} className="bg-surface border border-hair rounded-xl p-5 w-full max-w-sm flex flex-col gap-4">
         <div className="flex items-center gap-2.5">
-          <img src={LOGO_SRC} alt="Coach Bruno Fonseca" style={{ width: 34, height: 34, flexShrink: 0 }} />
-          <span className="font-display font-semibold text-xl tracking-wide text-primary">COACH<span style={{ color: 'var(--brass)' }}>BFONSECA</span></span>
+          <img src={LOGO_SRC} alt="PTMANAGER" style={{ width: 34, height: 34, flexShrink: 0 }} />
+          <span className="font-display font-semibold text-xl tracking-wide text-primary">PT<span style={{ color: 'var(--brass)' }}>MANAGER</span></span>
         </div>
         <div>
           <h1 className="font-display text-lg font-semibold text-primary">{mode === 'signup' ? 'Criar acesso' : 'Entrar no painel'}</h1>
-          <p className="text-xs font-body text-muted mt-1">Seus dados ficam salvos no banco fixo do Supabase.</p>
+          <p className="text-xs font-body text-muted mt-1">Entre para acessar seu CRM de alunos, agenda, avaliações e finanças.</p>
         </div>
         <FormField label="E-mail">
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="input-field" placeholder="voce@email.com" />
@@ -475,13 +657,302 @@ function LoginScreen() {
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="input-field" placeholder="Mínimo 6 caracteres" />
         </FormField>
         {message && <div className="text-xs font-body text-rust">{message}</div>}
-        <button type="submit" disabled={busy} className="px-4 py-2.5 rounded-lg text-sm font-body font-medium disabled:opacity-60" style={{ backgroundColor: 'var(--brass)', color: '#0D0D0D' }}>
+        <button type="submit" disabled={busy} className="px-4 py-2.5 rounded-lg text-sm font-body font-medium disabled:opacity-60" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
           {busy ? 'Aguarde...' : mode === 'signup' ? 'Criar conta' : 'Entrar'}
         </button>
         <button type="button" onClick={() => { setMode(mode === 'signup' ? 'signin' : 'signup'); setMessage(''); }} className="text-xs font-body link-sky">
           {mode === 'signup' ? 'Já tenho conta' : 'Criar primeira conta'}
         </button>
       </form>
+    </div>
+  );
+}
+
+function SalesPlansPage({ onSignOut, onRefresh }) {
+  const whatsappReady = Boolean(SALES_WHATSAPP_URL);
+  return (
+    <div className="min-h-screen bg-base flex flex-col">
+      <header className="border-b border-hair bg-surface">
+        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <img src={LOGO_SRC} alt="PTMANAGER" style={{ width: 36, height: 36, flexShrink: 0 }} />
+            <span className="font-display font-semibold text-lg tracking-wide text-primary truncate">PT<span style={{ color: 'var(--brass)' }}>MANAGER</span></span>
+          </div>
+          <button onClick={onSignOut} type="button" className="px-3 py-2 rounded-lg text-xs font-body border border-hair btn-surface text-muted">Sair</button>
+        </div>
+      </header>
+
+      <main className="flex-1 px-4 py-8 max-w-5xl mx-auto w-full flex flex-col gap-7">
+        <section className="flex flex-col gap-3">
+          <div className="text-2xs uppercase tracking-wide text-faint font-mono">Planos para personal trainers</div>
+          <h1 className="font-display text-3xl sm:text-4xl font-semibold text-primary">Escolha seu plano para liberar o painel</h1>
+          <p className="text-sm sm:text-base text-muted font-body max-w-2xl">
+            Organize alunos, agenda, avaliações físicas, reposições e finanças em um só lugar. A ativação é feita após contratação pelo WhatsApp.
+          </p>
+        </section>
+
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {SALES_PLANS.map((plan) => (
+            <div key={plan.id} className="bg-surface border rounded-xl p-5 flex flex-col gap-4" style={{ borderColor: plan.highlight ? 'var(--brass)' : 'var(--border-hair)' }}>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="font-display text-xl font-semibold text-primary">{plan.name}</h2>
+                {plan.highlight && <span className="text-2xs uppercase tracking-wide font-mono px-2 py-1 rounded-full" style={{ backgroundColor: 'rgba(30,166,180,0.16)', color: 'var(--brass)' }}>Mais escolhido</span>}
+              </div>
+              <div>
+                <div className="font-mono text-3xl font-semibold text-primary">{plan.price}</div>
+                <div className="text-xs text-faint font-body mt-1">{plan.note}</div>
+              </div>
+              <ul className="text-sm text-muted font-body flex flex-col gap-2">
+                <li>Gestão completa de alunos e planos</li>
+                <li>Agenda semanal e mensal</li>
+                <li>Avaliações físicas com fotos</li>
+                <li>Controle financeiro do personal</li>
+              </ul>
+              {whatsappReady ? (
+                <a href={SALES_WHATSAPP_URL} target="_blank" rel="noreferrer" className="mt-auto text-center px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
+                  Contratar pelo WhatsApp
+                </a>
+              ) : (
+                <button type="button" disabled className="mt-auto px-4 py-2.5 rounded-lg text-sm font-body border border-hair text-faint cursor-not-allowed">
+                  WhatsApp não configurado
+                </button>
+              )}
+            </div>
+          ))}
+        </section>
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-hair rounded-xl p-4 bg-surface">
+          <div>
+            <div className="text-sm font-body font-medium text-primary">Já contrataram seu plano?</div>
+            <div className="text-xs text-muted font-body">Atualize após a ativação no Supabase para entrar no painel.</div>
+          </div>
+          <button onClick={onRefresh} type="button" className="px-3.5 py-2 rounded-lg text-xs font-body border border-hair btn-surface text-muted">Verificar assinatura</button>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function planByTier(tier) {
+  return SALES_PLANS.find((plan) => plan.id === tier) || null;
+}
+
+function subscriptionStatusLabel(status) {
+  if (status === 'active' || status === 'dev_override') return 'Ativo';
+  if (status === 'creator') return 'Criador';
+  if (status === 'inactive') return 'Inativo';
+  if (status === 'canceled') return 'Cancelado';
+  if (status === 'past_due') return 'Pagamento pendente';
+  return status || 'Sem plano';
+}
+
+function fmtDateLong(value) {
+  if (!value) return 'Não definido';
+  return new Date(value).toLocaleDateString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function daysUntil(value) {
+  if (!value) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(value);
+  target.setHours(0, 0, 0, 0);
+  return Math.ceil((target.getTime() - today.getTime()) / 86400000);
+}
+
+function daysLeftLabel(value, cancelAtPeriodEnd) {
+  const days = daysUntil(value);
+  if (days == null) return 'Sem vencimento';
+  if (days < 0) return `Vencido há ${Math.abs(days)} dia(s)`;
+  if (days === 0) return cancelAtPeriodEnd ? 'Cancela hoje' : 'Vence hoje';
+  return cancelAtPeriodEnd ? `Cancela em ${days} dia(s)` : `Renova em ${days} dia(s)`;
+}
+
+function paymentMethodLabel(subscription) {
+  if (!subscription?.paymentMethodBrand && !subscription?.paymentMethodLast4) return 'Não informado';
+  const brand = subscription.paymentMethodBrand || 'Cartão';
+  return subscription.paymentMethodLast4 ? `${brand} •••• ${subscription.paymentMethodLast4}` : brand;
+}
+
+function whatsappHref(message) {
+  if (!SALES_WHATSAPP_URL) return '';
+  const separator = SALES_WHATSAPP_URL.includes('?') ? '&' : '?';
+  return `${SALES_WHATSAPP_URL}${separator}text=${encodeURIComponent(message)}`;
+}
+
+function ProfileView({ user, subscription, onSignOut, onRefreshSubscription }) {
+  const currentPlan = planByTier(subscription?.tier);
+  const planName = currentPlan?.name || subscription?.tier || 'Nenhum plano';
+  const planValue = subscription?.value != null
+    ? currency(subscription.value)
+    : currentPlan?.price || 'A definir';
+  const billingInterval = subscription?.interval || currentPlan?.interval || 'Não definido';
+  const renewalLabel = daysLeftLabel(subscription?.currentPeriodEnd, subscription?.cancelAtPeriodEnd);
+  const paymentLabel = paymentMethodLabel(subscription);
+  const currentTierIndex = SALES_PLANS.findIndex((plan) => plan.id === subscription?.tier);
+  const upgradePlans = SALES_PLANS.filter((_, index) => currentTierIndex < 0 || index > currentTierIndex);
+  const hasWhatsApp = Boolean(SALES_WHATSAPP_URL);
+
+  return (
+    <div className="px-4 py-4 max-w-5xl mx-auto flex flex-col gap-5">
+      <div>
+        <h1 className="font-display font-semibold text-2xl text-primary tracking-wide">Perfil</h1>
+        <p className="text-sm text-muted font-body mt-1">Dados da sua conta e informações do plano assinado.</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="bg-surface border border-hair rounded-xl p-5 flex flex-col gap-4">
+          <div className="flex items-center gap-3">
+            <img src={LOGO_SRC} alt="PTMANAGER" style={{ width: 42, height: 42, flexShrink: 0 }} />
+            <div className="min-w-0">
+              <div className="text-2xs uppercase tracking-wide text-faint font-mono">Conta</div>
+              <div className="font-body text-base text-primary truncate">{user?.email || 'Usuário local'}</div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-2 text-sm font-body">
+            <div className="flex justify-between gap-3 border-t border-hair pt-3">
+              <span className="text-muted">ID do usuário</span>
+              <span className="text-faint font-mono text-xs truncate max-w-52">{user?.id || 'local'}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-muted">Último acesso</span>
+              <span className="text-primary">{user?.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString('pt-PT') : 'Agora'}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-muted">Conta criada</span>
+              <span className="text-primary">{fmtDateLong(user?.created_at)}</span>
+            </div>
+          </div>
+          {onSignOut && (
+            <button onClick={onSignOut} type="button" className="mt-auto px-3.5 py-2 rounded-lg text-xs font-body border border-hair btn-surface text-muted">
+              Sair da conta
+            </button>
+          )}
+        </div>
+
+        <div className="bg-surface border border-hair rounded-xl p-5 flex flex-col gap-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-2xs uppercase tracking-wide text-faint font-mono">Plano atual</div>
+              <div className="font-display text-2xl text-primary font-semibold mt-1">{planName}</div>
+            </div>
+            <span className="text-2xs uppercase tracking-wide font-mono px-2 py-1 rounded-full" style={{ backgroundColor: subscription?.active ? 'rgba(30,166,180,0.16)' : 'rgba(214,83,74,0.14)', color: subscription?.active ? 'var(--brass)' : 'var(--rust)' }}>
+              {subscriptionStatusLabel(subscription?.status)}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard label="Valor" value={planValue} icon={Wallet} accent="brass" />
+            <StatCard label="Ciclo" value={billingInterval} icon={CalendarRange} accent="sky" />
+            <StatCard label={subscription?.cancelAtPeriodEnd ? 'Fim do acesso' : 'Próxima renovação'} value={renewalLabel} icon={CalendarDays} accent={subscription?.cancelAtPeriodEnd ? 'rust' : 'slate'} />
+            <StatCard label="Pagamento" value={paymentLabel} icon={Wallet} accent="sky" />
+          </div>
+          {subscription?.cancelAtPeriodEnd && (
+            <div className="text-xs font-body px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(214,83,74,0.12)', color: 'var(--rust)' }}>
+              Cancelamento agendado. O acesso permanece até {fmtDateLong(subscription.currentPeriodEnd)}.
+            </div>
+          )}
+          <button onClick={onRefreshSubscription} type="button" className="px-3.5 py-2 rounded-lg text-xs font-body border border-hair btn-surface text-muted">
+            Atualizar dados do plano
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-surface border border-hair rounded-xl p-5 flex flex-col gap-4">
+        <div>
+          <h2 className="font-display text-lg font-semibold text-primary">Cobrança e assinatura</h2>
+          <p className="text-xs text-muted font-body mt-1">Resumo operacional para suporte, cobrança e conciliação.</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm font-body">
+          <div className="border border-hair rounded-lg p-3">
+            <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-1">Início do ciclo</div>
+            <div className="text-primary">{fmtDateLong(subscription?.currentPeriodStart)}</div>
+          </div>
+          <div className="border border-hair rounded-lg p-3">
+            <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-1">Vencimento</div>
+            <div className="text-primary">{fmtDateLong(subscription?.currentPeriodEnd)}</div>
+          </div>
+          <div className="border border-hair rounded-lg p-3">
+            <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-1">Último pagamento</div>
+            <div className="text-primary">{subscription?.lastPaymentStatus || 'Não informado'}</div>
+          </div>
+          <div className="border border-hair rounded-lg p-3">
+            <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-1">Última atualização</div>
+            <div className="text-primary">{fmtDateLong(subscription?.updatedAt)}</div>
+          </div>
+          <div className="border border-hair rounded-lg p-3 sm:col-span-2">
+            <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-1">Cliente Stripe</div>
+            <div className="text-faint font-mono text-xs break-all">{subscription?.stripeCustomerId || 'Ainda não vinculado'}</div>
+          </div>
+          <div className="border border-hair rounded-lg p-3 sm:col-span-2">
+            <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-1">Assinatura Stripe</div>
+            <div className="text-faint font-mono text-xs break-all">{subscription?.stripeSubscriptionId || 'Ainda não vinculada'}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-surface border border-hair rounded-xl p-5 flex flex-col gap-4">
+        <div>
+          <h2 className="font-display text-lg font-semibold text-primary">Gerenciar plano</h2>
+          <p className="text-xs text-muted font-body mt-1">Upgrade, mudança de ciclo, suporte de cobrança e cancelamento.</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {(upgradePlans.length ? upgradePlans : SALES_PLANS).map((plan) => {
+            const isCurrent = plan.id === subscription?.tier;
+            const message = isCurrent
+              ? `Quero falar sobre meu plano ${plan.name} no PTMANAGER.`
+              : `Quero mudar meu plano do PTMANAGER para ${plan.name}.`;
+            return (
+              <div key={plan.id} className="border border-hair rounded-lg p-4 flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-body font-medium text-primary">{plan.name}</div>
+                  {isCurrent && <span className="text-2xs text-brass font-mono">Atual</span>}
+                </div>
+                <div className="font-mono text-xl text-primary">{plan.price}</div>
+                <a
+                  href={hasWhatsApp ? whatsappHref(message) : undefined}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-disabled={!hasWhatsApp}
+                  className="mt-auto text-center px-3 py-2 rounded-lg text-xs font-body border border-hair btn-surface text-muted"
+                >
+                  {isCurrent ? 'Falar sobre plano' : 'Solicitar upgrade'}
+                </a>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <a
+            href={hasWhatsApp ? whatsappHref('Quero atualizar a forma de pagamento do meu plano PTMANAGER.') : undefined}
+            target="_blank"
+            rel="noreferrer"
+            aria-disabled={!hasWhatsApp}
+            className="px-3.5 py-2 rounded-lg text-xs font-body border border-hair btn-surface text-muted"
+          >
+            Atualizar pagamento
+          </a>
+          <a
+            href={hasWhatsApp ? whatsappHref('Quero segunda via ou suporte sobre uma cobrança do PTMANAGER.') : undefined}
+            target="_blank"
+            rel="noreferrer"
+            aria-disabled={!hasWhatsApp}
+            className="px-3.5 py-2 rounded-lg text-xs font-body border border-hair btn-surface text-muted"
+          >
+            Suporte de cobrança
+          </a>
+          <a
+            href={hasWhatsApp ? whatsappHref('Quero cancelar meu plano do PTMANAGER.') : undefined}
+            target="_blank"
+            rel="noreferrer"
+            aria-disabled={!hasWhatsApp}
+            className="px-3.5 py-2 rounded-lg text-xs font-body border btn-surface"
+            style={{ borderColor: 'var(--rust)', color: 'var(--rust)' }}
+          >
+            Solicitar cancelamento
+          </a>
+        </div>
+        {!hasWhatsApp && <div className="text-xs text-rust font-body">Configure `VITE_SALES_WHATSAPP_URL` para ativar os links comerciais.</div>}
+      </div>
     </div>
   );
 }
@@ -538,13 +1009,29 @@ function RevenueLoadBar({ gross, tax, gymFee, net, height = 32, showLabels = tru
   );
 }
 
+function QuinzenaDots({ marks, onToggle, label }) {
+  return (
+    <FormField label={label}>
+      <div className="flex gap-2.5">
+        {[0, 1, 2, 3].map((i) => (
+          <button key={i} type="button" onClick={() => onToggle(i)} aria-label={`Quinzena ${i + 1}${marks[i] ? ' paga' : ' não paga'}`}
+            className="rounded-full flex items-center justify-center" style={{ width: 36, height: 36, border: `2px solid ${marks[i] ? 'var(--brass)' : 'var(--border-hair)'}`, backgroundColor: marks[i] ? 'var(--brass)' : 'transparent' }}>
+            {marks[i] ? <Check size={15} color="#0A0A0A" /> : <span className="text-2xs font-mono text-faint">{i + 1}</span>}
+          </button>
+        ))}
+      </div>
+    </FormField>
+  );
+}
+
 /* ============================== ASSESSMENT FIELDS (shared) ============================== */
 
-function AssessmentFields({ form, set, studentHeight }) {
-  const [showBio, setShowBio] = useState(false);
-  const [showFolds, setShowFolds] = useState(false);
-  const sum = foldSum(form);
+function AssessmentFields({ form, set, studentHeight, studentSex }) {
   const bmi = bmiOf(form.assessWeight, studentHeight);
+  const protocol = FOLD_PROTOCOLS.find((p) => p.id === form.assessProtocol) || FOLD_PROTOCOLS[0];
+  const sexKey = studentSex === 'F' ? 'F' : 'M';
+  const activeSites = protocol.sites[sexKey];
+  const foldResult = form.assessMethod === 'dobras' ? calcFoldBodyFat(form, studentSex) : null;
 
   return (
     <div className="flex flex-col gap-3">
@@ -552,8 +1039,8 @@ function AssessmentFields({ form, set, studentHeight }) {
         <FormField label="Peso (kg)">
           <input type="number" inputMode="decimal" min="0" step="0.1" value={form.assessWeight || ''} onChange={(e) => set('assessWeight', e.target.value)} className="input-field" placeholder="0,0" />
         </FormField>
-        <FormField label="% Gordura corporal">
-          <input type="number" inputMode="decimal" min="0" max="100" step="0.1" value={form.assessBodyFat || ''} onChange={(e) => set('assessBodyFat', e.target.value)} className="input-field" placeholder="0,0" />
+        <FormField label="Idade na avaliação">
+          <input type="number" inputMode="numeric" min="0" step="1" value={form.assessAge || ''} onChange={(e) => set('assessAge', e.target.value)} className="input-field" placeholder="anos" />
         </FormField>
       </div>
 
@@ -567,39 +1054,50 @@ function AssessmentFields({ form, set, studentHeight }) {
         <div className="text-2xs text-faint font-body">Adicione a altura do aluno no cadastro para calcular o IMC automaticamente.</div>
       )}
 
-      <button type="button" onClick={() => setShowBio((v) => !v)} className="flex items-center justify-between text-2xs uppercase tracking-wide text-faint font-mono py-1">
-        Bioimpedância (opcional)
-        {showBio ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-      </button>
-      {showBio && (
-        <div className="grid grid-cols-2 gap-3 animate-in">
-          {BIA_FIELDS.map((f) => (
-            <FormField key={f.id} label={f.label}>
-              <input type="number" inputMode="decimal" min="0" step="0.1" value={form[f.id] || ''} onChange={(e) => set(f.id, e.target.value)} className="input-field" placeholder="0" />
-            </FormField>
-          ))}
+      <FormField label="Método de avaliação">
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => set('assessMethod', 'bioimpedancia')} className="px-3 py-2 rounded-lg border text-sm font-body" style={{ borderColor: form.assessMethod === 'bioimpedancia' ? 'var(--brass)' : 'var(--border-hair)', backgroundColor: form.assessMethod === 'bioimpedancia' ? 'rgba(30,166,180,0.12)' : 'var(--bg-base)', color: form.assessMethod === 'bioimpedancia' ? 'var(--brass)' : 'var(--text-muted)' }}>Bioimpedância</button>
+          <button type="button" onClick={() => set('assessMethod', 'dobras')} className="px-3 py-2 rounded-lg border text-sm font-body" style={{ borderColor: form.assessMethod === 'dobras' ? 'var(--brass)' : 'var(--border-hair)', backgroundColor: form.assessMethod === 'dobras' ? 'rgba(30,166,180,0.12)' : 'var(--bg-base)', color: form.assessMethod === 'dobras' ? 'var(--brass)' : 'var(--text-muted)' }}>Dobras Cutâneas</button>
         </div>
-      )}
+      </FormField>
 
-      <button type="button" onClick={() => setShowFolds((v) => !v)} className="flex items-center justify-between text-2xs uppercase tracking-wide text-faint font-mono py-1">
-        Protocolo de Dobras Cutâneas — mm (opcional)
-        {showFolds ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-      </button>
-      {showFolds && (
-        <div className="animate-in flex flex-col gap-3">
+      {form.assessMethod === 'bioimpedancia' && (
+        <div className="bg-elevated rounded-lg p-3 border border-hair flex flex-col gap-3 animate-in">
+          <div className="text-2xs uppercase tracking-wide text-faint font-mono">Dados de Bioimpedância</div>
+          <FormField label="% Gordura corporal">
+            <input type="number" inputMode="decimal" min="0" max="100" step="0.1" value={form.assessBodyFat || ''} onChange={(e) => set('assessBodyFat', e.target.value)} className="input-field" placeholder="0,0" />
+          </FormField>
           <div className="grid grid-cols-2 gap-3">
-            {FOLD_SITES.map((f) => (
+            {BIA_FIELDS.map((f) => (
               <FormField key={f.id} label={f.label}>
-                <input type="number" inputMode="decimal" min="0" step="0.1" value={form[f.id] || ''} onChange={(e) => set(f.id, e.target.value)} className="input-field" placeholder="0" />
+                <input type="number" inputMode="decimal" step="0.1" value={form[f.id] || ''} onChange={(e) => set(f.id, e.target.value)} className="input-field" placeholder="0" />
               </FormField>
             ))}
           </div>
-          {sum > 0 && (
-            <div className="flex items-center justify-between text-xs font-body px-3 py-2 rounded-lg bg-elevated border border-hair">
-              <span className="text-muted">Soma das dobras</span>
-              <span className="text-primary font-mono">{sum.toFixed(1)} mm</span>
-            </div>
-          )}
+        </div>
+      )}
+
+      {form.assessMethod === 'dobras' && (
+        <div className="bg-elevated rounded-lg p-3 border border-hair flex flex-col gap-3 animate-in">
+          <div className="text-2xs uppercase tracking-wide text-faint font-mono">Protocolo de Dobras Cutâneas</div>
+          <FormField label="Protocolo">
+            <select value={form.assessProtocol} onChange={(e) => set('assessProtocol', e.target.value)} className="input-field">
+              {FOLD_PROTOCOLS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+          </FormField>
+          {!studentSex && <div className="text-2xs text-rust font-body">Defina o sexo biológico do aluno no cadastro para este protocolo calcular corretamente.</div>}
+          {protocol.needsAge && !form.assessAge && <div className="text-2xs text-rust font-body">Informe a idade acima — este protocolo precisa dela para calcular.</div>}
+          <div className="grid grid-cols-2 gap-3">
+            {activeSites.map((id) => (
+              <FormField key={id} label={`${foldLabel(id)} (mm)`}>
+                <input type="number" inputMode="decimal" min="0" step="0.1" value={form[id] || ''} onChange={(e) => set(id, e.target.value)} className="input-field" placeholder="0" />
+              </FormField>
+            ))}
+          </div>
+          <div className="flex items-center justify-between text-sm font-body px-3 py-2.5 rounded-lg" style={{ backgroundColor: 'rgba(30,166,180,0.1)' }}>
+            <span className="text-muted">% Gordura estimada ({protocol.label})</span>
+            <span className="font-mono font-semibold text-brass">{foldResult != null ? `${foldResult.toFixed(1)}%` : '—'}</span>
+          </div>
         </div>
       )}
 
@@ -607,6 +1105,35 @@ function AssessmentFields({ form, set, studentHeight }) {
         <textarea value={form.assessNotes || ''} onChange={(e) => set('assessNotes', e.target.value)} className="input-field" rows={2} placeholder="Evolução, orientações, observações..." />
       </FormField>
     </div>
+  );
+}
+
+/* ============================== PHOTOS ============================== */
+
+function PhotoPicker({ photoIds, onAdd, onRemove, photosById, busy }) {
+  const inputRef = useRef(null);
+  return (
+    <FormField label="Fotos do aluno">
+      <div className="flex flex-wrap gap-2">
+        {photoIds.map((id) => {
+          const p = photosById[id];
+          if (!p) return null;
+          return (
+            <div key={id} className="relative" style={{ width: 64, height: 64 }}>
+              <img src={p.dataUri} alt="Foto do aluno" className="w-full h-full object-cover rounded-lg border border-hair" />
+              <button onClick={() => onRemove(id)} type="button" className="absolute rounded-full flex items-center justify-center" style={{ top: -6, right: -6, width: 20, height: 20, backgroundColor: 'var(--rust)' }} aria-label="Remover foto">
+                <X size={12} color="#0A0A0A" />
+              </button>
+            </div>
+          );
+        })}
+        <button onClick={() => inputRef.current?.click()} type="button" disabled={busy} className="flex flex-col items-center justify-center gap-1 rounded-lg border border-hair btn-surface" style={{ width: 64, height: 64 }}>
+          {busy ? <Loader2 size={16} className="text-muted spin" /> : <Camera size={16} className="text-muted" />}
+          <span className="text-2xs text-faint">{busy ? '...' : 'Add'}</span>
+        </button>
+        <input ref={inputRef} type="file" accept="image/*" multiple onChange={(e) => { onAdd(e.target.files); e.target.value = ''; }} style={{ display: 'none' }} />
+      </div>
+    </FormField>
   );
 }
 
@@ -670,8 +1197,8 @@ function Header({ onOpenSettings }) {
     <header className="border-b border-hair bg-surface">
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <img src={LOGO_SRC} alt="Coach Bruno Fonseca" style={{ width: 30, height: 30, flexShrink: 0 }} />
-          <span className="font-display font-semibold text-xl tracking-wide text-primary">COACH<span style={{ color: 'var(--brass)' }}>BFONSECA</span></span>
+          <img src={LOGO_SRC} alt="PTMANAGER" style={{ width: 30, height: 30, flexShrink: 0 }} />
+          <span className="font-display font-semibold text-xl tracking-wide" style={{ color: '#F5F5F5' }}>PT<span style={{ color: 'var(--brass)' }}>MANAGER</span></span>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs font-body text-faint hidden sm:inline">{dateLabel}</span>
@@ -690,7 +1217,9 @@ function NavTabs({ view, setView }) {
     { id: 'weekly', label: 'Semana', icon: CalendarDays },
     { id: 'monthly', label: 'Mês', icon: CalendarRange },
     { id: 'students', label: 'Alunos', icon: Users },
+    { id: 'assessments', label: 'Avaliações', icon: Activity },
     { id: 'finances', label: 'Finanças', icon: Wallet },
+    { id: 'profile', label: 'Perfil', icon: Settings },
   ];
   return (
     <nav className="border-b border-hair bg-surface sticky top-0" style={{ zIndex: 30 }}>
@@ -822,8 +1351,8 @@ function Dashboard({ students, sessions, finances, setView, onAddSession, onOpen
                   <Pie data={typeDistData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={3}>
                     {typeDistData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                   </Pie>
-                  <Tooltip contentStyle={{ background: '#222222', border: '1px solid #363636', borderRadius: 8, color: '#F5F5F0' }} />
-                  <Legend wrapperStyle={{ fontSize: 11, color: '#9A9A9A' }} />
+                  <Tooltip contentStyle={{ background: '#1F1F1F', border: '1px solid #333333', borderRadius: 8, color: '#F5F5F5' }} />
+                  <Legend wrapperStyle={{ fontSize: 11, color: '#999999' }} />
                 </PieChart>
               </ResponsiveContainer>
             )}
@@ -836,8 +1365,8 @@ function Dashboard({ students, sessions, finances, setView, onAddSession, onOpen
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={topStudentsData} layout="vertical" margin={{ left: 0, right: 16, top: 4, bottom: 4 }}>
                   <XAxis type="number" hide />
-                  <YAxis type="category" dataKey="name" width={70} tick={{ fill: '#9A9A9A', fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <Tooltip formatter={(v) => currency(v)} contentStyle={{ background: '#222222', border: '1px solid #363636', borderRadius: 8, color: '#F5F5F0' }} />
+                  <YAxis type="category" dataKey="name" width={70} tick={{ fill: '#999999', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <Tooltip formatter={(v) => currency(v)} contentStyle={{ background: '#1F1F1F', border: '1px solid #333333', borderRadius: 8, color: '#F5F5F5' }} />
                   <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={16}>
                     {topStudentsData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                   </Bar>
@@ -967,8 +1496,8 @@ function Dashboard({ students, sessions, finances, setView, onAddSession, onOpen
                   <Pie data={financeCategoryData} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75} paddingAngle={3}>
                     {financeCategoryData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                   </Pie>
-                  <Tooltip formatter={(v) => currency(v)} contentStyle={{ background: '#222222', border: '1px solid #363636', borderRadius: 8, color: '#F5F5F0' }} />
-                  <Legend wrapperStyle={{ fontSize: 11, color: '#9A9A9A' }} />
+                  <Tooltip formatter={(v) => currency(v)} contentStyle={{ background: '#1F1F1F', border: '1px solid #333333', borderRadius: 8, color: '#F5F5F5' }} />
+                  <Legend wrapperStyle={{ fontSize: 11, color: '#999999' }} />
                 </PieChart>
               </ResponsiveContainer>
             </ErrorBoundary>
@@ -1049,7 +1578,7 @@ function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession
               onClick={() => setSelectedDay(iso)}
               type="button"
               className="flex-shrink-0 flex flex-col items-center rounded-xl px-3 py-2 border"
-              style={{ backgroundColor: active ? 'rgba(255,179,0,0.12)' : 'var(--bg-surface)', borderColor: active ? 'var(--brass)' : 'var(--border-hair)' }}
+              style={{ backgroundColor: active ? 'rgba(30,166,180,0.12)' : 'var(--bg-surface)', borderColor: active ? 'var(--brass)' : 'var(--border-hair)' }}
             >
               <span className="text-2xs uppercase tracking-wide text-muted font-body">{DAY_SHORT[d.getDay()]}</span>
               <span className="font-display font-medium text-base" style={{ color: active ? 'var(--brass)' : 'var(--text-primary)' }}>{d.getDate()}</span>
@@ -1142,7 +1671,7 @@ function DayDetailModal({ iso, sessions, students, onClose, onOpenSession, onQui
   return (
     <Modal onClose={onClose} title={`${DAY_NAMES[date.getDay()]}, ${fmtDateBR(date)}`}>
       <div className="flex justify-end mb-3">
-        <button onClick={() => { onAddSession(iso); onClose(); }} type="button" className="flex items-center gap-1.5 text-xs font-body px-3 py-1.5 rounded-lg border border-hair" style={{ backgroundColor: 'rgba(255,179,0,0.12)', color: 'var(--brass)' }}>
+        <button onClick={() => { onAddSession(iso); onClose(); }} type="button" className="flex items-center gap-1.5 text-xs font-body px-3 py-1.5 rounded-lg border border-hair" style={{ backgroundColor: 'rgba(30,166,180,0.12)', color: 'var(--brass)' }}>
           <Plus size={14} /> Agendar aula
         </button>
       </div>
@@ -1173,7 +1702,7 @@ function StudentsView({ students, sessions, onEdit, onNew }) {
     <div className="px-4 py-4 max-w-4xl mx-auto flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="font-display font-semibold text-2xl text-primary tracking-wide">Alunos</h1>
-        <button onClick={onNew} type="button" className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0D0D0D' }}>
+        <button onClick={onNew} type="button" className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
           <UserPlus size={15} /> Novo Aluno
         </button>
       </div>
@@ -1203,7 +1732,7 @@ function StudentsView({ students, sessions, onEdit, onNew }) {
                     <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
                     <div className="min-w-0">
                       <div className="font-body text-sm font-medium text-primary truncate">{s.name}</div>
-                      <div className="text-xs text-faint font-body">{s.planType}</div>
+                      <div className="text-xs text-faint font-body">{s.planType}{s.memberNumber ? ` · Sócio ${s.memberNumber}` : ''}</div>
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
@@ -1229,55 +1758,55 @@ function StudentsView({ students, sessions, onEdit, onNew }) {
   );
 }
 
-function StudentFormModal({ student, sessions, onSave, onClose, onDelete, onAddAssessment }) {
+function StudentFormModal({ student, sessions, onSave, onClose, onDelete, onGoToAssessments }) {
   const isEdit = !!student;
-  const [form, setForm] = useState(() => (student ? { ...student } : {
+  const [form, setForm] = useState(() => (student ? { ...student, quinzenasPagas: student.quinzenasPagas || {} } : {
     id: uid(), name: '', color: STUDENT_COLORS[Math.floor(Math.random() * STUDENT_COLORS.length)],
-    active: true, planType: PLAN_TYPES[0], planValue: '', taxPercent: '',
-    gymFeeType: 'percent', gymFeeValue: '', phone: '', height: '', notes: '',
+    active: true, memberNumber: '', sex: '', planType: PLAN_TYPES[0],
+    paymentMode: 'mensal', planValue: '', biweeklyValue: '', quinzenasPagas: {},
+    taxPercent: '', gymFeeType: 'percent', gymFeeValue: '', phone: '', height: '', notes: '',
   }));
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState('');
-  const [newAssessOpen, setNewAssessOpen] = useState(false);
-  const [assessForm, setAssessForm] = useState({ date: fmtDateISO(new Date()), ...EMPTY_ASSESS_FIELDS });
 
   function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
-  function setAssess(field, value) { setAssessForm((f) => ({ ...f, [field]: value })); }
+  const currentMonthKey = monthKeyOf(new Date());
+  const quinzenaMarks = form.quinzenasPagas?.[currentMonthKey] || [false, false, false, false];
+  function toggleQuinzena(i) {
+    const next = [...quinzenaMarks];
+    next[i] = !next[i];
+    setForm((f) => ({ ...f, quinzenasPagas: { ...f.quinzenasPagas, [currentMonthKey]: next } }));
+  }
 
   const finance = studentFinance({
     ...form,
     planValue: parseFloat(form.planValue) || 0,
+    biweeklyValue: parseFloat(form.biweeklyValue) || 0,
     taxPercent: parseFloat(form.taxPercent) || 0,
     gymFeeValue: parseFloat(form.gymFeeValue) || 0,
   });
 
   const pf = isEdit ? pendingFaltas(student.id, sessions) : 0;
-  const assessments = isEdit
-    ? sessions.filter((s) => s.studentId === student.id && s.type === 'avaliacao' && (s.assessWeight || s.assessBodyFat || s.assessNotes)).sort((a, b) => b.date.localeCompare(a.date))
-    : [];
+  const assessmentCount = isEdit ? sessions.filter((s) => s.studentId === student.id && s.type === 'avaliacao' && (s.assessWeight || s.assessBodyFat)).length : 0;
 
   function handleSubmit() {
     if (!form.name.trim()) { setError('Informe o nome do aluno.'); return; }
-    const pv = parseFloat(form.planValue);
-    if (Number.isNaN(pv) || pv < 0) { setError('Informe um valor de plano válido.'); return; }
+    if (form.paymentMode === 'mensal') {
+      const pv = parseFloat(form.planValue);
+      if (Number.isNaN(pv) || pv < 0) { setError('Informe um valor de plano válido.'); return; }
+    } else {
+      const bv = parseFloat(form.biweeklyValue);
+      if (Number.isNaN(bv) || bv < 0) { setError('Informe um valor de quinzena válido.'); return; }
+    }
     setError('');
     onSave({
       ...form,
-      planValue: pv,
+      planValue: parseFloat(form.planValue) || 0,
+      biweeklyValue: parseFloat(form.biweeklyValue) || 0,
       taxPercent: parseFloat(form.taxPercent) || 0,
       gymFeeValue: parseFloat(form.gymFeeValue) || 0,
       height: parseFloat(form.height) || '',
     });
-  }
-
-  function handleSaveAssessment() {
-    onAddAssessment({
-      id: uid(), studentId: student.id, date: assessForm.date, startTime: '08:00', endTime: '08:30',
-      type: 'avaliacao', status: 'realizado', notes: '',
-      ...assessForm,
-    });
-    setAssessForm({ date: fmtDateISO(new Date()), ...EMPTY_ASSESS_FIELDS });
-    setNewAssessOpen(false);
   }
 
   return (
@@ -1291,7 +1820,7 @@ function StudentFormModal({ student, sessions, onSave, onClose, onDelete, onAddA
           <div className="flex flex-wrap gap-2 items-center">
             {STUDENT_COLORS.map((c) => (
               <button key={c} onClick={() => set('color', c)} type="button" className="w-7 h-7 rounded-full flex items-center justify-center" style={{ backgroundColor: c, border: form.color === c ? '2px solid var(--text-primary)' : '2px solid transparent' }} aria-label={`Cor ${c}`}>
-                {form.color === c && <Check size={13} color="#0D0D0D" />}
+                {form.color === c && <Check size={13} color="#0A0A0A" />}
               </button>
             ))}
             <input type="color" value={form.color} onChange={(e) => set('color', e.target.value)} className="w-7 h-7 rounded-full" aria-label="Cor personalizada" />
@@ -1299,10 +1828,8 @@ function StudentFormModal({ student, sessions, onSave, onClose, onDelete, onAddA
         </FormField>
 
         <div className="grid grid-cols-2 gap-3">
-          <FormField label="Tipo de plano">
-            <select value={form.planType} onChange={(e) => set('planType', e.target.value)} className="input-field">
-              {PLAN_TYPES.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
+          <FormField label="Nº de sócio">
+            <input value={form.memberNumber} onChange={(e) => set('memberNumber', e.target.value)} className="input-field" placeholder="Ex: 4521" />
           </FormField>
           <FormField label="Status">
             <select value={form.active ? '1' : '0'} onChange={(e) => set('active', e.target.value === '1')} className="input-field">
@@ -1312,9 +1839,42 @@ function StudentFormModal({ student, sessions, onSave, onClose, onDelete, onAddA
           </FormField>
         </div>
 
-        <FormField label="Valor do plano (€/mês)">
-          <input type="number" inputMode="decimal" min="0" step="0.01" value={form.planValue} onChange={(e) => set('planValue', e.target.value)} className="input-field" placeholder="0,00" />
+        <div className="grid grid-cols-2 gap-3">
+          <FormField label="Tipo de plano">
+            <select value={form.planType} onChange={(e) => set('planType', e.target.value)} className="input-field">
+              {PLAN_TYPES.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Sexo biológico (p/ avaliações)">
+            <select value={form.sex} onChange={(e) => set('sex', e.target.value)} className="input-field">
+              <option value="">Não definido</option>
+              <option value="M">Masculino</option>
+              <option value="F">Feminino</option>
+            </select>
+          </FormField>
+        </div>
+
+        <FormField label="Modelo de pagamento">
+          <select value={form.paymentMode} onChange={(e) => set('paymentMode', e.target.value)} className="input-field">
+            {PAYMENT_MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+          </select>
         </FormField>
+
+        {form.paymentMode === 'mensal' && (
+          <FormField label="Valor do plano (€/mês)">
+            <input type="number" inputMode="decimal" min="0" step="0.01" value={form.planValue} onChange={(e) => set('planValue', e.target.value)} className="input-field" placeholder="0,00" />
+          </FormField>
+        )}
+
+        {(form.paymentMode === 'quinzenal' || form.paymentMode === 'quinzenas_pagas') && (
+          <FormField label="Valor da quinzena (€)">
+            <input type="number" inputMode="decimal" min="0" step="0.01" value={form.biweeklyValue} onChange={(e) => set('biweeklyValue', e.target.value)} className="input-field" placeholder="0,00" />
+          </FormField>
+        )}
+
+        {form.paymentMode === 'quinzenas_pagas' && (
+          <QuinzenaDots marks={quinzenaMarks} onToggle={toggleQuinzena} label={`Quinzenas pagas — ${MONTH_NAMES[new Date().getMonth()]}`} />
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <FormField label="Imposto (%)">
@@ -1350,52 +1910,16 @@ function StudentFormModal({ student, sessions, onSave, onClose, onDelete, onAddA
           </div>
         )}
 
-        {parseFloat(form.planValue) > 0 && (
-          <div className="bg-elevated rounded-lg p-3 border border-hair">
-            <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-2">Prévia do líquido</div>
-            <RevenueLoadBar gross={finance.gross} tax={finance.tax} gymFee={finance.gymFee} net={finance.net} height={24} />
-          </div>
-        )}
+        <div className="bg-elevated rounded-lg p-3 border border-hair">
+          <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-2">Prévia do líquido (mês atual)</div>
+          <RevenueLoadBar gross={finance.gross} tax={finance.tax} gymFee={finance.gymFee} net={finance.net} height={24} />
+        </div>
 
         {isEdit && (
-          <div className="bg-elevated rounded-lg p-3 border border-hair flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <div className="text-2xs uppercase tracking-wide text-faint font-mono">Avaliações Físicas</div>
-              <button type="button" onClick={() => setNewAssessOpen((v) => !v)} className="flex items-center gap-1 text-2xs font-body link-sky">
-                <Plus size={12} /> Nova avaliação
-              </button>
-            </div>
-
-            {newAssessOpen && (
-              <div className="flex flex-col gap-3 pt-1 animate-in">
-                <FormField label="Data da avaliação">
-                  <input type="date" value={assessForm.date} onChange={(e) => setAssess('date', e.target.value)} className="input-field" />
-                </FormField>
-                <AssessmentFields form={assessForm} set={setAssess} studentHeight={form.height} />
-                <button type="button" onClick={handleSaveAssessment} className="px-4 py-2 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0D0D0D' }}>
-                  Salvar Avaliação
-                </button>
-              </div>
-            )}
-
-            {assessments.length > 0 ? (
-              <div className="flex flex-col gap-1.5">
-                {assessments.slice(0, 6).map((a) => {
-                  const bmi = bmiOf(a.assessWeight, form.height);
-                  return (
-                    <div key={a.id} className="flex items-center justify-between text-xs font-body">
-                      <span className="text-muted font-mono">{fmtDateBR(new Date(`${a.date}T00:00:00`))}</span>
-                      <span className="text-primary text-right">
-                        {a.assessWeight ? `${a.assessWeight} kg` : '—'}
-                        {a.assessBodyFat ? ` · ${a.assessBodyFat}% gord.` : ''}
-                        {bmi ? ` · IMC ${bmi.toFixed(1)}` : ''}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : !newAssessOpen && <div className="text-2xs text-faint font-body">Nenhuma avaliação registrada ainda.</div>}
-          </div>
+          <button type="button" onClick={() => onGoToAssessments(student)} className="flex items-center justify-between text-sm font-body px-3 py-2.5 rounded-lg border border-hair btn-surface">
+            <span className="flex items-center gap-2 text-primary"><Activity size={15} className="text-brass" /> Avaliações Físicas</span>
+            <span className="text-2xs text-faint font-mono">{assessmentCount} registrada(s) →</span>
+          </button>
         )}
 
         {error && <div className="text-sm font-body text-rust">{error}</div>}
@@ -1406,7 +1930,7 @@ function StudentFormModal({ student, sessions, onSave, onClose, onDelete, onAddA
               <Trash2 size={15} className="inline mr-1.5" style={{ marginTop: '-2px' }} />Excluir
             </button>
           )}
-          <button onClick={handleSubmit} type="button" className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0D0D0D' }}>
+          <button onClick={handleSubmit} type="button" className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
             Salvar Aluno
           </button>
         </div>
@@ -1415,7 +1939,7 @@ function StudentFormModal({ student, sessions, onSave, onClose, onDelete, onAddA
       {confirmDelete && (
         <ConfirmDialog
           title="Excluir aluno"
-          message={`Tem certeza que deseja excluir ${form.name || 'este aluno'}? Todas as aulas agendadas para ele também serão removidas.`}
+          message={`Tem certeza que deseja excluir ${form.name || 'este aluno'}? Todas as aulas e avaliações registradas para ele também serão removidas.`}
           onCancel={() => setConfirmDelete(false)}
           onConfirm={() => { onDelete(form.id); setConfirmDelete(false); }}
         />
@@ -1497,7 +2021,7 @@ function SessionFormModal({ session, students, defaultDate, onSave, onClose, onD
         {form.type === 'avaliacao' && (
           <div className="bg-elevated rounded-lg p-3 border border-hair">
             <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-3">Resultados da Avaliação</div>
-            <AssessmentFields form={form} set={set} studentHeight={selectedStudent?.height} />
+            <AssessmentFields form={form} set={set} studentHeight={selectedStudent?.height} studentSex={selectedStudent?.sex} />
           </div>
         )}
 
@@ -1542,7 +2066,7 @@ function SessionFormModal({ session, students, defaultDate, onSave, onClose, onD
               <Trash2 size={15} className="inline mr-1.5" style={{ marginTop: '-2px' }} />Excluir
             </button>
           )}
-          <button onClick={handleSubmit} type="button" className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0D0D0D' }}>
+          <button onClick={handleSubmit} type="button" className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
             Salvar Aula
           </button>
         </div>
@@ -1555,7 +2079,177 @@ function SessionFormModal({ session, students, defaultDate, onSave, onClose, onD
   );
 }
 
-/* ============================== SETTINGS ============================== */
+/* ============================== AVALIAÇÕES FÍSICAS (nova aba) ============================== */
+
+function NewAssessmentForm({ student, onSave, onCancel, photosById, onUploadPhotos, onRemovePhoto, uploadingPhotos }) {
+  const [form, setForm] = useState({ date: fmtDateISO(new Date()), ...EMPTY_ASSESS_FIELDS });
+  function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
+
+  return (
+    <div className="flex flex-col gap-3 animate-in">
+      <FormField label="Data da avaliação">
+        <input type="date" value={form.date} onChange={(e) => set('date', e.target.value)} className="input-field" />
+      </FormField>
+      <AssessmentFields form={form} set={set} studentHeight={student.height} studentSex={student.sex} />
+      <PhotoPicker photoIds={form.photoIds} photosById={photosById} busy={uploadingPhotos}
+        onAdd={async (files) => { const ids = await onUploadPhotos(files); set('photoIds', [...form.photoIds, ...ids]); }}
+        onRemove={(id) => { onRemovePhoto(id); set('photoIds', form.photoIds.filter((x) => x !== id)); }} />
+      <div className="flex gap-2 pt-1">
+        <button type="button" onClick={onCancel} className="px-4 py-2.5 rounded-lg text-sm font-body border border-hair btn-surface text-muted">Cancelar</button>
+        <button type="button" onClick={() => onSave(form)} className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>Salvar Avaliação</button>
+      </div>
+    </div>
+  );
+}
+
+function AssessmentComparisonChart({ assessments }) {
+  const data = useMemo(() => [...assessments].sort((a, b) => a.date.localeCompare(b.date)).map((a) => ({
+    date: fmtDateBR(new Date(`${a.date}T00:00:00`)),
+    peso: parseFloat(a.assessWeight) || null,
+    gordura: a.assessMethod === 'dobras' ? null : (parseFloat(a.assessBodyFat) || null),
+  })), [assessments]);
+
+  if (data.length < 2) return <EmptyState message="Registre pelo menos 2 avaliações para ver a evolução em gráfico." />;
+
+  return (
+    <ErrorBoundary compact>
+      <ResponsiveContainer width="100%" height={220}>
+        <LineChart data={data} margin={{ left: -16, right: 8, top: 8, bottom: 0 }}>
+          <CartesianGrid stroke="#333333" strokeDasharray="3 3" />
+          <XAxis dataKey="date" tick={{ fill: '#999999', fontSize: 11 }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fill: '#999999', fontSize: 11 }} axisLine={false} tickLine={false} />
+          <Tooltip contentStyle={{ background: '#1F1F1F', border: '1px solid #333333', borderRadius: 8, color: '#F5F5F5' }} />
+          <Legend wrapperStyle={{ fontSize: 11, color: '#999999' }} />
+          <Line type="monotone" dataKey="peso" name="Peso (kg)" stroke="#1EA6B4" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+          <Line type="monotone" dataKey="gordura" name="% Gordura" stroke="#D6534A" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+        </LineChart>
+      </ResponsiveContainer>
+    </ErrorBoundary>
+  );
+}
+
+function AssessmentDetail({ student, sessions, photosById, onBack, onSaveAssessment, onUploadPhotos, onRemovePhoto, onDeleteAssessment }) {
+  const [showNew, setShowNew] = useState(false);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const assessments = sessions.filter((s) => s.studentId === student.id && s.type === 'avaliacao' && (s.assessWeight || s.assessBodyFat)).sort((a, b) => b.date.localeCompare(a.date));
+
+  async function handleUpload(files) {
+    setUploadingPhotos(true);
+    try { return await onUploadPhotos(files); } finally { setUploadingPhotos(false); }
+  }
+
+  return (
+    <div className="px-4 py-4 max-w-2xl mx-auto flex flex-col gap-4">
+      <div className="flex items-center gap-2">
+        <button onClick={onBack} type="button" className="p-2 rounded-lg bg-surface border border-hair btn-surface" aria-label="Voltar">
+          <ArrowLeft size={16} className="text-muted" />
+        </button>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: student.color }} />
+          <h1 className="font-display font-semibold text-xl text-primary tracking-wide truncate">{student.name}</h1>
+        </div>
+      </div>
+
+      {!showNew && (
+        <button onClick={() => setShowNew(true)} type="button" className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
+          <Plus size={15} /> Nova Avaliação Física
+        </button>
+      )}
+
+      {showNew && (
+        <div className="bg-surface border border-hair rounded-xl p-4">
+          <NewAssessmentForm student={student} onCancel={() => setShowNew(false)} photosById={photosById} uploadingPhotos={uploadingPhotos}
+            onUploadPhotos={handleUpload} onRemovePhoto={onRemovePhoto}
+            onSave={(form) => { onSaveAssessment(student.id, form); setShowNew(false); }} />
+        </div>
+      )}
+
+      <div className="bg-surface border border-hair rounded-xl p-4">
+        <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-2 flex items-center gap-1.5"><LineChartIcon size={13} /> Comparação de Evolução</div>
+        <AssessmentComparisonChart assessments={assessments} />
+      </div>
+
+      <div>
+        <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-2">Histórico ({assessments.length})</div>
+        {assessments.length === 0 ? <EmptyState message="Nenhuma avaliação registrada ainda." /> : (
+          <div className="flex flex-col gap-2">
+            {assessments.map((a) => {
+              const methodLabel = a.assessMethod === 'dobras' ? (FOLD_PROTOCOLS.find((p) => p.id === a.assessProtocol)?.label || 'Dobras') : 'Bioimpedância';
+              const foldResult = a.assessMethod === 'dobras' ? calcFoldBodyFat(a, student.sex) : null;
+              return (
+                <div key={a.id} className="rounded-lg border border-hair bg-elevated p-3">
+                  <div className="flex items-start justify-between gap-2 mb-1.5">
+                    <div>
+                      <div className="font-mono text-xs text-muted">{fmtDateBR(new Date(`${a.date}T00:00:00`))}</div>
+                      <div className="text-2xs text-faint font-body">{methodLabel}</div>
+                    </div>
+                    <button onClick={() => setConfirmDeleteId(a.id)} type="button" className="p-1 rounded btn-surface" aria-label="Excluir avaliação"><Trash2 size={13} className="text-rust" /></button>
+                  </div>
+                  <div className="text-sm font-body text-primary">
+                    {a.assessWeight ? `${a.assessWeight} kg` : '—'}
+                    {a.assessMethod === 'dobras' && foldResult != null ? ` · ${foldResult.toFixed(1)}% gordura` : ''}
+                    {a.assessMethod === 'bioimpedancia' && a.assessBodyFat ? ` · ${a.assessBodyFat}% gordura` : ''}
+                  </div>
+                  {a.photoIds && a.photoIds.length > 0 && (
+                    <div className="flex gap-1.5 mt-2">
+                      {a.photoIds.map((pid) => photosById[pid] && <img key={pid} src={photosById[pid].dataUri} alt="Foto do aluno" className="rounded object-cover" style={{ width: 44, height: 44 }} />)}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {confirmDeleteId && (
+        <ConfirmDialog title="Excluir avaliação" message="Tem certeza que deseja excluir esta avaliação física?" onCancel={() => setConfirmDeleteId(null)} onConfirm={() => { onDeleteAssessment(confirmDeleteId); setConfirmDeleteId(null); }} />
+      )}
+    </div>
+  );
+}
+
+function AssessmentsView({ students, sessions, photosById, onSaveAssessment, onUploadPhotos, onRemovePhoto, onDeleteAssessment, onNoStudents, selectedStudentId, setSelectedStudentId }) {
+  const selected = students.find((s) => s.id === selectedStudentId);
+
+  if (selected) {
+    return <AssessmentDetail student={selected} sessions={sessions} photosById={photosById} onBack={() => setSelectedStudentId(null)}
+      onSaveAssessment={onSaveAssessment} onUploadPhotos={onUploadPhotos} onRemovePhoto={onRemovePhoto} onDeleteAssessment={onDeleteAssessment} />;
+  }
+
+  return (
+    <div className="px-4 py-4 max-w-4xl mx-auto flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <h1 className="font-display font-semibold text-2xl text-primary tracking-wide">Avaliações Físicas</h1>
+        <button onClick={() => { if (students.length === 0) onNoStudents(); }} type="button" className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
+          <Plus size={15} /> Nova Avaliação
+        </button>
+      </div>
+      <p className="text-xs font-body text-muted">Toque num aluno para ver o histórico e registrar uma nova avaliação física.</p>
+
+      {students.length === 0 ? (
+        <EmptyState icon={Users} message="Nenhum aluno cadastrado ainda. Cadastre um aluno antes de fazer uma avaliação física." />
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {students.map((s) => {
+            const count = sessions.filter((x) => x.studentId === s.id && x.type === 'avaliacao' && (x.assessWeight || x.assessBodyFat)).length;
+            const last = sessions.filter((x) => x.studentId === s.id && x.type === 'avaliacao' && (x.assessWeight || x.assessBodyFat)).sort((a, b) => b.date.localeCompare(a.date))[0];
+            return (
+              <button key={s.id} onClick={() => setSelectedStudentId(s.id)} type="button" className="bg-surface border border-hair rounded-xl p-3 text-left card-hover">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
+                  <span className="font-body text-sm font-medium text-primary truncate">{s.name}</span>
+                </div>
+                <div className="text-2xs text-faint font-body">{count} avaliação(ões){last ? ` · última em ${fmtDateBR(new Date(`${last.date}T00:00:00`))}` : ''}</div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ============================== PERSONAL FINANCES ============================== */
 
@@ -1618,7 +2312,7 @@ function TransactionFormModal({ tx, defaultType, onSave, onClose, onDelete }) {
         <FormField label="Tipo">
           <div className="grid grid-cols-2 gap-2">
             <button type="button" onClick={() => setType('gasto')} className="px-3 py-2 rounded-lg border text-sm font-body" style={{ borderColor: form.type === 'gasto' ? 'var(--rust)' : 'var(--border-hair)', backgroundColor: form.type === 'gasto' ? 'rgba(214,83,74,0.12)' : 'var(--bg-base)', color: form.type === 'gasto' ? 'var(--rust)' : 'var(--text-muted)' }}>Gasto / Conta</button>
-            <button type="button" onClick={() => setType('entrada')} className="px-3 py-2 rounded-lg border text-sm font-body" style={{ borderColor: form.type === 'entrada' ? 'var(--brass)' : 'var(--border-hair)', backgroundColor: form.type === 'entrada' ? 'rgba(255,179,0,0.12)' : 'var(--bg-base)', color: form.type === 'entrada' ? 'var(--brass)' : 'var(--text-muted)' }}>Recebimento / Entrada</button>
+            <button type="button" onClick={() => setType('entrada')} className="px-3 py-2 rounded-lg border text-sm font-body" style={{ borderColor: form.type === 'entrada' ? 'var(--brass)' : 'var(--border-hair)', backgroundColor: form.type === 'entrada' ? 'rgba(30,166,180,0.12)' : 'var(--bg-base)', color: form.type === 'entrada' ? 'var(--brass)' : 'var(--text-muted)' }}>Recebimento / Entrada</button>
           </div>
         </FormField>
 
@@ -1646,7 +2340,7 @@ function TransactionFormModal({ tx, defaultType, onSave, onClose, onDelete }) {
             <button type="button" onClick={() => set('status', 'concluido')} className="px-3 py-1.5 rounded-full border text-xs font-body" style={{ borderColor: form.status === 'concluido' ? 'var(--slate-acc)' : 'var(--border-hair)', backgroundColor: form.status === 'concluido' ? 'rgba(140,140,140,0.15)' : 'transparent', color: form.status === 'concluido' ? 'var(--text-primary)' : 'var(--text-muted)' }}>
               {statusLabel(form.type, 'concluido')}
             </button>
-            <button type="button" onClick={() => set('status', 'pendente')} className="px-3 py-1.5 rounded-full border text-xs font-body" style={{ borderColor: form.status === 'pendente' ? (form.type === 'entrada' ? 'var(--brass)' : 'var(--rust)') : 'var(--border-hair)', backgroundColor: form.status === 'pendente' ? (form.type === 'entrada' ? 'rgba(255,179,0,0.12)' : 'rgba(214,83,74,0.12)') : 'transparent', color: form.status === 'pendente' ? (form.type === 'entrada' ? 'var(--brass)' : 'var(--rust)') : 'var(--text-muted)' }}>
+            <button type="button" onClick={() => set('status', 'pendente')} className="px-3 py-1.5 rounded-full border text-xs font-body" style={{ borderColor: form.status === 'pendente' ? (form.type === 'entrada' ? 'var(--brass)' : 'var(--rust)') : 'var(--border-hair)', backgroundColor: form.status === 'pendente' ? (form.type === 'entrada' ? 'rgba(30,166,180,0.12)' : 'rgba(214,83,74,0.12)') : 'transparent', color: form.status === 'pendente' ? (form.type === 'entrada' ? 'var(--brass)' : 'var(--rust)') : 'var(--text-muted)' }}>
               {statusLabel(form.type, 'pendente')}
             </button>
           </div>
@@ -1664,7 +2358,7 @@ function TransactionFormModal({ tx, defaultType, onSave, onClose, onDelete }) {
               <Trash2 size={15} className="inline mr-1.5" style={{ marginTop: '-2px' }} />Excluir
             </button>
           )}
-          <button onClick={handleSubmit} type="button" className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0D0D0D' }}>
+          <button onClick={handleSubmit} type="button" className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
             Salvar
           </button>
         </div>
@@ -1719,7 +2413,7 @@ function FinancesView({ finances, monthCursor, setMonthCursor, onOpenTransaction
           <button onClick={() => onNewTransaction('gasto')} type="button" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-body border border-hair btn-surface">
             <Plus size={13} /> Gasto
           </button>
-          <button onClick={() => onNewTransaction('entrada')} type="button" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0D0D0D' }}>
+          <button onClick={() => onNewTransaction('entrada')} type="button" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
             <Plus size={13} /> Entrada
           </button>
         </div>
@@ -1734,8 +2428,8 @@ function FinancesView({ finances, monthCursor, setMonthCursor, onOpenTransaction
                 <Pie data={categoryData} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75} paddingAngle={3}>
                   {categoryData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                 </Pie>
-                <Tooltip formatter={(v) => currency(v)} contentStyle={{ background: '#222222', border: '1px solid #363636', borderRadius: 8, color: '#F5F5F0' }} />
-                <Legend wrapperStyle={{ fontSize: 11, color: '#9A9A9A' }} />
+                <Tooltip formatter={(v) => currency(v)} contentStyle={{ background: '#1F1F1F', border: '1px solid #333333', borderRadius: 8, color: '#F5F5F5' }} />
+                <Legend wrapperStyle={{ fontSize: 11, color: '#999999' }} />
               </PieChart>
             </ResponsiveContainer>
           </ErrorBoundary>
@@ -1767,7 +2461,7 @@ function FinancesView({ finances, monthCursor, setMonthCursor, onOpenTransaction
 
 /* ============================== SETTINGS ============================== */
 
-function SettingsPanel({ students, sessions, finances, onReset, onRestore, studentCount, sessionCount, onSignOut }) {
+function SettingsPanel({ students, sessions, finances, photos, onReset, onRestore, studentCount, sessionCount, onSignOut }) {
   const [confirm, setConfirm] = useState(false);
   const [pendingRestore, setPendingRestore] = useState(null);
   const [restoreError, setRestoreError] = useState('');
@@ -1784,6 +2478,7 @@ function SettingsPanel({ students, sessions, finances, onReset, onRestore, stude
         const data = JSON.parse(evt.target.result);
         if (!Array.isArray(data.alunos) || !Array.isArray(data.agenda)) throw new Error('formato inválido');
         if (!Array.isArray(data.financas)) data.financas = [];
+        if (!Array.isArray(data.fotos)) data.fotos = [];
         setPendingRestore(data);
       } catch (err) {
         setRestoreError('Não foi possível ler este arquivo. Confira se é um backup exportado por este app.');
@@ -1794,13 +2489,13 @@ function SettingsPanel({ students, sessions, finances, onReset, onRestore, stude
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="text-sm font-body text-muted">{studentCount} aluno(s) cadastrado(s) · {sessionCount} aula(s) na agenda · {finances.length} lançamento(s) financeiro(s).</div>
+      <div className="text-sm font-body text-muted">{studentCount} aluno(s) · {sessionCount} aula(s)/avaliação(ões) · {finances.length} lançamento(s) · {photos.length} foto(s).</div>
 
       <div className="border border-hair rounded-lg p-4">
         <div className="text-sm font-body font-medium text-primary mb-1">Backup dos dados</div>
-        <p className="text-xs font-body text-muted mb-3">Baixe um arquivo com alunos, aulas e finanças pessoais — guarde-o em algum lugar seguro. Você pode restaurar esse arquivo aqui se precisar.</p>
+        <p className="text-xs font-body text-muted mb-3">Baixe um arquivo com alunos, aulas, avaliações, finanças e fotos — guarde-o em algum lugar seguro. Você pode restaurar esse arquivo aqui se precisar.</p>
         <div className="flex gap-2 flex-wrap">
-          <button onClick={() => downloadBackup(students, sessions, finances)} type="button" className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0D0D0D' }}>
+          <button onClick={() => downloadBackup(students, sessions, finances, photos)} type="button" className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
             <Download size={14} /> Exportar backup
           </button>
           <button onClick={() => fileRef.current?.click()} type="button" className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-body border border-hair btn-surface">
@@ -1813,8 +2508,8 @@ function SettingsPanel({ students, sessions, finances, onReset, onRestore, stude
 
       <div className="border rounded-lg p-4" style={{ borderColor: 'var(--rust)' }}>
         <div className="text-sm font-body font-medium text-primary mb-1">Apagar todos os dados</div>
-        <p className="text-xs font-body text-muted mb-3">Remove todos os alunos, aulas e lançamentos financeiros salvos neste aplicativo. Essa ação não pode ser desfeita.</p>
-        <button onClick={() => setConfirm(true)} type="button" className="px-3.5 py-2 rounded-lg text-xs font-body" style={{ backgroundColor: 'var(--rust)', color: '#0D0D0D' }}>
+        <p className="text-xs font-body text-muted mb-3">Remove todos os alunos, aulas, avaliações, finanças e fotos salvos neste aplicativo. Essa ação não pode ser desfeita.</p>
+        <button onClick={() => setConfirm(true)} type="button" className="px-3.5 py-2 rounded-lg text-xs font-body" style={{ backgroundColor: 'var(--rust)', color: '#0A0A0A' }}>
           Apagar tudo
         </button>
       </div>
@@ -1830,14 +2525,14 @@ function SettingsPanel({ students, sessions, finances, onReset, onRestore, stude
       )}
 
       {confirm && (
-        <ConfirmDialog title="Apagar todos os dados" message="Tem certeza? Todos os alunos, aulas e lançamentos financeiros serão permanentemente removidos." onCancel={() => setConfirm(false)} onConfirm={onReset} />
+        <ConfirmDialog title="Apagar todos os dados" message="Tem certeza? Todos os dados serão permanentemente removidos." onCancel={() => setConfirm(false)} onConfirm={onReset} />
       )}
       {pendingRestore && (
         <ConfirmDialog
           title="Restaurar backup"
-          message={`Isso vai SUBSTITUIR os dados atuais pelos ${pendingRestore.alunos.length} aluno(s), ${pendingRestore.agenda.length} aula(s) e ${pendingRestore.financas.length} lançamento(s) do arquivo. Essa ação não pode ser desfeita.`}
+          message={`Isso vai SUBSTITUIR os dados atuais pelos ${pendingRestore.alunos.length} aluno(s), ${pendingRestore.agenda.length} aula(s), ${pendingRestore.financas.length} lançamento(s) e ${pendingRestore.fotos.length} foto(s) do arquivo. Essa ação não pode ser desfeita.`}
           onCancel={() => setPendingRestore(null)}
-          onConfirm={() => { onRestore(pendingRestore.alunos, pendingRestore.agenda, pendingRestore.financas); setPendingRestore(null); }}
+          onConfirm={() => { onRestore(pendingRestore.alunos, pendingRestore.agenda, pendingRestore.financas, pendingRestore.fotos); setPendingRestore(null); }}
         />
       )}
     </div>
@@ -1849,14 +2544,24 @@ function SettingsPanel({ students, sessions, finances, onReset, onRestore, stude
 function AppInner() {
   const [loading, setLoading] = useState(true);
   const [authReady, setAuthReady] = useState(!supabaseConfigured);
+  const [subscriptionReady, setSubscriptionReady] = useState(!supabaseConfigured);
   const [user, setUser] = useState(null);
+  const [subscriptionActive, setSubscriptionActive] = useState(!supabaseConfigured);
+  const [subscription, setSubscription] = useState({
+    active: !supabaseConfigured, status: supabaseConfigured ? 'inactive' : 'local', tier: supabaseConfigured ? null : 'local',
+    value: null, interval: supabaseConfigured ? null : 'Local', currentPeriodStart: null, currentPeriodEnd: null,
+    cancelAtPeriodEnd: false, paymentMethodBrand: null, paymentMethodLast4: null, stripeCustomerId: null,
+    stripeSubscriptionId: null, lastPaymentStatus: null, updatedAt: null,
+  });
   const [students, setStudents] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [finances, setFinances] = useState([]);
+  const [photos, setPhotos] = useState([]);
   const [view, setView] = useState('dashboard');
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date()));
   const [monthCursor, setMonthCursor] = useState(new Date());
   const [financeMonthCursor, setFinanceMonthCursor] = useState(new Date());
+  const [assessmentsStudentId, setAssessmentsStudentId] = useState(null);
   const [sessionModal, setSessionModal] = useState(null);
   const [studentModal, setStudentModal] = useState(null);
   const [transactionModal, setTransactionModal] = useState(null);
@@ -1871,6 +2576,13 @@ function AppInner() {
   useEffect(() => {
     if (!supabaseConfigured || !supabase) {
       setAuthReady(true);
+      setSubscriptionReady(true);
+      setSubscriptionActive(true);
+      setSubscription({
+        active: true, status: 'local', tier: 'local', value: null, interval: 'Local', currentPeriodStart: null,
+        currentPeriodEnd: null, cancelAtPeriodEnd: false, paymentMethodBrand: null, paymentMethodLast4: null,
+        stripeCustomerId: null, stripeSubscriptionId: null, lastPaymentStatus: null, updatedAt: null,
+      });
       loadAll();
       return undefined;
     }
@@ -1892,13 +2604,28 @@ function AppInner() {
     if (!authReady) return;
     if (supabaseConfigured && !user) {
       setLoading(false);
-      setStudents([]);
-      setSessions([]);
-      setFinances([]);
+      setSubscriptionReady(true);
+      setSubscriptionActive(false);
+      setSubscription({
+        active: false, status: 'signed_out', tier: null, value: null, interval: null, currentPeriodStart: null,
+        currentPeriodEnd: null, cancelAtPeriodEnd: false, paymentMethodBrand: null, paymentMethodLast4: null,
+        stripeCustomerId: null, stripeSubscriptionId: null, lastPaymentStatus: null, updatedAt: null,
+      });
+      clearLoadedData();
+      return;
+    }
+    refreshSubscription();
+  }, [authReady, user?.id]);
+
+  useEffect(() => {
+    if (!authReady || !subscriptionReady) return;
+    if (supabaseConfigured && (!user || !subscriptionActive)) {
+      setLoading(false);
+      clearLoadedData();
       return;
     }
     loadAll();
-  }, [authReady, user?.id]);
+  }, [authReady, subscriptionReady, subscriptionActive, user?.id]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -1908,32 +2635,46 @@ function AppInner() {
 
   async function loadAll() {
     setLoading(true);
-    let st = [];
-    let se = [];
-    let fi = [];
+    let st = []; let se = []; let fi = []; let ph = [];
     if (storageOk) {
-      try {
-        const r = await readStoredValue('alunos');
-        if (r && r.value) st = JSON.parse(r.value);
-      } catch (e) { /* sem dados salvos ainda */ }
-      try {
-        const r2 = await readStoredValue('agenda');
-        if (r2 && r2.value) se = JSON.parse(r2.value);
-      } catch (e) { /* sem dados salvos ainda */ }
-      try {
-        const r3 = await readStoredValue('financas');
-        if (r3 && r3.value) fi = JSON.parse(r3.value);
-      } catch (e) { /* sem dados salvos ainda */ }
+      try { const r = await readStoredValue('alunos'); if (r && r.value) st = JSON.parse(r.value); } catch (e) { /* sem dados */ }
+      try { const r = await readStoredValue('agenda'); if (r && r.value) se = JSON.parse(r.value); } catch (e) { /* sem dados */ }
+      try { const r = await readStoredValue('financas'); if (r && r.value) fi = JSON.parse(r.value); } catch (e) { /* sem dados */ }
+      try { const r = await readStoredValue('fotos'); if (r && r.value) ph = JSON.parse(r.value); } catch (e) { /* sem dados */ }
     }
     setStudents(Array.isArray(st) ? st : []);
     setSessions(Array.isArray(se) ? se : []);
     setFinances(Array.isArray(fi) ? fi : []);
+    setPhotos(Array.isArray(ph) ? ph : []);
     setLoading(false);
   }
 
-  function showToast(msg, type = 'success') {
-    setToast({ msg, type, key: Date.now() });
+  function clearLoadedData() {
+    setStudents([]);
+    setSessions([]);
+    setFinances([]);
+    setPhotos([]);
   }
+
+  async function refreshSubscription() {
+    setSubscriptionReady(false);
+    try {
+      const status = await readSubscriptionStatus();
+      setSubscriptionActive(status.active);
+      setSubscription(status);
+    } catch (e) {
+      setSubscriptionActive(false);
+      setSubscription({
+        active: false, status: 'error', tier: null, value: null, interval: null, currentPeriodStart: null,
+        currentPeriodEnd: null, cancelAtPeriodEnd: false, paymentMethodBrand: null, paymentMethodLast4: null,
+        stripeCustomerId: null, stripeSubscriptionId: null, lastPaymentStatus: null, updatedAt: null,
+      });
+      showToast('Não foi possível verificar sua assinatura.', 'error');
+    }
+    setSubscriptionReady(true);
+  }
+
+  function showToast(msg, type = 'success') { setToast({ msg, type, key: Date.now() }); }
 
   async function persistStudents(next) {
     setStudents(next);
@@ -1950,12 +2691,33 @@ function AppInner() {
     if (!storageOk) return;
     try { await writeStoredValue('financas', JSON.stringify(next)); } catch (e) { showToast('Erro ao salvar. Tente novamente.', 'error'); }
   }
+  async function persistPhotos(next) {
+    setPhotos(next);
+    if (!storageOk) return;
+    try { await writeStoredValue('fotos', JSON.stringify(next)); } catch (e) { showToast('Erro ao salvar fotos — tente imagens menores.', 'error'); }
+  }
 
   async function signOut() {
     if (!supabase) return;
     await supabase.auth.signOut();
     setSettingsOpen(false);
+    clearLoadedData();
   }
+
+  async function uploadPhotos(fileList) {
+    const files = Array.from(fileList || []);
+    const newPhotos = [];
+    for (const file of files) {
+      try {
+        const dataUri = await resizePhoto(file, 700, 0.72);
+        newPhotos.push({ id: uid(), dataUri, createdAt: new Date().toISOString() });
+      } catch (e) { showToast('Não foi possível processar uma das fotos.', 'error'); }
+    }
+    if (newPhotos.length > 0) await persistPhotos([...photos, ...newPhotos]);
+    return newPhotos.map((p) => p.id);
+  }
+  function removePhoto(id) { persistPhotos(photos.filter((p) => p.id !== id)); }
+  const photosById = useMemo(() => Object.fromEntries(photos.map((p) => [p.id, p])), [photos]);
 
   function saveStudent(student) {
     const exists = students.some((s) => s.id === student.id);
@@ -1988,10 +2750,6 @@ function AppInner() {
     }
     setShowSessionModal(false);
   }
-  function addAssessment(session) {
-    persistSessions([...sessions, session]);
-    showToast('Avaliação registrada.');
-  }
   function deleteSession(id) {
     persistSessions(sessions.filter((s) => s.id !== id));
     setShowSessionModal(false);
@@ -2002,22 +2760,28 @@ function AppInner() {
     showToast(status === 'falta' ? 'Falta registrada.' : 'Aula marcada como realizada.');
   }
 
-  function openNewSession(dateIso) {
-    setSessionModal({ session: null, defaultDate: dateIso });
-    setShowSessionModal(true);
+  function saveNewAssessment(studentId, form) {
+    const session = {
+      id: uid(), studentId, date: form.date, startTime: '08:00', endTime: '08:30',
+      type: 'avaliacao', status: 'realizado', notes: '', ...form,
+    };
+    persistSessions([...sessions, session]);
+    showToast('Avaliação registrada.');
   }
-  function openEditSession(session) {
-    setSessionModal({ session, defaultDate: null });
-    setShowSessionModal(true);
+  function deleteAssessment(id) {
+    persistSessions(sessions.filter((s) => s.id !== id));
+    showToast('Avaliação removida.');
   }
-  function openNewStudent() {
-    setStudentModal(null);
-    setShowStudentModal(true);
+  function goToAssessments(student) {
+    setShowStudentModal(false);
+    setAssessmentsStudentId(student.id);
+    setView('assessments');
   }
-  function openEditStudent(student) {
-    setStudentModal(student);
-    setShowStudentModal(true);
-  }
+
+  function openNewSession(dateIso) { setSessionModal({ session: null, defaultDate: dateIso }); setShowSessionModal(true); }
+  function openEditSession(session) { setSessionModal({ session, defaultDate: null }); setShowSessionModal(true); }
+  function openNewStudent() { setStudentModal(null); setShowStudentModal(true); }
+  function openEditStudent(student) { setStudentModal(student); setShowStudentModal(true); }
 
   function saveTransaction(tx) {
     const exists = finances.some((t) => t.id === tx.id);
@@ -2035,41 +2799,36 @@ function AppInner() {
     persistFinances(finances.map((t) => (t.id === tx.id ? { ...t, status: 'concluido' } : t)));
     showToast(tx.type === 'entrada' ? 'Marcado como recebido.' : 'Marcado como pago.');
   }
-  function openNewTransaction(type) {
-    setTransactionModal({ tx: null, defaultType: type });
-    setShowTransactionModal(true);
-  }
-  function openEditTransaction(tx) {
-    setTransactionModal({ tx, defaultType: null });
-    setShowTransactionModal(true);
-  }
+  function openNewTransaction(type) { setTransactionModal({ tx: null, defaultType: type }); setShowTransactionModal(true); }
+  function openEditTransaction(tx) { setTransactionModal({ tx, defaultType: null }); setShowTransactionModal(true); }
 
-  function restoreBackup(importedStudents, importedSessions, importedFinances) {
+  function restoreBackup(importedStudents, importedSessions, importedFinances, importedPhotos) {
     persistStudents(importedStudents);
     persistSessions(importedSessions);
     persistFinances(Array.isArray(importedFinances) ? importedFinances : []);
+    persistPhotos(Array.isArray(importedPhotos) ? importedPhotos : []);
     showToast('Backup restaurado.');
     setSettingsOpen(false);
   }
 
   async function resetAllData() {
     if (!storageOk) {
-      setStudents([]); setSessions([]); setFinances([]); showToast('Dados apagados.'); setSettingsOpen(false); return;
+      setStudents([]); setSessions([]); setFinances([]); setPhotos([]); showToast('Dados apagados.'); setSettingsOpen(false); return;
     }
     try {
       await writeStoredValue('alunos', JSON.stringify([]));
       await writeStoredValue('agenda', JSON.stringify([]));
       await writeStoredValue('financas', JSON.stringify([]));
-      setStudents([]);
-      setSessions([]);
-      setFinances([]);
+      await writeStoredValue('fotos', JSON.stringify([]));
+      setStudents([]); setSessions([]); setFinances([]); setPhotos([]);
       showToast('Dados apagados.');
     } catch (e) { showToast('Erro ao apagar dados.', 'error'); }
     setSettingsOpen(false);
   }
 
-  if (!authReady || loading) return <LoadingScreen />;
+  if (!authReady || !subscriptionReady || loading) return <LoadingScreen />;
   if (supabaseConfigured && !user) return <LoginScreen />;
+  if (supabaseConfigured && !subscriptionActive) return <SalesPlansPage onSignOut={signOut} onRefresh={refreshSubscription} />;
 
   return (
     <div className="min-h-screen bg-base flex flex-col">
@@ -2080,14 +2839,21 @@ function AppInner() {
         {view === 'weekly' && <WeeklyView sessions={sessions} students={students} weekStart={weekStart} setWeekStart={setWeekStart} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} />}
         {view === 'monthly' && <MonthlyView sessions={sessions} students={students} monthCursor={monthCursor} setMonthCursor={setMonthCursor} onOpenDay={setDayDetailIso} />}
         {view === 'students' && <StudentsView students={students} sessions={sessions} onEdit={openEditStudent} onNew={openNewStudent} />}
+        {view === 'assessments' && (
+          <AssessmentsView students={students} sessions={sessions} photosById={photosById}
+            selectedStudentId={assessmentsStudentId} setSelectedStudentId={setAssessmentsStudentId}
+            onSaveAssessment={saveNewAssessment} onUploadPhotos={uploadPhotos} onRemovePhoto={removePhoto} onDeleteAssessment={deleteAssessment}
+            onNoStudents={() => showToast('Cadastre um aluno antes de fazer uma avaliação física.', 'error')} />
+        )}
         {view === 'finances' && <FinancesView finances={finances} monthCursor={financeMonthCursor} setMonthCursor={setFinanceMonthCursor} onOpenTransaction={openEditTransaction} onNewTransaction={openNewTransaction} onQuickComplete={quickCompleteTransaction} />}
+        {view === 'profile' && <ProfileView user={user} subscription={subscription} onSignOut={supabaseConfigured ? signOut : null} onRefreshSubscription={refreshSubscription} />}
       </main>
 
       {showSessionModal && (
         <SessionFormModal session={sessionModal?.session} students={students} defaultDate={sessionModal?.defaultDate} onSave={saveSession} onClose={() => setShowSessionModal(false)} onDelete={deleteSession} />
       )}
       {showStudentModal && (
-        <StudentFormModal student={studentModal} sessions={sessions} onSave={saveStudent} onClose={() => setShowStudentModal(false)} onDelete={deleteStudent} onAddAssessment={addAssessment} />
+        <StudentFormModal student={studentModal} sessions={sessions} onSave={saveStudent} onClose={() => setShowStudentModal(false)} onDelete={deleteStudent} onGoToAssessments={goToAssessments} />
       )}
       {showTransactionModal && (
         <TransactionFormModal tx={transactionModal?.tx} defaultType={transactionModal?.defaultType} onSave={saveTransaction} onClose={() => setShowTransactionModal(false)} onDelete={deleteTransaction} />
@@ -2097,7 +2863,7 @@ function AppInner() {
       )}
       {settingsOpen && (
         <Modal title="Configurações" onClose={() => setSettingsOpen(false)}>
-          <SettingsPanel students={students} sessions={sessions} finances={finances} onReset={resetAllData} onRestore={restoreBackup} studentCount={students.length} sessionCount={sessions.length} onSignOut={supabaseConfigured ? signOut : null} />
+          <SettingsPanel students={students} sessions={sessions} finances={finances} photos={photos} onReset={resetAllData} onRestore={restoreBackup} studentCount={students.length} sessionCount={sessions.length} onSignOut={supabaseConfigured ? signOut : null} />
         </Modal>
       )}
       <Toast toast={toast} />

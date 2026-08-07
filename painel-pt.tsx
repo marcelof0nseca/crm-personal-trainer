@@ -840,6 +840,26 @@ function ProfileView({ user, subscription, onSignOut, onRefreshSubscription }) {
   const currentTierIndex = SALES_PLANS.findIndex((plan) => plan.id === subscription?.tier);
   const upgradePlans = SALES_PLANS.filter((_, index) => currentTierIndex < 0 || index > currentTierIndex);
   const hasWhatsApp = Boolean(SALES_WHATSAPP_URL);
+  const [portalBusy, setPortalBusy] = useState(false);
+  const [portalError, setPortalError] = useState('');
+
+  async function openCustomerPortal() {
+    setPortalError('');
+    if (!supabaseConfigured || !supabase) {
+      setPortalError('Configure o Supabase para abrir o portal do cliente.');
+      return;
+    }
+    setPortalBusy(true);
+    const { data, error } = await supabase.functions.invoke('create-portal-session', {
+      body: { returnUrl: `${window.location.origin}?portal=return` },
+    });
+    setPortalBusy(false);
+    if (error || !data?.url) {
+      setPortalError(error?.message || 'Não foi possível abrir o portal da Stripe.');
+      return;
+    }
+    window.location.href = data.url;
+  }
 
   return (
     <div className="px-4 py-4 max-w-5xl mx-auto flex flex-col gap-5">
@@ -941,8 +961,25 @@ function ProfileView({ user, subscription, onSignOut, onRefreshSubscription }) {
       <div className="bg-surface border border-hair rounded-xl p-5 flex flex-col gap-4">
         <div>
           <h2 className="font-display text-lg font-semibold text-primary">Gerenciar plano</h2>
-          <p className="text-xs text-muted font-body mt-1">Upgrade, mudança de ciclo, suporte de cobrança e cancelamento.</p>
+          <p className="text-xs text-muted font-body mt-1">Atualize cartão, veja cobranças, altere plano ou cancele pelo portal seguro da Stripe.</p>
         </div>
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <button
+            onClick={openCustomerPortal}
+            type="button"
+            disabled={portalBusy || !subscription?.stripeCustomerId}
+            className="px-4 py-2.5 rounded-lg text-sm font-body font-medium disabled:opacity-60"
+            style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}
+          >
+            {portalBusy ? 'Abrindo portal...' : 'Gerenciar assinatura na Stripe'}
+          </button>
+          {!subscription?.stripeCustomerId && <span className="text-xs text-faint font-body">Cliente Stripe ainda não vinculado.</span>}
+        </div>
+        {portalError && (
+          <div className="border rounded-lg p-3 text-xs font-body" style={{ borderColor: 'var(--rust)', backgroundColor: 'rgba(214,83,74,0.10)', color: 'var(--rust)' }}>
+            {portalError}
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {(upgradePlans.length ? upgradePlans : SALES_PLANS).map((plan) => {
             const isCurrent = plan.id === subscription?.tier;

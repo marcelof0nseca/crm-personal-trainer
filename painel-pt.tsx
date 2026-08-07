@@ -679,7 +679,7 @@ function LoginScreen() {
   );
 }
 
-function SalesPlansPage({ onSignOut, onRefresh }) {
+function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
   const whatsappReady = Boolean(SALES_WHATSAPP_URL);
   const [checkoutPlan, setCheckoutPlan] = useState(null);
   const [checkoutError, setCheckoutError] = useState('');
@@ -730,6 +730,19 @@ function SalesPlansPage({ onSignOut, onRefresh }) {
         {checkoutError && (
           <div className="border rounded-xl p-4 text-sm font-body" style={{ borderColor: 'var(--rust)', backgroundColor: 'rgba(214,83,74,0.10)', color: 'var(--rust)' }}>
             {checkoutError}
+          </div>
+        )}
+
+        {checkoutReturn?.status === 'success' && (
+          <div className="border rounded-xl p-4 text-sm font-body flex items-center gap-2" style={{ borderColor: 'var(--brass)', backgroundColor: 'rgba(30,166,180,0.10)', color: 'var(--text-primary)' }}>
+            <Loader2 size={15} className="text-brass spin" />
+            <span>{checkoutReturn.message || 'Pagamento recebido. Verificando assinatura...'}</span>
+          </div>
+        )}
+
+        {checkoutReturn?.status === 'cancelled' && (
+          <div className="border rounded-xl p-4 text-sm font-body" style={{ borderColor: 'var(--border-hair)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-muted)' }}>
+            Checkout cancelado. Você pode escolher um plano quando quiser.
           </div>
         )}
 
@@ -2653,6 +2666,7 @@ function AppInner() {
   const [dayDetailIso, setDayDetailIso] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [toast, setToast] = useState(null);
+  const [checkoutReturn, setCheckoutReturn] = useState(null);
   const [showSessionModal, setShowSessionModal] = useState(false);
   const [showStudentModal, setShowStudentModal] = useState(false);
   const [showTransactionModal, setShowTransactionModal] = useState(false);
@@ -2700,6 +2714,47 @@ function AppInner() {
       return;
     }
     refreshSubscription();
+  }, [authReady, user?.id]);
+
+  useEffect(() => {
+    if (!authReady || !user || !supabaseConfigured) return undefined;
+    const params = new URLSearchParams(window.location.search);
+    const checkout = params.get('checkout');
+    if (checkout !== 'success' && checkout !== 'cancelled') return undefined;
+
+    window.history.replaceState({}, '', window.location.pathname);
+    if (checkout === 'cancelled') {
+      setCheckoutReturn({ status: 'cancelled' });
+      return undefined;
+    }
+
+    let cancelled = false;
+    setCheckoutReturn({ status: 'success', message: 'Pagamento recebido. Verificando assinatura...' });
+
+    async function verifyPaidSubscription() {
+      const waits = [0, 1200, 2200, 3500, 5000];
+      for (let i = 0; i < waits.length; i += 1) {
+        if (waits[i] > 0) await new Promise((resolve) => setTimeout(resolve, waits[i]));
+        if (cancelled) return;
+        setCheckoutReturn({ status: 'success', message: i === 0 ? 'Pagamento recebido. Verificando assinatura...' : 'Ainda verificando a ativação do plano...' });
+        const status = await readSubscriptionStatus();
+        if (cancelled) return;
+        setSubscriptionActive(status.active);
+        setSubscription(status);
+        if (status.active) {
+          setCheckoutReturn(null);
+          showToast('Plano ativado. Bem-vindo ao PTMANAGER.');
+          return;
+        }
+      }
+      setCheckoutReturn({ status: 'success', message: 'Pagamento recebido. Clique em verificar se a ativação ainda não apareceu.' });
+    }
+
+    verifyPaidSubscription().catch(() => {
+      if (!cancelled) setCheckoutReturn({ status: 'success', message: 'Pagamento recebido. Clique em verificar assinatura para concluir.' });
+    });
+
+    return () => { cancelled = true; };
   }, [authReady, user?.id]);
 
   useEffect(() => {
@@ -2913,7 +2968,7 @@ function AppInner() {
 
   if (!authReady || !subscriptionReady || loading) return <LoadingScreen />;
   if (supabaseConfigured && !user) return <LoginScreen />;
-  if (supabaseConfigured && !subscriptionActive) return <SalesPlansPage onSignOut={signOut} onRefresh={refreshSubscription} />;
+  if (supabaseConfigured && !subscriptionActive) return <SalesPlansPage onSignOut={signOut} onRefresh={refreshSubscription} checkoutReturn={checkoutReturn} />;
 
   return (
     <div className="min-h-screen bg-base flex flex-col">

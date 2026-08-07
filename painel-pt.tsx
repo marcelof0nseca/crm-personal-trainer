@@ -4,7 +4,7 @@ import {
   TrendingUp, AlertTriangle, CheckCircle2, RotateCcw, Shuffle, Repeat, ClipboardCheck,
   Sparkles, UserX, ChevronLeft, ChevronRight, Search, Wallet, Percent, Building2,
   Loader2, Settings, Check, Info, Activity, Ban, Download, Upload,
-  Camera, ArrowLeft, LineChart as LineChartIcon,
+  Camera, ArrowLeft, LineChart as LineChartIcon, Tag,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
@@ -68,6 +68,12 @@ const PAYMENT_MODES = [
   { id: 'quinzenal', label: 'Valor por quinzena' },
   { id: 'quinzenas_pagas', label: 'Registar quinzenas pagas' },
 ];
+
+const CUSTOM_CATEGORY_COLORS = ['#5DA9E9', '#C77DFF', '#6FCF97', '#EF88AD', '#F2A65A', '#7EC4CF', '#A78BFA', '#E8735A'];
+function slugify(label) {
+  return `custom_${label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').slice(0, 24)}_${uid().slice(0, 4)}`;
+}
+const EMPTY_CUSTOM_CATEGORIES = { expense: [], income: [], planTypes: [], sessionTypes: [] };
 
 const SALES_WHATSAPP_URL = import.meta.env.VITE_SALES_WHATSAPP_URL || '';
 const CREATOR_ACTIVE_PLAN_EMAILS = ['maf@cesar.school', 'bfpersonal@live.com'];
@@ -264,17 +270,23 @@ function countActiveSessions(studentId, startIso, endIso, sessions) {
   return sessions.filter((s) => s.studentId === studentId && s.date >= startIso && s.date <= endIso && (s.status === 'agendado' || s.status === 'realizado')).length;
 }
 
-function categoryFor(type, categoryId) {
-  const list = type === 'entrada' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+function categoryFor(type, categoryId, customCategories) {
+  const list = type === 'entrada'
+    ? [...INCOME_CATEGORIES, ...((customCategories && customCategories.income) || [])]
+    : [...EXPENSE_CATEGORIES, ...((customCategories && customCategories.expense) || [])];
   return list.find((c) => c.id === categoryId) || list[list.length - 1];
+}
+function sessionTypeFor(typeId, customCategories) {
+  const list = [...SESSION_TYPES, ...((customCategories && customCategories.sessionTypes) || [])];
+  return list.find((t) => t.id === typeId) || SESSION_TYPES[0];
 }
 function statusLabel(type, status) {
   if (type === 'entrada') return status === 'concluido' ? 'Recebido' : 'Previsto';
   return status === 'concluido' ? 'Pago' : 'Pendente';
 }
 
-function downloadBackup(students, sessions, finances, photos) {
-  const data = { exportedAt: new Date().toISOString(), alunos: students, agenda: sessions, financas: finances, fotos: photos };
+function downloadBackup(students, sessions, finances, photos, customCategories) {
+  const data = { exportedAt: new Date().toISOString(), alunos: students, agenda: sessions, financas: finances, fotos: photos, categorias: customCategories };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -429,7 +441,26 @@ function GlobalStyles() {
       }
 
       * { box-sizing: border-box; }
-      html, body { background-color: var(--bg-base); margin: 0; }
+      html {
+        background-color: var(--bg-base);
+        margin: 0;
+        overflow-x: hidden;
+        -webkit-text-size-adjust: 100%;
+      }
+      body {
+        background-color: var(--bg-base);
+        margin: 0;
+        min-width: 0;
+        overflow-x: hidden;
+        overscroll-behavior-y: none;
+      }
+      #root {
+        min-height: 100dvh;
+        width: 100%;
+        overflow-x: hidden;
+      }
+      img, svg, canvas, video { max-width: 100%; }
+      h1, h2, h3, p, span, button, a, td, th { overflow-wrap: anywhere; }
 
       .font-display { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
       .font-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
@@ -471,6 +502,8 @@ function GlobalStyles() {
       .input-field:focus { border-color: var(--brass); }
       .input-field::placeholder { color: var(--text-faint); }
 
+      button, a, input, select, textarea { min-width: 0; }
+      button, a { touch-action: manipulation; }
       button { font-family: inherit; }
       button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
         outline: 2px solid var(--brass);
@@ -492,6 +525,53 @@ function GlobalStyles() {
       input[type="color"] { -webkit-appearance: none; border: none; padding: 0; background: none; cursor: pointer; }
       input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
       input[type="color"]::-webkit-color-swatch { border: 2px solid var(--border-hair); border-radius: 999px; }
+
+      @media (max-width: 640px) {
+        .input-field { font-size: 16px; }
+        .grid.grid-cols-2,
+        .grid.grid-cols-3 {
+          grid-template-columns: minmax(0, 1fr) !important;
+        }
+        .max-w-6xl,
+        .max-w-5xl,
+        .max-w-4xl,
+        .max-w-2xl {
+          max-width: 100%;
+        }
+        .px-4 { padding-left: 14px; padding-right: 14px; }
+        .py-4 { padding-top: 14px; padding-bottom: 14px; }
+        .rounded-xl { border-radius: 10px; }
+        .text-3xl { font-size: 1.75rem; line-height: 2.15rem; }
+        .mobile-stack {
+          flex-direction: column !important;
+          align-items: stretch !important;
+        }
+        .mobile-stack > * {
+          width: 100%;
+          justify-content: center;
+        }
+      }
+
+      @media (max-width: 420px) {
+        .grid.grid-cols-7.gap-1 { gap: 3px; }
+        .aspect-square { min-height: 42px; }
+        .text-xl { font-size: 1.125rem; line-height: 1.6rem; }
+        .text-lg { font-size: 1rem; line-height: 1.5rem; }
+        .px-5 { padding-left: 16px; padding-right: 16px; }
+        .p-5 { padding: 16px; }
+      }
+
+      @media (min-width: 641px) and (max-width: 1024px) {
+        .lg\\:grid-cols-6 {
+          grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        }
+        .lg\\:grid-cols-5 {
+          grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        }
+        .lg\\:grid-cols-3 {
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        }
+      }
 
       @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
@@ -544,12 +624,12 @@ function FormField({ label, children }) {
 
 function Modal({ title, onClose, children, onBack }) {
   return (
-    <div className="fixed inset-0 flex items-end sm:items-center justify-center animate-in" style={{ backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 40 }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="bg-surface border border-hair rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md overflow-y-auto" style={{ maxHeight: '90vh' }}>
+    <div className="fixed inset-0 flex items-end sm:items-center justify-center animate-in px-0 sm:px-4" style={{ backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 40 }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="bg-surface border border-hair rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md overflow-y-auto" style={{ maxHeight: 'min(92dvh, 760px)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-hair sticky top-0 bg-surface">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             {onBack && <button onClick={onBack} type="button" className="p-1 rounded-lg btn-surface" aria-label="Voltar"><ArrowLeft size={16} className="text-muted" /></button>}
-            <h2 className="font-display font-medium text-lg text-primary">{title}</h2>
+            <h2 className="font-display font-medium text-lg text-primary truncate">{title}</h2>
           </div>
           <button onClick={onClose} type="button" className="p-1.5 rounded-lg btn-surface" aria-label="Fechar">
             <X size={18} className="text-muted" />
@@ -1122,6 +1202,35 @@ function QuinzenaDots({ marks, onToggle, label }) {
   );
 }
 
+function AddCategoryInline({ onAdd, placeholder }) {
+  const [adding, setAdding] = useState(false);
+  const [value, setValue] = useState('');
+
+  function submit() {
+    const label = value.trim();
+    if (!label) return;
+    onAdd(label);
+    setValue('');
+    setAdding(false);
+  }
+
+  if (!adding) {
+    return (
+      <button type="button" onClick={() => setAdding(true)} className="flex items-center gap-1.5 text-xs font-body link-sky mt-2">
+        <Plus size={13} /> Adicionar personalizado
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex gap-2 mt-2 mobile-stack">
+      <input value={value} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} className="input-field" placeholder={placeholder} />
+      <button type="button" onClick={submit} className="px-3 rounded-lg text-xs font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>OK</button>
+      <button type="button" onClick={() => { setAdding(false); setValue(''); }} className="px-3 rounded-lg text-xs font-body border border-hair btn-surface">Cancelar</button>
+    </div>
+  );
+}
+
 /* ============================== ASSESSMENT FIELDS (shared) ============================== */
 
 function AssessmentFields({ form, set, studentHeight, studentSex }) {
@@ -1237,9 +1346,9 @@ function PhotoPicker({ photoIds, onAdd, onRemove, photosById, busy }) {
 
 /* ============================== SESSION CARD ============================== */
 
-function SessionCard({ session, student, onOpen, onQuickStatus }) {
-  const type = SESSION_TYPES.find((t) => t.id === session.type) || SESSION_TYPES[0];
-  const TypeIcon = type.icon;
+function SessionCard({ session, student, onOpen, onQuickStatus, customCategories }) {
+  const type = sessionTypeFor(session.type, customCategories);
+  const TypeIcon = type.icon || Tag;
   const isFalta = session.status === 'falta';
   const isCancelado = session.status === 'cancelado';
   const isRealizado = session.status === 'realizado';
@@ -1344,7 +1453,7 @@ function NavTabs({ view, setView }) {
 
 /* ============================== DASHBOARD ============================== */
 
-function Dashboard({ students, sessions, finances, setView, onAddSession, onOpenSession, onQuickStatus }) {
+function Dashboard({ students, sessions, finances, customCategories, setView, onAddSession, onOpenSession, onQuickStatus }) {
   const activeStudents = useMemo(() => students.filter((s) => s.active), [students]);
 
   const totals = useMemo(() => activeStudents.reduce((acc, s) => {
@@ -1379,13 +1488,13 @@ function Dashboard({ students, sessions, finances, setView, onAddSession, onOpen
   const financeSaidasMes = financeMonthTx.filter((t) => t.type === 'gasto').reduce((s, t) => s + (Number(t.amount) || 0), 0);
   const financeSaldoMes = financeEntradasMes - financeSaidasMes;
   const financePendenciasMes = financeMonthTx.filter((t) => t.status === 'pendente').length;
-  const financeCategoryData = useMemo(() => EXPENSE_CATEGORIES.map((c) => ({
+  const financeCategoryData = useMemo(() => [...EXPENSE_CATEGORIES, ...customCategories.expense].map((c) => ({
     name: c.label, color: c.color, value: financeMonthTx.filter((t) => t.type === 'gasto' && t.category === c.id).reduce((s, t) => s + (Number(t.amount) || 0), 0),
-  })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value), [financeMonthTx]);
+  })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value), [financeMonthTx, customCategories]);
 
-  const typeDistData = useMemo(() => SESSION_TYPES.map((t) => ({
+  const typeDistData = useMemo(() => [...SESSION_TYPES, ...customCategories.sessionTypes].map((t) => ({
     name: t.label, value: weekSessions.filter((s) => s.type === t.id).length, color: t.color,
-  })).filter((d) => d.value > 0), [weekSessions]);
+  })).filter((d) => d.value > 0), [weekSessions, customCategories]);
 
   const topStudentsData = useMemo(() => [...activeStudents]
     .map((s) => ({ name: s.name.split(' ')[0], value: studentFinance(s).net, color: s.color }))
@@ -1494,7 +1603,7 @@ function Dashboard({ students, sessions, finances, setView, onAddSession, onOpen
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {todaySessions.map((s) => {
               const student = students.find((st) => st.id === s.studentId);
-              return <SessionCard key={s.id} session={s} student={student} onOpen={() => onOpenSession(s)} onQuickStatus={onQuickStatus} />;
+              return <SessionCard key={s.id} session={s} student={student} onOpen={() => onOpenSession(s)} onQuickStatus={onQuickStatus} customCategories={customCategories} />;
             })}
           </div>
         )}
@@ -1608,7 +1717,7 @@ function Dashboard({ students, sessions, finances, setView, onAddSession, onOpen
 
 /* ============================== WEEKLY VIEW ============================== */
 
-function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSession, students, compact }) {
+function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSession, students, compact, customCategories }) {
   const iso = fmtDateISO(date);
   const isToday = iso === fmtDateISO(new Date());
   return (
@@ -1626,14 +1735,14 @@ function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSess
         {sessionsList.length === 0 && <div className="text-xs text-faint font-body py-3 text-center">Sem aulas</div>}
         {sessionsList.map((s) => {
           const student = students.find((st) => st.id === s.studentId);
-          return <SessionCard key={s.id} session={s} student={student} onOpen={() => onOpenSession(s)} onQuickStatus={onQuickStatus} />;
+          return <SessionCard key={s.id} session={s} student={student} onOpen={() => onOpenSession(s)} onQuickStatus={onQuickStatus} customCategories={customCategories} />;
         })}
       </div>
     </div>
   );
 }
 
-function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession, onQuickStatus, onAddSession }) {
+function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession, onQuickStatus, onAddSession, customCategories }) {
   const [selectedDay, setSelectedDay] = useState(fmtDateISO(new Date()));
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
@@ -1688,13 +1797,13 @@ function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession
       </div>
 
       <div className="md:hidden">
-        <DayColumn date={days.find((d) => fmtDateISO(d) === selectedDay) || days[0]} sessionsList={sessionsForDay(selectedDay)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} />
+        <DayColumn date={days.find((d) => fmtDateISO(d) === selectedDay) || days[0]} sessionsList={sessionsForDay(selectedDay)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} customCategories={customCategories} />
       </div>
 
       <div className="hidden md:grid md:grid-cols-7 gap-3">
         {days.map((d) => {
           const iso = fmtDateISO(d);
-          return <DayColumn key={iso} date={d} sessionsList={sessionsForDay(iso)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} compact />;
+          return <DayColumn key={iso} date={d} sessionsList={sessionsForDay(iso)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} compact customCategories={customCategories} />;
         })}
       </div>
     </div>
@@ -1763,7 +1872,7 @@ function MonthlyView({ sessions, students, monthCursor, setMonthCursor, onOpenDa
   );
 }
 
-function DayDetailModal({ iso, sessions, students, onClose, onOpenSession, onQuickStatus, onAddSession }) {
+function DayDetailModal({ iso, sessions, students, onClose, onOpenSession, onQuickStatus, onAddSession, customCategories }) {
   const date = new Date(`${iso}T00:00:00`);
   const list = sessions.filter((s) => s.date === iso).sort((a, b) => a.startTime.localeCompare(b.startTime));
   return (
@@ -1777,7 +1886,7 @@ function DayDetailModal({ iso, sessions, students, onClose, onOpenSession, onQui
         {list.length === 0 && <EmptyState message="Nenhuma aula neste dia." />}
         {list.map((s) => {
           const student = students.find((st) => st.id === s.studentId);
-          return <SessionCard key={s.id} session={s} student={student} onOpen={() => { onOpenSession(s); onClose(); }} onQuickStatus={onQuickStatus} />;
+          return <SessionCard key={s.id} session={s} student={student} onOpen={() => { onOpenSession(s); onClose(); }} onQuickStatus={onQuickStatus} customCategories={customCategories} />;
         })}
       </div>
     </Modal>
@@ -1856,7 +1965,7 @@ function StudentsView({ students, sessions, onEdit, onNew }) {
   );
 }
 
-function StudentFormModal({ student, sessions, onSave, onClose, onDelete, onGoToAssessments }) {
+function StudentFormModal({ student, sessions, customCategories, onAddCategory, onSave, onClose, onDelete, onGoToAssessments }) {
   const isEdit = !!student;
   const [form, setForm] = useState(() => (student ? { ...student, quinzenasPagas: student.quinzenasPagas || {} } : {
     id: uid(), name: '', color: STUDENT_COLORS[Math.floor(Math.random() * STUDENT_COLORS.length)],
@@ -1866,6 +1975,7 @@ function StudentFormModal({ student, sessions, onSave, onClose, onDelete, onGoTo
   }));
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState('');
+  const allPlanTypes = [...PLAN_TYPES, ...customCategories.planTypes];
 
   function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
   const currentMonthKey = monthKeyOf(new Date());
@@ -1940,8 +2050,9 @@ function StudentFormModal({ student, sessions, onSave, onClose, onDelete, onGoTo
         <div className="grid grid-cols-2 gap-3">
           <FormField label="Tipo de plano">
             <select value={form.planType} onChange={(e) => set('planType', e.target.value)} className="input-field">
-              {PLAN_TYPES.map((p) => <option key={p} value={p}>{p}</option>)}
+              {allPlanTypes.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
+            <AddCategoryInline placeholder="Ex: Duplas" onAdd={(label) => { onAddCategory('planTypes', label); set('planType', label); }} />
           </FormField>
           <FormField label="Sexo biológico (p/ avaliações)">
             <select value={form.sex} onChange={(e) => set('sex', e.target.value)} className="input-field">
@@ -2022,7 +2133,7 @@ function StudentFormModal({ student, sessions, onSave, onClose, onDelete, onGoTo
 
         {error && <div className="text-sm font-body text-rust">{error}</div>}
 
-        <div className="flex gap-2 pt-2">
+        <div className="flex gap-2 pt-2 mobile-stack">
           {isEdit && (
             <button onClick={() => setConfirmDelete(true)} type="button" className="px-4 py-2.5 rounded-lg text-sm font-body border border-hair text-rust btn-surface">
               <Trash2 size={15} className="inline mr-1.5" style={{ marginTop: '-2px' }} />Excluir
@@ -2048,7 +2159,7 @@ function StudentFormModal({ student, sessions, onSave, onClose, onDelete, onGoTo
 
 /* ============================== SESSION FORM MODAL ============================== */
 
-function SessionFormModal({ session, students, defaultDate, onSave, onClose, onDelete }) {
+function SessionFormModal({ session, students, defaultDate, customCategories, onAddCategory, onSave, onClose, onDelete }) {
   const isEdit = !!session;
   const [form, setForm] = useState(() => (session ? { ...session } : {
     id: uid(), studentId: students[0]?.id || '', date: defaultDate || fmtDateISO(new Date()),
@@ -2103,8 +2214,8 @@ function SessionFormModal({ session, students, defaultDate, onSave, onClose, onD
 
         <FormField label="Categoria">
           <div className="grid grid-cols-2 gap-2">
-            {SESSION_TYPES.map((t) => {
-              const Icon = t.icon;
+            {[...SESSION_TYPES, ...customCategories.sessionTypes].map((t) => {
+              const Icon = t.icon || Tag;
               const active = form.type === t.id;
               return (
                 <button key={t.id} type="button" onClick={() => set('type', t.id)} className="flex items-center gap-2 px-3 py-2 rounded-lg border text-left" style={{ borderColor: active ? t.color : 'var(--border-hair)', backgroundColor: active ? `${t.color}22` : 'var(--bg-base)' }}>
@@ -2114,6 +2225,11 @@ function SessionFormModal({ session, students, defaultDate, onSave, onClose, onD
               );
             })}
           </div>
+          <AddCategoryInline placeholder="Ex: Aula em Grupo" onAdd={(label) => {
+            const id = slugify(label);
+            onAddCategory('sessionTypes', { id, label, color: CUSTOM_CATEGORY_COLORS[customCategories.sessionTypes.length % CUSTOM_CATEGORY_COLORS.length], icon: Tag });
+            set('type', id);
+          }} />
         </FormField>
 
         {form.type === 'avaliacao' && (
@@ -2158,7 +2274,7 @@ function SessionFormModal({ session, students, defaultDate, onSave, onClose, onD
 
         {error && <div className="text-sm font-body text-rust">{error}</div>}
 
-        <div className="flex gap-2 pt-2">
+        <div className="flex gap-2 pt-2 mobile-stack">
           {isEdit && (
             <button onClick={() => setConfirmDelete(true)} type="button" className="px-4 py-2.5 rounded-lg text-sm font-body border border-hair text-rust btn-surface">
               <Trash2 size={15} className="inline mr-1.5" style={{ marginTop: '-2px' }} />Excluir
@@ -2351,9 +2467,9 @@ function AssessmentsView({ students, sessions, photosById, onSaveAssessment, onU
 
 /* ============================== PERSONAL FINANCES ============================== */
 
-function TransactionCard({ tx, onOpen, onQuickComplete }) {
+function TransactionCard({ tx, onOpen, onQuickComplete, customCategories }) {
   const isIncome = tx.type === 'entrada';
-  const cat = categoryFor(tx.type, tx.category);
+  const cat = categoryFor(tx.type, tx.category, customCategories);
   const pending = tx.status === 'pendente';
   const color = isIncome ? 'var(--brass)' : 'var(--rust)';
   return (
@@ -2379,7 +2495,7 @@ function TransactionCard({ tx, onOpen, onQuickComplete }) {
   );
 }
 
-function TransactionFormModal({ tx, defaultType, onSave, onClose, onDelete }) {
+function TransactionFormModal({ tx, defaultType, customCategories, onAddCategory, onSave, onClose, onDelete }) {
   const isEdit = !!tx;
   const [form, setForm] = useState(() => (tx ? { ...tx } : {
     id: uid(), type: defaultType || 'gasto', description: '', category: EXPENSE_CATEGORIES[0].id,
@@ -2390,7 +2506,7 @@ function TransactionFormModal({ tx, defaultType, onSave, onClose, onDelete }) {
   function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
 
   function setType(type) {
-    const catList = type === 'entrada' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+    const catList = type === 'entrada' ? [...INCOME_CATEGORIES, ...customCategories.income] : [...EXPENSE_CATEGORIES, ...customCategories.expense];
     setForm((f) => ({ ...f, type, category: catList.some((c) => c.id === f.category) ? f.category : catList[0].id }));
   }
 
@@ -2402,7 +2518,7 @@ function TransactionFormModal({ tx, defaultType, onSave, onClose, onDelete }) {
     onSave({ ...form, amount: amt });
   }
 
-  const catList = form.type === 'entrada' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+  const catList = form.type === 'entrada' ? [...INCOME_CATEGORIES, ...customCategories.income] : [...EXPENSE_CATEGORIES, ...customCategories.expense];
 
   return (
     <Modal title={isEdit ? 'Editar Lançamento' : 'Novo Lançamento'} onClose={onClose}>
@@ -2422,6 +2538,13 @@ function TransactionFormModal({ tx, defaultType, onSave, onClose, onDelete }) {
           <select value={form.category} onChange={(e) => set('category', e.target.value)} className="input-field">
             {catList.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
           </select>
+          <AddCategoryInline placeholder={form.type === 'entrada' ? 'Ex: Consultoria' : 'Ex: Animais de estimação'} onAdd={(label) => {
+            const kind = form.type === 'entrada' ? 'income' : 'expense';
+            const pool = customCategories[kind];
+            const id = slugify(label);
+            onAddCategory(kind, { id, label, color: CUSTOM_CATEGORY_COLORS[pool.length % CUSTOM_CATEGORY_COLORS.length] });
+            set('category', id);
+          }} />
         </FormField>
 
         <div className="grid grid-cols-2 gap-3">
@@ -2434,7 +2557,7 @@ function TransactionFormModal({ tx, defaultType, onSave, onClose, onDelete }) {
         </div>
 
         <FormField label="Status">
-          <div className="flex gap-2">
+      <div className="flex gap-2 mobile-stack">
             <button type="button" onClick={() => set('status', 'concluido')} className="px-3 py-1.5 rounded-full border text-xs font-body" style={{ borderColor: form.status === 'concluido' ? 'var(--slate-acc)' : 'var(--border-hair)', backgroundColor: form.status === 'concluido' ? 'rgba(140,140,140,0.15)' : 'transparent', color: form.status === 'concluido' ? 'var(--text-primary)' : 'var(--text-muted)' }}>
               {statusLabel(form.type, 'concluido')}
             </button>
@@ -2450,7 +2573,7 @@ function TransactionFormModal({ tx, defaultType, onSave, onClose, onDelete }) {
 
         {error && <div className="text-sm font-body text-rust">{error}</div>}
 
-        <div className="flex gap-2 pt-2">
+        <div className="flex gap-2 pt-2 mobile-stack">
           {isEdit && (
             <button onClick={() => setConfirmDelete(true)} type="button" className="px-4 py-2.5 rounded-lg text-sm font-body border border-hair text-rust btn-surface">
               <Trash2 size={15} className="inline mr-1.5" style={{ marginTop: '-2px' }} />Excluir
@@ -2468,7 +2591,7 @@ function TransactionFormModal({ tx, defaultType, onSave, onClose, onDelete }) {
   );
 }
 
-function FinancesView({ finances, monthCursor, setMonthCursor, onOpenTransaction, onNewTransaction, onQuickComplete }) {
+function FinancesView({ finances, monthCursor, setMonthCursor, onOpenTransaction, onNewTransaction, onQuickComplete, customCategories }) {
   const year = monthCursor.getFullYear();
   const month = monthCursor.getMonth();
   const monthStart = fmtDateISO(new Date(year, month, 1));
@@ -2480,9 +2603,9 @@ function FinancesView({ finances, monthCursor, setMonthCursor, onOpenTransaction
   const saldo = entradas - saidas;
   const pendencias = monthTx.filter((t) => t.status === 'pendente');
 
-  const categoryData = useMemo(() => EXPENSE_CATEGORIES.map((c) => ({
+  const categoryData = useMemo(() => [...EXPENSE_CATEGORIES, ...customCategories.expense].map((c) => ({
     name: c.label, color: c.color, value: monthTx.filter((t) => t.type === 'gasto' && t.category === c.id).reduce((s, t) => s + (Number(t.amount) || 0), 0),
-  })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value), [monthTx]);
+  })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value), [monthTx, customCategories]);
 
   return (
     <div className="px-4 py-4 max-w-4xl mx-auto flex flex-col gap-5">
@@ -2507,8 +2630,8 @@ function FinancesView({ finances, monthCursor, setMonthCursor, onOpenTransaction
 
       <div className="flex items-center justify-between">
         <h1 className="font-display font-semibold text-xl text-primary tracking-wide">Lançamentos</h1>
-        <div className="flex gap-2">
-          <button onClick={() => onNewTransaction('gasto')} type="button" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-body border border-hair btn-surface">
+        <div className="flex gap-2 mobile-stack">
+          <button onClick={() => onNewTransaction('gasto')} type="button" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-body font-medium border" style={{ backgroundColor: 'var(--rust)', borderColor: 'var(--rust)', color: '#0A0A0A' }}>
             <Plus size={13} /> Gasto
           </button>
           <button onClick={() => onNewTransaction('entrada')} type="button" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
@@ -2538,7 +2661,7 @@ function FinancesView({ finances, monthCursor, setMonthCursor, onOpenTransaction
         <div>
           <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-2">Pendências deste mês</div>
           <div className="flex flex-col gap-2">
-            {pendencias.map((t) => <TransactionCard key={t.id} tx={t} onOpen={() => onOpenTransaction(t)} onQuickComplete={onQuickComplete} />)}
+            {pendencias.map((t) => <TransactionCard key={t.id} tx={t} onOpen={() => onOpenTransaction(t)} onQuickComplete={onQuickComplete} customCategories={customCategories} />)}
           </div>
         </div>
       )}
@@ -2549,7 +2672,7 @@ function FinancesView({ finances, monthCursor, setMonthCursor, onOpenTransaction
           <EmptyState icon={Wallet} message="Nenhum lançamento neste mês ainda." cta="Novo lançamento" onCta={() => onNewTransaction('gasto')} />
         ) : (
           <div className="flex flex-col gap-2">
-            {monthTx.map((t) => <TransactionCard key={t.id} tx={t} onOpen={() => onOpenTransaction(t)} onQuickComplete={onQuickComplete} />)}
+            {monthTx.map((t) => <TransactionCard key={t.id} tx={t} onOpen={() => onOpenTransaction(t)} onQuickComplete={onQuickComplete} customCategories={customCategories} />)}
           </div>
         )}
       </div>
@@ -2559,7 +2682,7 @@ function FinancesView({ finances, monthCursor, setMonthCursor, onOpenTransaction
 
 /* ============================== SETTINGS ============================== */
 
-function SettingsPanel({ students, sessions, finances, photos, onReset, onRestore, studentCount, sessionCount, onSignOut }) {
+function SettingsPanel({ students, sessions, finances, photos, customCategories, onReset, onRestore, studentCount, sessionCount, onSignOut }) {
   const [confirm, setConfirm] = useState(false);
   const [pendingRestore, setPendingRestore] = useState(null);
   const [restoreError, setRestoreError] = useState('');
@@ -2577,6 +2700,7 @@ function SettingsPanel({ students, sessions, finances, photos, onReset, onRestor
         if (!Array.isArray(data.alunos) || !Array.isArray(data.agenda)) throw new Error('formato inválido');
         if (!Array.isArray(data.financas)) data.financas = [];
         if (!Array.isArray(data.fotos)) data.fotos = [];
+        if (!data.categorias) data.categorias = EMPTY_CUSTOM_CATEGORIES;
         setPendingRestore(data);
       } catch (err) {
         setRestoreError('Não foi possível ler este arquivo. Confira se é um backup exportado por este app.');
@@ -2593,7 +2717,7 @@ function SettingsPanel({ students, sessions, finances, photos, onReset, onRestor
         <div className="text-sm font-body font-medium text-primary mb-1">Backup dos dados</div>
         <p className="text-xs font-body text-muted mb-3">Baixe um arquivo com alunos, aulas, avaliações, finanças e fotos — guarde-o em algum lugar seguro. Você pode restaurar esse arquivo aqui se precisar.</p>
         <div className="flex gap-2 flex-wrap">
-          <button onClick={() => downloadBackup(students, sessions, finances, photos)} type="button" className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
+          <button onClick={() => downloadBackup(students, sessions, finances, photos, customCategories)} type="button" className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
             <Download size={14} /> Exportar backup
           </button>
           <button onClick={() => fileRef.current?.click()} type="button" className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-body border border-hair btn-surface">
@@ -2630,7 +2754,7 @@ function SettingsPanel({ students, sessions, finances, photos, onReset, onRestor
           title="Restaurar backup"
           message={`Isso vai SUBSTITUIR os dados atuais pelos ${pendingRestore.alunos.length} aluno(s), ${pendingRestore.agenda.length} aula(s), ${pendingRestore.financas.length} lançamento(s) e ${pendingRestore.fotos.length} foto(s) do arquivo. Essa ação não pode ser desfeita.`}
           onCancel={() => setPendingRestore(null)}
-          onConfirm={() => { onRestore(pendingRestore.alunos, pendingRestore.agenda, pendingRestore.financas, pendingRestore.fotos); setPendingRestore(null); }}
+          onConfirm={() => { onRestore(pendingRestore.alunos, pendingRestore.agenda, pendingRestore.financas, pendingRestore.fotos, pendingRestore.categorias); setPendingRestore(null); }}
         />
       )}
     </div>
@@ -2655,6 +2779,7 @@ function AppInner() {
   const [sessions, setSessions] = useState([]);
   const [finances, setFinances] = useState([]);
   const [photos, setPhotos] = useState([]);
+  const [customCategories, setCustomCategories] = useState(EMPTY_CUSTOM_CATEGORIES);
   const [view, setView] = useState('dashboard');
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date()));
   const [monthCursor, setMonthCursor] = useState(new Date());
@@ -2775,17 +2900,19 @@ function AppInner() {
 
   async function loadAll() {
     setLoading(true);
-    let st = []; let se = []; let fi = []; let ph = [];
+    let st = []; let se = []; let fi = []; let ph = []; let cc = EMPTY_CUSTOM_CATEGORIES;
     if (storageOk) {
       try { const r = await readStoredValue('alunos'); if (r && r.value) st = JSON.parse(r.value); } catch (e) { /* sem dados */ }
       try { const r = await readStoredValue('agenda'); if (r && r.value) se = JSON.parse(r.value); } catch (e) { /* sem dados */ }
       try { const r = await readStoredValue('financas'); if (r && r.value) fi = JSON.parse(r.value); } catch (e) { /* sem dados */ }
       try { const r = await readStoredValue('fotos'); if (r && r.value) ph = JSON.parse(r.value); } catch (e) { /* sem dados */ }
+      try { const r = await readStoredValue('categorias'); if (r && r.value) cc = JSON.parse(r.value); } catch (e) { /* sem dados */ }
     }
     setStudents(Array.isArray(st) ? st : []);
     setSessions(Array.isArray(se) ? se : []);
     setFinances(Array.isArray(fi) ? fi : []);
     setPhotos(Array.isArray(ph) ? ph : []);
+    setCustomCategories({ ...EMPTY_CUSTOM_CATEGORIES, ...(cc || {}) });
     setLoading(false);
   }
 
@@ -2794,6 +2921,7 @@ function AppInner() {
     setSessions([]);
     setFinances([]);
     setPhotos([]);
+    setCustomCategories(EMPTY_CUSTOM_CATEGORIES);
   }
 
   async function refreshSubscription() {
@@ -2835,6 +2963,24 @@ function AppInner() {
     setPhotos(next);
     if (!storageOk) return;
     try { await writeStoredValue('fotos', JSON.stringify(next)); } catch (e) { showToast('Erro ao salvar fotos — tente imagens menores.', 'error'); }
+  }
+
+  async function persistCustomCategories(next) {
+    const normalized = { ...EMPTY_CUSTOM_CATEGORIES, ...(next || {}) };
+    setCustomCategories(normalized);
+    if (!storageOk) return;
+    try { await writeStoredValue('categorias', JSON.stringify(normalized)); } catch (e) { showToast('Erro ao salvar categoria.', 'error'); }
+  }
+
+  function addCategory(kind, item) {
+    const list = customCategories[kind] || [];
+    if (kind === 'planTypes') {
+      if (list.includes(item) || PLAN_TYPES.includes(item)) return;
+      persistCustomCategories({ ...customCategories, planTypes: [...list, item] });
+      return;
+    }
+    if (list.some((entry) => entry.id === item.id || entry.label.toLowerCase() === item.label.toLowerCase())) return;
+    persistCustomCategories({ ...customCategories, [kind]: [...list, item] });
   }
 
   async function signOut() {
@@ -2942,25 +3088,27 @@ function AppInner() {
   function openNewTransaction(type) { setTransactionModal({ tx: null, defaultType: type }); setShowTransactionModal(true); }
   function openEditTransaction(tx) { setTransactionModal({ tx, defaultType: null }); setShowTransactionModal(true); }
 
-  function restoreBackup(importedStudents, importedSessions, importedFinances, importedPhotos) {
+  function restoreBackup(importedStudents, importedSessions, importedFinances, importedPhotos, importedCategories) {
     persistStudents(importedStudents);
     persistSessions(importedSessions);
     persistFinances(Array.isArray(importedFinances) ? importedFinances : []);
     persistPhotos(Array.isArray(importedPhotos) ? importedPhotos : []);
+    persistCustomCategories({ ...EMPTY_CUSTOM_CATEGORIES, ...(importedCategories || {}) });
     showToast('Backup restaurado.');
     setSettingsOpen(false);
   }
 
   async function resetAllData() {
     if (!storageOk) {
-      setStudents([]); setSessions([]); setFinances([]); setPhotos([]); showToast('Dados apagados.'); setSettingsOpen(false); return;
+      setStudents([]); setSessions([]); setFinances([]); setPhotos([]); setCustomCategories(EMPTY_CUSTOM_CATEGORIES); showToast('Dados apagados.'); setSettingsOpen(false); return;
     }
     try {
       await writeStoredValue('alunos', JSON.stringify([]));
       await writeStoredValue('agenda', JSON.stringify([]));
       await writeStoredValue('financas', JSON.stringify([]));
       await writeStoredValue('fotos', JSON.stringify([]));
-      setStudents([]); setSessions([]); setFinances([]); setPhotos([]);
+      await writeStoredValue('categorias', JSON.stringify(EMPTY_CUSTOM_CATEGORIES));
+      setStudents([]); setSessions([]); setFinances([]); setPhotos([]); setCustomCategories(EMPTY_CUSTOM_CATEGORIES);
       showToast('Dados apagados.');
     } catch (e) { showToast('Erro ao apagar dados.', 'error'); }
     setSettingsOpen(false);
@@ -2975,8 +3123,8 @@ function AppInner() {
       <Header onOpenSettings={() => setSettingsOpen(true)} />
       <NavTabs view={view} setView={setView} />
       <main className="flex-1 pb-10">
-        {view === 'dashboard' && <Dashboard students={students} sessions={sessions} finances={finances} setView={setView} onAddSession={openNewSession} onOpenSession={openEditSession} onQuickStatus={quickStatus} />}
-        {view === 'weekly' && <WeeklyView sessions={sessions} students={students} weekStart={weekStart} setWeekStart={setWeekStart} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} />}
+        {view === 'dashboard' && <Dashboard students={students} sessions={sessions} finances={finances} customCategories={customCategories} setView={setView} onAddSession={openNewSession} onOpenSession={openEditSession} onQuickStatus={quickStatus} />}
+        {view === 'weekly' && <WeeklyView sessions={sessions} students={students} weekStart={weekStart} setWeekStart={setWeekStart} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} customCategories={customCategories} />}
         {view === 'monthly' && <MonthlyView sessions={sessions} students={students} monthCursor={monthCursor} setMonthCursor={setMonthCursor} onOpenDay={setDayDetailIso} />}
         {view === 'students' && <StudentsView students={students} sessions={sessions} onEdit={openEditStudent} onNew={openNewStudent} />}
         {view === 'assessments' && (
@@ -2985,26 +3133,26 @@ function AppInner() {
             onSaveAssessment={saveNewAssessment} onUploadPhotos={uploadPhotos} onRemovePhoto={removePhoto} onDeleteAssessment={deleteAssessment}
             onNoStudents={() => showToast('Cadastre um aluno antes de fazer uma avaliação física.', 'error')} />
         )}
-        {view === 'finances' && <FinancesView finances={finances} monthCursor={financeMonthCursor} setMonthCursor={setFinanceMonthCursor} onOpenTransaction={openEditTransaction} onNewTransaction={openNewTransaction} onQuickComplete={quickCompleteTransaction} />}
+        {view === 'finances' && <FinancesView finances={finances} monthCursor={financeMonthCursor} setMonthCursor={setFinanceMonthCursor} onOpenTransaction={openEditTransaction} onNewTransaction={openNewTransaction} onQuickComplete={quickCompleteTransaction} customCategories={customCategories} />}
         {view === 'profile' && <ProfileView user={user} subscription={subscription} onSignOut={supabaseConfigured ? signOut : null} onRefreshSubscription={refreshSubscription} />}
       </main>
       <DeveloperCredit />
 
       {showSessionModal && (
-        <SessionFormModal session={sessionModal?.session} students={students} defaultDate={sessionModal?.defaultDate} onSave={saveSession} onClose={() => setShowSessionModal(false)} onDelete={deleteSession} />
+        <SessionFormModal session={sessionModal?.session} students={students} defaultDate={sessionModal?.defaultDate} customCategories={customCategories} onAddCategory={addCategory} onSave={saveSession} onClose={() => setShowSessionModal(false)} onDelete={deleteSession} />
       )}
       {showStudentModal && (
-        <StudentFormModal student={studentModal} sessions={sessions} onSave={saveStudent} onClose={() => setShowStudentModal(false)} onDelete={deleteStudent} onGoToAssessments={goToAssessments} />
+        <StudentFormModal student={studentModal} sessions={sessions} customCategories={customCategories} onAddCategory={addCategory} onSave={saveStudent} onClose={() => setShowStudentModal(false)} onDelete={deleteStudent} onGoToAssessments={goToAssessments} />
       )}
       {showTransactionModal && (
-        <TransactionFormModal tx={transactionModal?.tx} defaultType={transactionModal?.defaultType} onSave={saveTransaction} onClose={() => setShowTransactionModal(false)} onDelete={deleteTransaction} />
+        <TransactionFormModal tx={transactionModal?.tx} defaultType={transactionModal?.defaultType} customCategories={customCategories} onAddCategory={addCategory} onSave={saveTransaction} onClose={() => setShowTransactionModal(false)} onDelete={deleteTransaction} />
       )}
       {dayDetailIso && (
-        <DayDetailModal iso={dayDetailIso} sessions={sessions} students={students} onClose={() => setDayDetailIso(null)} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} />
+        <DayDetailModal iso={dayDetailIso} sessions={sessions} students={students} onClose={() => setDayDetailIso(null)} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} customCategories={customCategories} />
       )}
       {settingsOpen && (
         <Modal title="Configurações" onClose={() => setSettingsOpen(false)}>
-          <SettingsPanel students={students} sessions={sessions} finances={finances} photos={photos} onReset={resetAllData} onRestore={restoreBackup} studentCount={students.length} sessionCount={sessions.length} onSignOut={supabaseConfigured ? signOut : null} />
+          <SettingsPanel students={students} sessions={sessions} finances={finances} photos={photos} customCategories={customCategories} onReset={resetAllData} onRestore={restoreBackup} studentCount={students.length} sessionCount={sessions.length} onSignOut={supabaseConfigured ? signOut : null} />
         </Modal>
       )}
       <Toast toast={toast} />

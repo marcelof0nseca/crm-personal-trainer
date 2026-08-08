@@ -5,6 +5,7 @@ import {
   Sparkles, UserX, ChevronLeft, ChevronRight, Search, Wallet, Percent, Building2,
   Loader2, Settings, Check, Info, Activity, Ban, Download, Upload,
   Camera, ArrowLeft, LineChart as LineChartIcon, Tag,
+  Coffee, Dumbbell, UtensilsCrossed, Stethoscope,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
@@ -31,6 +32,15 @@ const SESSION_TYPES = [
   { id: 'reposicao', label: 'Reposição', icon: RotateCcw, color: '#5FBFA0' },
   { id: 'avaliacao', label: 'Avaliação Física', icon: ClipboardCheck, color: '#D6764A' },
   { id: 'experimental', label: 'Aula Experimental', icon: Sparkles, color: '#E08FB0' },
+];
+
+const EVENT_TYPES = [
+  { id: 'horario_livre', label: 'Horário Livre', icon: Coffee, color: '#5FC4D0' },
+  { id: 'reuniao', label: 'Reunião', icon: Users, color: '#9B8AC4' },
+  { id: 'treino_pessoal', label: 'Meu Treino', icon: Dumbbell, color: '#6FCF97' },
+  { id: 'almoco', label: 'Horário de Almoço', icon: UtensilsCrossed, color: '#F2A65A' },
+  { id: 'consulta_medica', label: 'Consulta Médica', icon: Stethoscope, color: '#EF88AD' },
+  { id: 'outro', label: 'Outro', icon: Tag, color: '#8C8C8C' },
 ];
 
 const STATUS_OPTIONS = [
@@ -75,7 +85,7 @@ const CUSTOM_CATEGORY_COLORS = ['#5DA9E9', '#C77DFF', '#6FCF97', '#EF88AD', '#F2
 function slugify(label) {
   return `custom_${label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').slice(0, 24)}_${uid().slice(0, 4)}`;
 }
-const EMPTY_CUSTOM_CATEGORIES = { expense: [], income: [], planTypes: [], sessionTypes: [] };
+const EMPTY_CUSTOM_CATEGORIES = { expense: [], income: [], planTypes: [], sessionTypes: [], eventTypes: [] };
 
 const SALES_WHATSAPP_URL = import.meta.env.VITE_SALES_WHATSAPP_URL || '';
 const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY || '';
@@ -282,6 +292,10 @@ function categoryFor(type, categoryId, customCategories) {
 function sessionTypeFor(typeId, customCategories) {
   const list = [...SESSION_TYPES, ...((customCategories && customCategories.sessionTypes) || [])];
   return list.find((t) => t.id === typeId) || SESSION_TYPES[0];
+}
+function eventTypeFor(typeId, customCategories) {
+  const list = [...EVENT_TYPES, ...((customCategories && customCategories.eventTypes) || [])];
+  return list.find((t) => t.id === typeId) || EVENT_TYPES[0];
 }
 function statusLabel(type, status) {
   if (type === 'entrada') return status === 'concluido' ? 'Recebido' : 'Previsto';
@@ -1505,12 +1519,13 @@ function PhotoPicker({ photoIds, onAdd, onRemove, photosById, busy }) {
 /* ============================== SESSION CARD ============================== */
 
 function SessionCard({ session, student, onOpen, onQuickStatus, customCategories }) {
-  const type = sessionTypeFor(session.type, customCategories);
+  const isEvento = session.kind === 'evento';
+  const type = isEvento ? eventTypeFor(session.type, customCategories) : sessionTypeFor(session.type, customCategories);
   const TypeIcon = type.icon || Tag;
   const isFalta = session.status === 'falta';
   const isCancelado = session.status === 'cancelado';
   const isRealizado = session.status === 'realizado';
-  const color = student?.color || '#54565D';
+  const color = isEvento ? type.color : (student?.color || '#54565D');
   const statusInfo = STATUS_OPTIONS.find((o) => o.id === session.status);
 
   return (
@@ -1527,27 +1542,29 @@ function SessionCard({ session, student, onOpen, onQuickStatus, customCategories
           <div className="flex items-center gap-1.5 mb-0.5">
             <span className="font-mono text-2xs text-muted">{session.startTime}</span>
             <TypeIcon size={11} style={{ color: type.color }} />
-            <span className="text-2xs font-body text-faint truncate">{type.label}</span>
+            {!isEvento && <span className="text-2xs font-body text-faint truncate">{type.label}</span>}
           </div>
           <div className={`font-body text-sm text-primary truncate ${isFalta ? 'line-through' : ''}`}>
-            {student?.name || 'Aluno removido'}
+            {isEvento ? type.label : (student?.name || 'Aluno removido')}
           </div>
           <span className="inline-block text-2xs font-body mt-0.5 px-1.5 py-0.5 rounded" style={{ color: statusInfo?.color, backgroundColor: 'rgba(255,255,255,0.05)' }}>
             {statusInfo?.label}
           </span>
         </div>
-        <div className="flex flex-col gap-0.5 flex-shrink-0">
-          {!isRealizado && !isCancelado && !isFalta && (
-            <button onClick={(e) => { e.stopPropagation(); onQuickStatus(session, 'realizado'); }} type="button" className="p-1 rounded btn-surface" aria-label="Marcar como realizado" title="Marcar como realizado">
-              <CheckCircle2 size={14} className="text-slate-acc" />
-            </button>
-          )}
-          {!isFalta && !isCancelado && (
-            <button onClick={(e) => { e.stopPropagation(); onQuickStatus(session, 'falta'); }} type="button" className="p-1 rounded btn-surface" aria-label="Reportar falta" title="Reportar falta">
-              <UserX size={14} className="text-rust" />
-            </button>
-          )}
-        </div>
+        {!isEvento && (
+          <div className="flex flex-col gap-0.5 flex-shrink-0">
+            {!isRealizado && !isCancelado && !isFalta && (
+              <button onClick={(e) => { e.stopPropagation(); onQuickStatus(session, 'realizado'); }} type="button" className="p-1 rounded btn-surface" aria-label="Marcar como realizado" title="Marcar como realizado">
+                <CheckCircle2 size={14} className="text-slate-acc" />
+              </button>
+            )}
+            {!isFalta && !isCancelado && (
+              <button onClick={(e) => { e.stopPropagation(); onQuickStatus(session, 'falta'); }} type="button" className="p-1 rounded btn-surface" aria-label="Reportar falta" title="Reportar falta">
+                <UserX size={14} className="text-rust" />
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1624,8 +1641,8 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
   const bounds = useMemo(() => periodBounds(), []);
 
   const todaySessions = useMemo(() => sessions.filter((s) => s.date === today).sort((a, b) => a.startTime.localeCompare(b.startTime)), [sessions, today]);
-  const weekSessions = useMemo(() => sessions.filter((s) => s.date >= bounds.weekStart && s.date <= bounds.weekEnd), [sessions, bounds]);
-  const monthSessions = useMemo(() => sessions.filter((s) => s.date >= bounds.monthStart && s.date <= bounds.monthEnd), [sessions, bounds]);
+  const weekSessions = useMemo(() => sessions.filter((s) => s.kind !== 'evento' && s.date >= bounds.weekStart && s.date <= bounds.weekEnd), [sessions, bounds]);
+  const monthSessions = useMemo(() => sessions.filter((s) => s.kind !== 'evento' && s.date >= bounds.monthStart && s.date <= bounds.monthEnd), [sessions, bounds]);
 
   const faltasSemana = weekSessions.filter((s) => s.status === 'falta').length;
   const reposicoesPendentes = sessions.filter((s) => s.type === 'reposicao' && s.status === 'agendado' && s.date >= today).length;
@@ -1757,7 +1774,7 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
             <Plus size={13} /> Agendar
           </button>
         </div>
-        {todaySessions.length === 0 ? <EmptyState message="Nenhuma aula agendada para hoje." /> : (
+        {todaySessions.length === 0 ? <EmptyState message="Nada agendado para hoje." /> : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {todaySessions.map((s) => {
               const student = students.find((st) => st.id === s.studentId);
@@ -1885,12 +1902,12 @@ function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSess
           <div className="text-2xs uppercase tracking-wide text-muted font-body">{compact ? DAY_SHORT[date.getDay()] : DAY_NAMES[date.getDay()]}</div>
           <div className={`font-display font-medium text-lg ${isToday ? 'text-brass' : 'text-primary'}`}>{fmtDateBR(date)}</div>
         </div>
-        <button onClick={() => onAddSession(iso)} type="button" className="p-1.5 rounded-lg btn-surface" aria-label="Adicionar aula">
+        <button onClick={() => onAddSession(iso)} type="button" className="p-1.5 rounded-lg btn-surface" aria-label="Adicionar">
           <Plus size={16} className="text-muted" />
         </button>
       </div>
       <div className="flex flex-col gap-2">
-        {sessionsList.length === 0 && <div className="text-xs text-faint font-body py-3 text-center">Sem aulas</div>}
+        {sessionsList.length === 0 && <div className="text-xs text-faint font-body py-3 text-center">Nada agendado</div>}
         {sessionsList.map((s) => {
           const student = students.find((st) => st.id === s.studentId);
           return <SessionCard key={s.id} session={s} student={student} onOpen={() => onOpenSession(s)} onQuickStatus={onQuickStatus} customCategories={customCategories} />;
@@ -1970,7 +1987,7 @@ function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession
 
 /* ============================== MONTHLY VIEW ============================== */
 
-function MonthlyView({ sessions, students, monthCursor, setMonthCursor, onOpenDay }) {
+function MonthlyView({ sessions, students, monthCursor, setMonthCursor, onOpenDay, customCategories }) {
   const year = monthCursor.getFullYear();
   const month = monthCursor.getMonth();
   const firstOfMonth = new Date(year, month, 1);
@@ -2017,6 +2034,10 @@ function MonthlyView({ sessions, students, monthCursor, setMonthCursor, onOpenDa
               <span className="font-mono text-xs" style={{ color: isToday ? 'var(--brass)' : inMonth ? 'var(--text-primary)' : 'var(--text-faint)' }}>{d.getDate()}</span>
               <div className="flex flex-wrap gap-0.5 justify-center px-0.5">
                 {daySessions.slice(0, 3).map((s) => {
+                  if (s.kind === 'evento') {
+                    const type = eventTypeFor(s.type, customCategories);
+                    return <span key={s.id} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: type.color }} />;
+                  }
                   const st = students.find((x) => x.id === s.studentId);
                   return <span key={s.id} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: st?.color || '#54565D' }} />;
                 })}
@@ -2037,11 +2058,11 @@ function DayDetailModal({ iso, sessions, students, onClose, onOpenSession, onQui
     <Modal onClose={onClose} title={`${DAY_NAMES[date.getDay()]}, ${fmtDateBR(date)}`}>
       <div className="flex justify-end mb-3">
         <button onClick={() => { onAddSession(iso); onClose(); }} type="button" className="flex items-center gap-1.5 text-xs font-body px-3 py-1.5 rounded-lg border border-hair" style={{ backgroundColor: 'rgba(30,166,180,0.12)', color: 'var(--brass)' }}>
-          <Plus size={14} /> Agendar aula
+          <Plus size={14} /> Adicionar
         </button>
       </div>
       <div className="flex flex-col gap-2">
-        {list.length === 0 && <EmptyState message="Nenhuma aula neste dia." />}
+        {list.length === 0 && <EmptyState message="Nada agendado neste dia." />}
         {list.map((s) => {
           const student = students.find((st) => st.id === s.studentId);
           return <SessionCard key={s.id} session={s} student={student} onOpen={() => { onOpenSession(s); onClose(); }} onQuickStatus={onQuickStatus} customCategories={customCategories} />;
@@ -2319,11 +2340,16 @@ function StudentFormModal({ student, sessions, customCategories, onAddCategory, 
 
 function SessionFormModal({ session, students, defaultDate, customCategories, onAddCategory, onSave, onClose, onDelete }) {
   const isEdit = !!session;
-  const [form, setForm] = useState(() => (session ? { ...session } : {
-    id: uid(), studentId: students[0]?.id || '', date: defaultDate || fmtDateISO(new Date()),
-    startTime: '08:00', endTime: '09:00', type: 'fixo', status: 'agendado', notes: '',
-    ...EMPTY_ASSESS_FIELDS,
-  }));
+  const [form, setForm] = useState(() => {
+    if (session) return { kind: 'aula', ...session };
+    const kind = students.length === 0 ? 'evento' : 'aula';
+    return {
+      id: uid(), kind, studentId: kind === 'aula' ? (students[0]?.id || '') : null,
+      date: defaultDate || fmtDateISO(new Date()), startTime: '08:00', endTime: '09:00',
+      type: kind === 'aula' ? 'fixo' : EVENT_TYPES[0].id, status: 'agendado', notes: '',
+      ...EMPTY_ASSESS_FIELDS,
+    };
+  });
   const [repeat, setRepeat] = useState(false);
   const [repeatWeeks, setRepeatWeeks] = useState(8);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -2331,103 +2357,130 @@ function SessionFormModal({ session, students, defaultDate, customCategories, on
 
   function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
   const selectedStudent = students.find((s) => s.id === form.studentId);
+  const isEvento = form.kind === 'evento';
+
+  function switchKind(kind) {
+    if (isEdit || kind === form.kind) return;
+    setForm((f) => ({
+      ...f,
+      kind,
+      type: kind === 'evento' ? EVENT_TYPES[0].id : 'fixo',
+      studentId: kind === 'evento' ? null : (students[0]?.id || ''),
+    }));
+    setError('');
+  }
 
   function handleSubmit() {
-    if (!form.studentId) { setError('Selecione um aluno.'); return; }
+    if (!isEvento && !form.studentId) { setError('Selecione um aluno.'); return; }
     if (!form.date) { setError('Selecione uma data.'); return; }
     if (form.endTime <= form.startTime) { setError('O horário final deve ser após o início.'); return; }
     setError('');
     onSave(form, repeat && !isEdit ? repeatWeeks : null);
   }
 
-  if (students.length === 0) {
-    return (
-      <Modal title="Nova Aula" onClose={onClose}>
-        <EmptyState message="Cadastre um aluno antes de agendar uma aula." />
-      </Modal>
-    );
-  }
-
   return (
-    <Modal title={isEdit ? 'Editar Aula' : 'Nova Aula'} onClose={onClose}>
+    <Modal title={isEdit ? (isEvento ? 'Editar Evento' : 'Editar Aula') : (isEvento ? 'Novo Evento' : 'Nova Aula')} onClose={onClose}>
       <div className="flex flex-col gap-4">
-        <FormField label="Aluno">
-          <select value={form.studentId} onChange={(e) => set('studentId', e.target.value)} className="input-field">
-            {students.map((s) => <option key={s.id} value={s.id}>{s.name}{!s.active ? ' (inativo)' : ''}</option>)}
-          </select>
-        </FormField>
-
-        <FormField label="Data">
-          <input type="date" value={form.date} onChange={(e) => set('date', e.target.value)} className="input-field" />
-        </FormField>
-
-        <div className="grid grid-cols-2 gap-3">
-          <FormField label="Início">
-            <input type="time" value={form.startTime} onChange={(e) => set('startTime', e.target.value)} className="input-field" />
-          </FormField>
-          <FormField label="Fim">
-            <input type="time" value={form.endTime} onChange={(e) => set('endTime', e.target.value)} className="input-field" />
-          </FormField>
-        </div>
-
-        <FormField label="Categoria">
+        {!isEdit && (
           <div className="grid grid-cols-2 gap-2">
-            {[...SESSION_TYPES, ...customCategories.sessionTypes].map((t) => {
-              const Icon = t.icon || Tag;
-              const active = form.type === t.id;
-              return (
-                <button key={t.id} type="button" onClick={() => set('type', t.id)} className="flex items-center gap-2 px-3 py-2 rounded-lg border text-left" style={{ borderColor: active ? t.color : 'var(--border-hair)', backgroundColor: active ? `${t.color}22` : 'var(--bg-base)' }}>
-                  <Icon size={14} style={{ color: t.color, flexShrink: 0 }} />
-                  <span className="text-xs font-body text-primary">{t.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          <AddCategoryInline placeholder="Ex: Aula em Grupo" onAdd={(label) => {
-            const id = slugify(label);
-            onAddCategory('sessionTypes', { id, label, color: CUSTOM_CATEGORY_COLORS[customCategories.sessionTypes.length % CUSTOM_CATEGORY_COLORS.length], icon: Tag });
-            set('type', id);
-          }} />
-        </FormField>
-
-        {form.type === 'avaliacao' && (
-          <div className="bg-elevated rounded-lg p-3 border border-hair">
-            <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-3">Resultados da Avaliação</div>
-            <AssessmentFields form={form} set={set} studentHeight={selectedStudent?.height} studentSex={selectedStudent?.sex} />
+            <button type="button" onClick={() => switchKind('aula')} className="px-3 py-2 rounded-lg border text-sm font-body font-medium" style={{ borderColor: !isEvento ? 'var(--brass)' : 'var(--border-hair)', backgroundColor: !isEvento ? 'rgba(30,166,180,0.12)' : 'var(--bg-base)', color: !isEvento ? 'var(--brass)' : 'var(--text-muted)' }}>
+              Aula
+            </button>
+            <button type="button" onClick={() => switchKind('evento')} className="px-3 py-2 rounded-lg border text-sm font-body font-medium" style={{ borderColor: isEvento ? 'var(--brass)' : 'var(--border-hair)', backgroundColor: isEvento ? 'rgba(30,166,180,0.12)' : 'var(--bg-base)', color: isEvento ? 'var(--brass)' : 'var(--text-muted)' }}>
+              Evento
+            </button>
           </div>
         )}
 
-        <FormField label="Status">
-          <div className="flex gap-2 flex-wrap">
-            {STATUS_OPTIONS.map((st) => {
-              const active = form.status === st.id;
-              return (
-                <button key={st.id} type="button" onClick={() => set('status', st.id)} className="px-3 py-1.5 rounded-full border text-xs font-body" style={{ borderColor: active ? st.color : 'var(--border-hair)', backgroundColor: active ? `${st.color}22` : 'transparent', color: active ? st.color : 'var(--text-muted)' }}>
-                  {st.label}
-                </button>
-              );
-            })}
-          </div>
-        </FormField>
-
-        {!isEdit && form.type === 'fixo' && (
-          <div className="bg-elevated rounded-lg p-3 border border-hair flex flex-col gap-2">
-            <label className="flex items-center gap-2 text-sm font-body text-primary">
-              <input type="checkbox" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} style={{ accentColor: 'var(--brass)' }} />
-              Repetir semanalmente (horário fixo)
-            </label>
-            {repeat && (
-              <FormField label="Por quantas semanas">
-                <input type="number" min="1" max="52" value={repeatWeeks} onChange={(e) => setRepeatWeeks(Math.max(1, parseInt(e.target.value, 10) || 1))} className="input-field" />
+        {!isEvento && students.length === 0 ? (
+          <EmptyState message="Cadastre um aluno antes de agendar uma aula. Você ainda pode adicionar um evento pessoal." />
+        ) : (
+          <>
+            {!isEvento && (
+              <FormField label="Aluno">
+                <select value={form.studentId} onChange={(e) => set('studentId', e.target.value)} className="input-field">
+                  {students.map((s) => <option key={s.id} value={s.id}>{s.name}{!s.active ? ' (inativo)' : ''}</option>)}
+                </select>
               </FormField>
             )}
-          </div>
-        )}
 
-        {form.type !== 'avaliacao' && (
-          <FormField label="Observações (opcional)">
-            <textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} className="input-field" rows={2} placeholder="Notas sobre a aula..." />
-          </FormField>
+            <FormField label="Data">
+              <input type="date" value={form.date} onChange={(e) => set('date', e.target.value)} className="input-field" />
+            </FormField>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Início">
+                <input type="time" value={form.startTime} onChange={(e) => set('startTime', e.target.value)} className="input-field" />
+              </FormField>
+              <FormField label="Fim">
+                <input type="time" value={form.endTime} onChange={(e) => set('endTime', e.target.value)} className="input-field" />
+              </FormField>
+            </div>
+
+            <FormField label="Categoria">
+              <div className="grid grid-cols-2 gap-2">
+                {(isEvento ? [...EVENT_TYPES, ...customCategories.eventTypes] : [...SESSION_TYPES, ...customCategories.sessionTypes]).map((t) => {
+                  const Icon = t.icon || Tag;
+                  const active = form.type === t.id;
+                  return (
+                    <button key={t.id} type="button" onClick={() => set('type', t.id)} className="flex items-center gap-2 px-3 py-2 rounded-lg border text-left" style={{ borderColor: active ? t.color : 'var(--border-hair)', backgroundColor: active ? `${t.color}22` : 'var(--bg-base)' }}>
+                      <Icon size={14} style={{ color: t.color, flexShrink: 0 }} />
+                      <span className="text-xs font-body text-primary">{t.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <AddCategoryInline placeholder={isEvento ? 'Ex: Estudo' : 'Ex: Aula em Grupo'} onAdd={(label) => {
+                const id = slugify(label);
+                if (isEvento) {
+                  onAddCategory('eventTypes', { id, label, color: CUSTOM_CATEGORY_COLORS[customCategories.eventTypes.length % CUSTOM_CATEGORY_COLORS.length], icon: Tag });
+                } else {
+                  onAddCategory('sessionTypes', { id, label, color: CUSTOM_CATEGORY_COLORS[customCategories.sessionTypes.length % CUSTOM_CATEGORY_COLORS.length], icon: Tag });
+                }
+                set('type', id);
+              }} />
+            </FormField>
+
+            {!isEvento && form.type === 'avaliacao' && (
+              <div className="bg-elevated rounded-lg p-3 border border-hair">
+                <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-3">Resultados da Avaliação</div>
+                <AssessmentFields form={form} set={set} studentHeight={selectedStudent?.height} studentSex={selectedStudent?.sex} />
+              </div>
+            )}
+
+            <FormField label="Status">
+              <div className="flex gap-2 flex-wrap">
+                {STATUS_OPTIONS.map((st) => {
+                  const active = form.status === st.id;
+                  return (
+                    <button key={st.id} type="button" onClick={() => set('status', st.id)} className="px-3 py-1.5 rounded-full border text-xs font-body" style={{ borderColor: active ? st.color : 'var(--border-hair)', backgroundColor: active ? `${st.color}22` : 'transparent', color: active ? st.color : 'var(--text-muted)' }}>
+                      {st.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </FormField>
+
+            {!isEdit && (isEvento || form.type === 'fixo') && (
+              <div className="bg-elevated rounded-lg p-3 border border-hair flex flex-col gap-2">
+                <label className="flex items-center gap-2 text-sm font-body text-primary">
+                  <input type="checkbox" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} style={{ accentColor: 'var(--brass)' }} />
+                  Repetir semanalmente
+                </label>
+                {repeat && (
+                  <FormField label="Por quantas semanas">
+                    <input type="number" min="1" max="52" value={repeatWeeks} onChange={(e) => setRepeatWeeks(Math.max(1, parseInt(e.target.value, 10) || 1))} className="input-field" />
+                  </FormField>
+                )}
+              </div>
+            )}
+
+            {(isEvento || form.type !== 'avaliacao') && (
+              <FormField label="Observações (opcional)">
+                <textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} className="input-field" rows={2} placeholder={isEvento ? 'Notas sobre o evento...' : 'Notas sobre a aula...'} />
+              </FormField>
+            )}
+          </>
         )}
 
         {error && <div className="text-sm font-body text-rust">{error}</div>}
@@ -2438,14 +2491,16 @@ function SessionFormModal({ session, students, defaultDate, customCategories, on
               <Trash2 size={15} className="inline mr-1.5" style={{ marginTop: '-2px' }} />Excluir
             </button>
           )}
-          <button onClick={handleSubmit} type="button" className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
-            Salvar Aula
-          </button>
+          {(isEvento || students.length > 0) && (
+            <button onClick={handleSubmit} type="button" className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
+              {isEvento ? 'Salvar Evento' : 'Salvar Aula'}
+            </button>
+          )}
         </div>
       </div>
 
       {confirmDelete && (
-        <ConfirmDialog title="Excluir aula" message="Tem certeza que deseja excluir esta aula da agenda?" onCancel={() => setConfirmDelete(false)} onConfirm={() => { onDelete(form.id); setConfirmDelete(false); }} />
+        <ConfirmDialog title={isEvento ? 'Excluir evento' : 'Excluir aula'} message={`Tem certeza que deseja excluir ${isEvento ? 'este evento' : 'esta aula'} da agenda?`} onCancel={() => setConfirmDelete(false)} onConfirm={() => { onDelete(form.id); setConfirmDelete(false); }} />
       )}
     </Modal>
   );
@@ -3186,6 +3241,7 @@ function AppInner() {
   }
 
   function saveSession(session, repeatWeeks) {
+    const isEvento = session.kind === 'evento';
     if (repeatWeeks && repeatWeeks > 1) {
       const seriesId = uid();
       const base = new Date(`${session.date}T00:00:00`);
@@ -3193,19 +3249,20 @@ function AppInner() {
         ...session, id: i === 0 ? session.id : uid(), date: fmtDateISO(addDays(base, i * 7)), seriesId,
       }));
       persistSessions([...sessions, ...newOnes]);
-      showToast(`${repeatWeeks} aulas agendadas.`);
+      showToast(isEvento ? `${repeatWeeks} eventos agendados.` : `${repeatWeeks} aulas agendadas.`);
     } else {
       const exists = sessions.some((s) => s.id === session.id);
       const next = exists ? sessions.map((s) => (s.id === session.id ? session : s)) : [...sessions, session];
       persistSessions(next);
-      showToast(exists ? 'Aula atualizada.' : 'Aula agendada.');
+      showToast(exists ? (isEvento ? 'Evento atualizado.' : 'Aula atualizada.') : (isEvento ? 'Evento agendado.' : 'Aula agendada.'));
     }
     setShowSessionModal(false);
   }
   function deleteSession(id) {
+    const isEvento = sessions.find((s) => s.id === id)?.kind === 'evento';
     persistSessions(sessions.filter((s) => s.id !== id));
     setShowSessionModal(false);
-    showToast('Aula removida.');
+    showToast(isEvento ? 'Evento removido.' : 'Aula removida.');
   }
   function quickStatus(session, status) {
     persistSessions(sessions.map((s) => (s.id === session.id ? { ...s, status } : s)));
@@ -3302,7 +3359,7 @@ function AppInner() {
       <main className="flex-1 pb-10">
         {view === 'dashboard' && <Dashboard students={students} sessions={sessions} finances={finances} customCategories={customCategories} setView={setView} onAddSession={openNewSession} onOpenSession={openEditSession} onQuickStatus={quickStatus} />}
         {view === 'weekly' && <WeeklyView sessions={sessions} students={students} weekStart={weekStart} setWeekStart={setWeekStart} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} customCategories={customCategories} />}
-        {view === 'monthly' && <MonthlyView sessions={sessions} students={students} monthCursor={monthCursor} setMonthCursor={setMonthCursor} onOpenDay={setDayDetailIso} />}
+        {view === 'monthly' && <MonthlyView sessions={sessions} students={students} monthCursor={monthCursor} setMonthCursor={setMonthCursor} onOpenDay={setDayDetailIso} customCategories={customCategories} />}
         {view === 'students' && <StudentsView students={students} sessions={sessions} onEdit={openEditStudent} onNew={openNewStudent} />}
         {view === 'assessments' && (
           <AssessmentsView students={students} sessions={sessions} photosById={photosById}

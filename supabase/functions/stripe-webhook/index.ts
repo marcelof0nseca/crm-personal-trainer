@@ -12,6 +12,12 @@ const planByPriceId = {
   [Deno.env.get('STRIPE_PRICE_YEARLY') || '']: { tier: 'anual', interval: 'Anual' },
 };
 
+const oneTimePlanDetails = {
+  mensal: { tier: 'mensal', interval: 'Mensal', value: 13.90, months: 1 },
+  trimestral: { tier: 'trimestral', interval: 'Trimestral', value: 39.90, months: 3 },
+  anual: { tier: 'anual', interval: 'Anual', value: 129.90, months: 12 },
+};
+
 Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') {
@@ -56,9 +62,44 @@ Deno.serve(async (req) => {
 });
 
 async function handleCheckoutSessionCompleted(session, stripeSecretKey, supabaseUrl, serviceRoleKey) {
+  if (session.mode === 'payment' && session.metadata?.payment_type === 'mb_way') {
+    await activateOneTimePlan(session, supabaseUrl, serviceRoleKey);
+    return;
+  }
   if (!session.subscription) return;
   const subscription = await stripeGet(`/v1/subscriptions/${session.subscription}`, stripeSecretKey);
   await syncSubscription(subscription, stripeSecretKey, supabaseUrl, serviceRoleKey);
+}
+
+async function activateOneTimePlan(session, supabaseUrl, serviceRoleKey) {
+  if (session.payment_status !== 'paid') return;
+
+  const userId = session.metadata?.user_id || session.client_reference_id;
+  if (!userId) return;
+
+  const planId = session.metadata?.plan_id;
+  const plan = oneTimePlanDetails[planId] || oneTimePlanDetails.mensal;
+  const periodStart = session.created ? new Date(session.created * 1000) : new Date();
+  const periodEnd = addMonths(periodStart, Number(session.metadata?.period_months) || plan.months);
+
+  const payload = {
+    user_id: userId,
+    plan_status: 'active',
+    plan_tier: plan.tier,
+    plan_value: Number(session.metadata?.plan_value) || plan.value,
+    billing_interval: `${plan.interval} via MB WAY`,
+    current_period_start: periodStart.toISOString(),
+    current_period_end: periodEnd.toISOString(),
+    cancel_at_period_end: false,
+    payment_method_brand: 'MB WAY',
+    payment_method_last4: null,
+    stripe_customer_id: asId(session.customer),
+    stripe_subscription_id: null,
+    last_payment_status: 'paid_mb_way',
+    updated_at: new Date().toISOString(),
+  };
+
+  await supabaseUpsertSubscription(payload, supabaseUrl, serviceRoleKey);
 }
 
 async function handleInvoice(invoice, eventType, stripeSecretKey, supabaseUrl, serviceRoleKey) {
@@ -166,6 +207,12 @@ function hex(buffer) {
 
 function toIso(value) {
   return value ? new Date(value * 1000).toISOString() : null;
+}
+
+function addMonths(date, months) {
+  const next = new Date(date);
+  next.setUTCMonth(next.getUTCMonth() + months);
+  return next;
 }
 
 function asId(value) {

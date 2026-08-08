@@ -403,14 +403,17 @@ async function readSubscriptionStatus() {
     .maybeSingle();
   if (error) throw error;
   const status = data?.plan_status || 'inactive';
+  const periodEnd = data?.current_period_end || null;
+  const expired = periodEnd ? new Date(periodEnd).getTime() < Date.now() : false;
+  const active = status === 'active' && !expired;
   return {
-    active: status === 'active',
-    status,
+    active,
+    status: expired && status === 'active' ? 'expired' : status,
     tier: data?.plan_tier || null,
     value: data?.plan_value ?? null,
     interval: data?.billing_interval || null,
     currentPeriodStart: data?.current_period_start || null,
-    currentPeriodEnd: data?.current_period_end || null,
+    currentPeriodEnd: periodEnd,
     cancelAtPeriodEnd: Boolean(data?.cancel_at_period_end),
     paymentMethodBrand: data?.payment_method_brand || null,
     paymentMethodLast4: data?.payment_method_last4 || null,
@@ -776,7 +779,7 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
       setCheckoutError('Configure o Supabase para ativar pagamentos.');
       return;
     }
-    setCheckoutPlan(planId);
+    setCheckoutPlan(`card:${planId}`);
     const { data, error } = await supabase.functions.invoke('create-checkout-session', {
       body: {
         planId,
@@ -787,6 +790,28 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
     setCheckoutPlan(null);
     if (error || !data?.url) {
       setCheckoutError(error?.message || 'Não foi possível iniciar o checkout. Verifique a função no Supabase.');
+      return;
+    }
+    window.location.href = data.url;
+  }
+
+  async function startMbwayCheckout(planId) {
+    setCheckoutError('');
+    if (!supabaseConfigured || !supabase) {
+      setCheckoutError('Configure o Supabase para ativar pagamentos.');
+      return;
+    }
+    setCheckoutPlan(`mbway:${planId}`);
+    const { data, error } = await supabase.functions.invoke('create-mbway-checkout-session', {
+      body: {
+        planId,
+        successUrl: `${window.location.origin}?checkout=success`,
+        cancelUrl: `${window.location.origin}?checkout=cancelled`,
+      },
+    });
+    setCheckoutPlan(null);
+    if (error || !data?.url) {
+      setCheckoutError(error?.message || 'Não foi possível iniciar o pagamento MB WAY. Verifique se o MB WAY está ativo na Stripe.');
       return;
     }
     window.location.href = data.url;
@@ -811,6 +836,9 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
           <p className="text-sm sm:text-base text-muted font-body max-w-2xl">
             Organize alunos, agenda, avaliações físicas, reposições e finanças em um só lugar. O pagamento é processado com segurança pela Stripe.
           </p>
+          <div className="text-xs text-muted font-body max-w-2xl">
+            Cartão mantém renovação automática. MB WAY libera o período escolhido como pagamento único, com renovação manual no vencimento.
+          </div>
         </section>
 
         {checkoutError && (
@@ -849,15 +877,27 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
                 <li>Avaliações físicas com fotos</li>
                 <li>Controle financeiro do personal</li>
               </ul>
-              <button
-                type="button"
-                onClick={() => startCheckout(plan.id)}
-                disabled={checkoutPlan === plan.id}
-                className="mt-auto px-4 py-2.5 rounded-lg text-sm font-body font-medium disabled:opacity-60"
-                style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}
-              >
-                {checkoutPlan === plan.id ? 'Abrindo checkout...' : 'Pagar com Stripe'}
-              </button>
+              <div className="mt-auto flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => startCheckout(plan.id)}
+                  disabled={checkoutPlan === `card:${plan.id}`}
+                  className="px-4 py-2.5 rounded-lg text-sm font-body font-medium disabled:opacity-60"
+                  style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}
+                >
+                  {checkoutPlan === `card:${plan.id}` ? 'Abrindo checkout...' : 'Pagar com cartão'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => startMbwayCheckout(plan.id)}
+                  disabled={checkoutPlan === `mbway:${plan.id}`}
+                  className="px-4 py-2.5 rounded-lg text-sm font-body font-medium border disabled:opacity-60"
+                  style={{ backgroundColor: 'rgba(214,83,74,0.14)', borderColor: 'var(--rust)', color: 'var(--rust)' }}
+                >
+                  {checkoutPlan === `mbway:${plan.id}` ? 'Abrindo MB WAY...' : 'Pagar com MB WAY'}
+                </button>
+                <div className="text-2xs text-faint font-body text-center">MB WAY não renova automaticamente.</div>
+              </div>
               {whatsappReady && (
                 <a href={SALES_WHATSAPP_URL} target="_blank" rel="noreferrer" className="text-center text-xs font-body link-sky">
                   Falar pelo WhatsApp
@@ -907,11 +947,12 @@ function daysUntil(value) {
   return Math.ceil((target.getTime() - today.getTime()) / 86400000);
 }
 
-function daysLeftLabel(value, cancelAtPeriodEnd) {
+function daysLeftLabel(value, cancelAtPeriodEnd, manualRenewal = false) {
   const days = daysUntil(value);
   if (days == null) return 'Sem vencimento';
   if (days < 0) return `Vencido há ${Math.abs(days)} dia(s)`;
   if (days === 0) return cancelAtPeriodEnd ? 'Cancela hoje' : 'Vence hoje';
+  if (manualRenewal) return `Vence em ${days} dia(s)`;
   return cancelAtPeriodEnd ? `Cancela em ${days} dia(s)` : `Renova em ${days} dia(s)`;
 }
 
@@ -934,11 +975,13 @@ function ProfileView({ user, subscription, onSignOut, onRefreshSubscription }) {
     ? currency(subscription.value)
     : currentPlan?.price || 'A definir';
   const billingInterval = subscription?.interval || currentPlan?.interval || 'Não definido';
-  const renewalLabel = daysLeftLabel(subscription?.currentPeriodEnd, subscription?.cancelAtPeriodEnd);
+  const isManualPayment = subscription?.paymentMethodBrand === 'MB WAY' || String(subscription?.interval || '').includes('MB WAY');
+  const renewalLabel = daysLeftLabel(subscription?.currentPeriodEnd, subscription?.cancelAtPeriodEnd, isManualPayment);
   const paymentLabel = paymentMethodLabel(subscription);
   const currentTierIndex = SALES_PLANS.findIndex((plan) => plan.id === subscription?.tier);
   const upgradePlans = SALES_PLANS.filter((_, index) => currentTierIndex < 0 || index > currentTierIndex);
   const hasWhatsApp = Boolean(SALES_WHATSAPP_URL);
+  const hasRecurringStripeSubscription = Boolean(subscription?.stripeSubscriptionId);
   const [portalBusy, setPortalBusy] = useState(false);
   const [portalError, setPortalError] = useState('');
 
@@ -1010,7 +1053,7 @@ function ProfileView({ user, subscription, onSignOut, onRefreshSubscription }) {
           <div className="grid grid-cols-2 gap-3">
             <StatCard label="Valor" value={planValue} icon={Wallet} accent="brass" />
             <StatCard label="Ciclo" value={billingInterval} icon={CalendarRange} accent="sky" />
-            <StatCard label={subscription?.cancelAtPeriodEnd ? 'Fim do acesso' : 'Próxima renovação'} value={renewalLabel} icon={CalendarDays} accent={subscription?.cancelAtPeriodEnd ? 'rust' : 'slate'} />
+            <StatCard label={isManualPayment ? 'Vencimento' : subscription?.cancelAtPeriodEnd ? 'Fim do acesso' : 'Próxima renovação'} value={renewalLabel} icon={CalendarDays} accent={subscription?.cancelAtPeriodEnd ? 'rust' : 'slate'} />
             <StatCard label="Pagamento" value={paymentLabel} icon={Wallet} accent="sky" />
           </div>
           {subscription?.cancelAtPeriodEnd && (
@@ -1060,19 +1103,23 @@ function ProfileView({ user, subscription, onSignOut, onRefreshSubscription }) {
       <div className="bg-surface border border-hair rounded-xl p-5 flex flex-col gap-4">
         <div>
           <h2 className="font-display text-lg font-semibold text-primary">Gerenciar plano</h2>
-          <p className="text-xs text-muted font-body mt-1">Atualize cartão, veja cobranças, altere plano ou cancele pelo portal seguro da Stripe.</p>
+          <p className="text-xs text-muted font-body mt-1">
+            {hasRecurringStripeSubscription
+              ? 'Atualize cartão, veja cobranças, altere plano ou cancele pelo portal seguro da Stripe.'
+              : 'Pagamentos MB WAY são únicos por período. Para renovar, alterar plano ou tirar dúvidas, fale com o suporte.'}
+          </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
           <button
             onClick={openCustomerPortal}
             type="button"
-            disabled={portalBusy || !subscription?.stripeCustomerId}
+            disabled={portalBusy || !hasRecurringStripeSubscription}
             className="px-4 py-2.5 rounded-lg text-sm font-body font-medium disabled:opacity-60"
             style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}
           >
             {portalBusy ? 'Abrindo portal...' : 'Gerenciar assinatura na Stripe'}
           </button>
-          {!subscription?.stripeCustomerId && <span className="text-xs text-faint font-body">Cliente Stripe ainda não vinculado.</span>}
+          {!hasRecurringStripeSubscription && <span className="text-xs text-faint font-body">Disponível apenas para assinatura automática por cartão.</span>}
         </div>
         {portalError && (
           <div className="border rounded-lg p-3 text-xs font-body" style={{ borderColor: 'var(--rust)', backgroundColor: 'rgba(214,83,74,0.10)', color: 'var(--rust)' }}>

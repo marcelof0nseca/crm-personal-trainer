@@ -860,6 +860,19 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
   );
 }
 
+async function edgeFunctionErrorMessage(error, fallback) {
+  if (!error) return fallback;
+  const context = error.context;
+  if (context && typeof context.json === 'function') {
+    try {
+      const response = typeof context.clone === 'function' ? context.clone() : context;
+      const body = await response.json();
+      if (body?.error) return body.error;
+    } catch (e) { /* corpo da resposta não era JSON */ }
+  }
+  return error.message || fallback;
+}
+
 function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
   const whatsappReady = Boolean(SALES_WHATSAPP_URL);
   const [checkoutPlan, setCheckoutPlan] = useState(null);
@@ -881,7 +894,7 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
     });
     setCheckoutPlan(null);
     if (error || !data?.url) {
-      setCheckoutError(error?.message || 'Não foi possível iniciar o checkout. Verifique a função no Supabase.');
+      setCheckoutError(await edgeFunctionErrorMessage(error, 'Não foi possível iniciar o checkout. Verifique a função no Supabase.'));
       return;
     }
     window.location.href = data.url;
@@ -903,7 +916,7 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
     });
     setCheckoutPlan(null);
     if (error || !data?.url) {
-      setCheckoutError(error?.message || 'Não foi possível iniciar o pagamento MB WAY. Verifique se o MB WAY está ativo na Stripe.');
+      setCheckoutError(await edgeFunctionErrorMessage(error, 'Não foi possível iniciar o pagamento MB WAY. Verifique se o MB WAY está ativo na Stripe.'));
       return;
     }
     window.location.href = data.url;
@@ -1089,7 +1102,7 @@ function ProfileView({ user, subscription, onSignOut, onRefreshSubscription }) {
     });
     setPortalBusy(false);
     if (error || !data?.url) {
-      setPortalError(error?.message || 'Não foi possível abrir o portal da Stripe.');
+      setPortalError(await edgeFunctionErrorMessage(error, 'Não foi possível abrir o portal da Stripe.'));
       return;
     }
     window.location.href = data.url;

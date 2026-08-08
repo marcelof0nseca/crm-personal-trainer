@@ -5,7 +5,7 @@ import {
   Sparkles, UserX, ChevronLeft, ChevronRight, Search, Wallet, Percent, Building2,
   Loader2, Settings, Check, Info, Activity, Ban, Download, Upload,
   Camera, ArrowLeft, LineChart as LineChartIcon, Tag,
-  Coffee, Dumbbell, UtensilsCrossed, Stethoscope,
+  Coffee, Dumbbell, UtensilsCrossed, Stethoscope, Gift, CreditCard, Mail, CircleUser,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
@@ -50,6 +50,18 @@ const STATUS_OPTIONS = [
   { id: 'cancelado', label: 'Cancelado', color: '#5C5C5C' },
 ];
 
+// Recharts recebe estilos como objetos JS, por isso não lê as variáveis CSS.
+// Manter aqui evita que os gráficos fiquem dessincronizados da paleta.
+const CHART = {
+  tooltip: {
+    background: '#1B1E24', border: '1px solid #363C45', borderRadius: 10,
+    color: '#F2F4F7', boxShadow: '0 6px 16px -6px rgba(0,0,0,0.6)', fontSize: 12,
+  },
+  legend: { fontSize: 11, color: '#A0A6B0' },
+  tick: { fill: '#7C838F', fontSize: 11 },
+  grid: '#262A31',
+};
+
 const STUDENT_COLORS = ['#5DA9E9', '#C77DFF', '#4EC5D4', '#EF88AD', '#7EC4CF', '#8FA6C2', '#A78BFA', '#7FB3B3', '#6FCF97', '#E8735A'];
 const PLAN_TYPES = ['1x por semana', '2x por semana', '3x por semana', '4x por semana', '5x por semana', 'Personalizado'];
 const ACCENT_HEX = { brass: '#1EA6B4', rust: '#D6534A', slate: '#8C8C8C', sky: '#5FC4D0' };
@@ -62,7 +74,7 @@ const EXPENSE_CATEGORIES = [
   { id: 'saude', label: 'Saúde', color: '#EF88AD' },
   { id: 'lazer', label: 'Lazer', color: '#C77DFF' },
   { id: 'educacao', label: 'Educação', color: '#4EC5D4' },
-  { id: 'assinaturas', label: 'Assinaturas', color: '#8FA6C2' },
+  { id: 'assinaturas', label: 'Subscrições', color: '#8FA6C2' },
   { id: 'impostos', label: 'Impostos Pessoais', color: '#D6534A' },
   { id: 'outros_gasto', label: 'Outros', color: '#7FB3B3' },
 ];
@@ -87,17 +99,34 @@ function slugify(label) {
 }
 const EMPTY_CUSTOM_CATEGORIES = { expense: [], income: [], planTypes: [], sessionTypes: [], eventTypes: [] };
 
-const SALES_WHATSAPP_URL = import.meta.env.VITE_SALES_WHATSAPP_URL || '';
+// Suporte é feito por e-mail. Enquanto VITE_SUPPORT_EMAIL não estiver definido,
+// os links de contacto simplesmente não aparecem (nada fica quebrado).
+const SUPPORT_EMAIL = (import.meta.env.VITE_SUPPORT_EMAIL || '').trim();
 const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY || '';
 const CREATOR_ACTIVE_PLAN_EMAILS = ['maf@cesar.school', 'bfpersonal@live.com'];
 const DEV_ACTIVE_PLAN_EMAILS = (import.meta.env.VITE_DEV_ACTIVE_PLAN_EMAILS || '')
   .split(',')
   .map((email) => email.trim().toLowerCase())
   .filter(Boolean);
+// paidMonths = meses efetivamente cobrados pela Stripe.
+// bonusMonths = meses oferecidos no primeiro período (ver stripe-webhook).
+// accessMonths = paidMonths + bonusMonths = tempo de acesso do primeiro pagamento.
 const SALES_PLANS = [
-  { id: 'mensal', name: 'Mensal', price: '€13,90', value: 13.90, interval: 'Mensal', note: 'Cobrança mensal recorrente', highlight: false },
-  { id: 'trimestral', name: 'Trimestral', price: '€39,90', value: 39.90, interval: 'Trimestral', note: 'Cobrança a cada 3 meses', highlight: true },
-  { id: 'anual', name: 'Anual', price: '€129,90', value: 129.90, interval: 'Anual', note: 'Cobrança anual recorrente', highlight: false },
+  {
+    id: 'mensal', name: 'Mensal', price: '€13,90', value: 13.90, interval: 'Mensal',
+    note: 'Renovação a cada mês', paidMonths: 1, bonusMonths: 0, accessMonths: 1,
+    bonusLabel: '', perMonth: '€13,90/mês', highlight: false,
+  },
+  {
+    id: 'trimestral', name: 'Trimestral', price: '€39,90', value: 39.90, interval: 'Trimestral',
+    note: '3 meses pagos + 1 grátis', paidMonths: 3, bonusMonths: 1, accessMonths: 4,
+    bonusLabel: '+1 mês grátis', perMonth: '€9,98/mês', highlight: true,
+  },
+  {
+    id: 'anual', name: 'Anual', price: '€129,90', value: 129.90, interval: 'Anual',
+    note: '12 meses pagos + 2 grátis', paidMonths: 12, bonusMonths: 2, accessMonths: 14,
+    bonusLabel: '+2 meses grátis', perMonth: '€9,28/mês', highlight: false,
+  },
 ];
 
 // Todos os pontos de dobra cutânea possíveis, usados por um ou mais protocolos abaixo.
@@ -318,7 +347,7 @@ function downloadBackup(students, sessions, finances, photos, customCategories) 
 function resizePhoto(file, maxDim, quality) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Falha ao ler o arquivo.'));
+    reader.onerror = () => reject(new Error('Falha ao ler o ficheiro.'));
     reader.onload = (e) => {
       const img = new Image();
       img.onerror = () => reject(new Error('Falha ao carregar a imagem.'));
@@ -371,7 +400,7 @@ async function readStoredValue(key) {
 async function writeStoredValue(key, value) {
   if (supabaseConfigured && supabase) {
     const userId = await currentSupabaseUserId();
-    if (!userId) throw new Error('Usuário não autenticado.');
+    if (!userId) throw new Error('Utilizador não autenticado.');
     const parsedValue = JSON.parse(value);
     const { error } = await supabase
       .from('app_data')
@@ -447,17 +476,33 @@ function GlobalStyles() {
     <style>{`
       :root {
         color-scheme: dark;
-        --bg-base: #0A0A0A;
-        --bg-surface: #151515;
-        --bg-elevated: #1F1F1F;
-        --border-hair: #333333;
-        --text-primary: #F5F5F5;
-        --text-muted: #999999;
-        --text-faint: #636363;
+        /* Superfícies em camadas: base < surface < elevated. */
+        --bg-base: #0A0B0D;
+        --bg-surface: #131519;
+        --bg-elevated: #1B1E24;
+        --bg-inset: #0D0F12;
+        --border-hair: #262A31;
+        --border-strong: #363C45;
+        /* text-faint sobe de #636363 (3.1:1, reprovava) para 4.9:1. */
+        --text-primary: #F2F4F7;
+        --text-muted: #A0A6B0;
+        --text-faint: #7C838F;
+        --on-accent: #05181C;
         --brass: #1EA6B4;
+        --brass-soft: rgba(30, 166, 180, 0.13);
         --rust: #D6534A;
+        --rust-soft: rgba(214, 83, 74, 0.13);
+        /* Dourado reservado a ofertas/recompensas. Vermelho lê-se como alerta e
+           trabalha contra a vontade de comprar; este destaca-se do turquesa. */
+        --gold: #F5B44C;
+        --gold-soft: rgba(245, 180, 76, 0.14);
         --slate-acc: #8C8C8C;
         --sky: #5FC4D0;
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+        --shadow-md: 0 6px 16px -6px rgba(0, 0, 0, 0.6);
+        --shadow-lg: 0 20px 48px -16px rgba(0, 0, 0, 0.72);
+        --dur: 160ms;
+        --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
       }
 
       * { box-sizing: border-box; }
@@ -498,27 +543,65 @@ function GlobalStyles() {
       .text-slate-acc { color: var(--slate-acc); }
       .text-sky { color: var(--sky); }
 
-      .card-hover { transition: filter 0.15s ease; }
-      .card-hover:hover { filter: brightness(1.15); }
-      .btn-surface { transition: background-color 0.15s ease; }
-      .btn-surface:hover { background-color: var(--bg-elevated); }
-      .link-sky { color: var(--brass); transition: opacity 0.15s ease; background: none; border: none; cursor: pointer; padding: 0; }
+      .bg-inset { background-color: var(--bg-inset); }
+      .border-strong { border-color: var(--border-strong); }
+      .shadow-card { box-shadow: var(--shadow-sm); }
+      .shadow-float { box-shadow: var(--shadow-md); }
+
+      /* Cartão de superfície: um único nível de elevação, sem cartão dentro de cartão. */
+      .card {
+        background-color: var(--bg-surface);
+        border: 1px solid var(--border-hair);
+        border-radius: 12px;
+        box-shadow: var(--shadow-sm);
+      }
+      .card-hover { transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease), transform var(--dur) var(--ease); }
+      .card-hover:hover { border-color: var(--border-strong); background-color: var(--bg-elevated); }
+      .card-hover:active { transform: scale(0.995); }
+
+      .btn-surface { transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease); }
+      .btn-surface:hover { background-color: var(--bg-elevated); border-color: var(--border-strong); }
+      .link-sky { color: var(--brass); transition: opacity var(--dur) var(--ease); background: none; border: none; cursor: pointer; padding: 0; }
       .link-sky:hover { opacity: 0.75; text-decoration: underline; }
+
+      /* Vocabulário de botões partilhado por todos os ecrãs. */
+      .btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+        border-radius: 9px; font-size: 14px; font-weight: 500; line-height: 1;
+        padding: 10px 14px; border: 1px solid transparent; cursor: pointer;
+        font-family: inherit; white-space: nowrap;
+        transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease), opacity var(--dur) var(--ease);
+      }
+      .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+      .btn-primary { background-color: var(--brass); color: var(--on-accent); font-weight: 600; }
+      .btn-primary:hover:not(:disabled) { background-color: #23BCCC; }
+      .btn-ghost { background-color: transparent; border-color: var(--border-hair); color: var(--text-muted); }
+      .btn-ghost:hover:not(:disabled) { background-color: var(--bg-elevated); border-color: var(--border-strong); color: var(--text-primary); }
+      .btn-danger { background-color: var(--rust-soft); border-color: var(--rust); color: var(--rust); }
+      .btn-danger:hover:not(:disabled) { background-color: rgba(214, 83, 74, 0.22); }
+
+      .badge {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 3px 8px; border-radius: 999px;
+        font-size: 0.6875rem; line-height: 1.1; font-weight: 500; white-space: nowrap;
+      }
 
       .input-field {
         width: 100%;
-        background-color: var(--bg-base);
+        background-color: var(--bg-inset);
         border: 1px solid var(--border-hair);
-        border-radius: 8px;
-        padding: 9px 12px;
+        border-radius: 9px;
+        padding: 10px 12px;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         font-size: 14px;
         color: var(--text-primary);
         outline: none;
-        transition: border-color 0.15s ease;
+        transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
       }
-      .input-field:focus { border-color: var(--brass); }
+      .input-field:hover:not(:focus) { border-color: var(--border-strong); }
+      .input-field:focus { border-color: var(--brass); box-shadow: 0 0 0 3px var(--brass-soft); }
       .input-field::placeholder { color: var(--text-faint); }
+      select.input-field { cursor: pointer; }
 
       button, a, input, select, textarea { min-width: 0; }
       button, a { touch-action: manipulation; }
@@ -530,7 +613,9 @@ function GlobalStyles() {
 
       ::-webkit-scrollbar { height: 8px; width: 8px; }
       ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: var(--border-hair); border-radius: 4px; }
+      ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #454C57; }
+      ::selection { background: var(--brass-soft); color: var(--text-primary); }
 
       @keyframes fadeSlideIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
       .animate-in { animation: fadeSlideIn 0.2s ease-out; }
@@ -545,10 +630,15 @@ function GlobalStyles() {
       input[type="color"]::-webkit-color-swatch { border: 2px solid var(--border-hair); border-radius: 999px; }
 
       @media (max-width: 640px) {
+        /* 16px evita o zoom automático do iOS ao focar um campo. */
         .input-field { font-size: 16px; }
-        .grid.grid-cols-2,
+        /* Espaço para a barra de navegação fixa no fundo (56px + safe-area). */
+        .pb-nav { padding-bottom: calc(56px + 20px + env(safe-area-inset-bottom)); }
+        .toast-pos { bottom: calc(56px + 16px + env(safe-area-inset-bottom)); }
+        /* Grelhas de 3 colunas caem para 2 (não para 1): mantém a leitura
+           comparativa dos números sem os empilhar numa coluna interminável. */
         .grid.grid-cols-3 {
-          grid-template-columns: minmax(0, 1fr) !important;
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
         }
         .max-w-6xl,
         .max-w-5xl,
@@ -641,16 +731,34 @@ function FormField({ label, children }) {
 }
 
 function Modal({ title, onClose, children, onBack }) {
+  // Esc fecha o modal — teclado deve conseguir sair sem rato.
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 flex items-end sm:items-center justify-center animate-in px-0 sm:px-4" style={{ backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 40 }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="bg-surface border border-hair rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md overflow-y-auto" style={{ maxHeight: 'min(92dvh, 760px)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-hair sticky top-0 bg-surface">
+    <div
+      className="fixed inset-0 flex items-end sm:items-center justify-center animate-in px-0 sm:px-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(3px)', zIndex: 40 }}
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="border border-hair rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md overflow-y-auto"
+        style={{ backgroundColor: 'var(--bg-surface)', maxHeight: 'min(92dvh, 760px)', paddingBottom: 'env(safe-area-inset-bottom)', boxShadow: 'var(--shadow-lg)' }}
+      >
+        <div className="flex items-center justify-between gap-2 px-5 py-4 border-b border-hair sticky top-0" style={{ backgroundColor: 'var(--bg-surface)', zIndex: 1 }}>
           <div className="flex items-center gap-2 min-w-0">
-            {onBack && <button onClick={onBack} type="button" className="p-1 rounded-lg btn-surface" aria-label="Voltar"><ArrowLeft size={16} className="text-muted" /></button>}
-            <h2 className="font-display font-medium text-lg text-primary truncate">{title}</h2>
+            {onBack && <button onClick={onBack} type="button" className="p-1.5 rounded-lg btn-surface flex-shrink-0" aria-label="Voltar"><ArrowLeft size={16} className="text-muted" style={{ display: 'block' }} /></button>}
+            <h2 className="font-display font-semibold text-lg text-primary truncate">{title}</h2>
           </div>
-          <button onClick={onClose} type="button" className="p-1.5 rounded-lg btn-surface" aria-label="Fechar">
-            <X size={18} className="text-muted" />
+          <button onClick={onClose} type="button" className="p-1.5 rounded-lg btn-surface flex-shrink-0" aria-label="Fechar">
+            <X size={18} className="text-muted" style={{ display: 'block' }} />
           </button>
         </div>
         <div className="p-5">{children}</div>
@@ -660,14 +768,20 @@ function Modal({ title, onClose, children, onBack }) {
 }
 
 function ConfirmDialog({ title, message, onConfirm, onCancel }) {
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onCancel(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+
   return (
-    <div className="fixed inset-0 flex items-center justify-center px-4 animate-in" style={{ backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 50 }} onClick={onCancel}>
-      <div onClick={(e) => e.stopPropagation()} className="bg-surface border border-hair rounded-2xl w-full max-w-sm p-5">
-        <h3 className="font-display font-medium text-base text-primary mb-2">{title}</h3>
+    <div className="fixed inset-0 flex items-center justify-center px-4 animate-in" style={{ backgroundColor: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(3px)', zIndex: 50 }} onClick={onCancel} role="alertdialog" aria-modal="true" aria-label={title}>
+      <div onClick={(e) => e.stopPropagation()} className="border border-hair rounded-2xl w-full max-w-sm p-5" style={{ backgroundColor: 'var(--bg-surface)', boxShadow: 'var(--shadow-lg)' }}>
+        <h3 className="font-display font-semibold text-base text-primary mb-2">{title}</h3>
         <p className="text-sm text-muted font-body mb-5">{message}</p>
-        <div className="flex gap-2 justify-end">
-          <button onClick={onCancel} type="button" className="px-4 py-2 rounded-lg text-sm font-body text-muted border border-hair btn-surface">Cancelar</button>
-          <button onClick={onConfirm} type="button" className="px-4 py-2 rounded-lg text-sm font-body" style={{ backgroundColor: 'var(--rust)', color: '#0A0A0A' }}>Excluir</button>
+        <div className="flex gap-2 justify-end mobile-stack">
+          <button onClick={onCancel} type="button" className="btn btn-ghost">Cancelar</button>
+          <button onClick={onConfirm} type="button" className="btn" style={{ backgroundColor: 'var(--rust)', color: 'var(--on-accent)', fontWeight: 600 }}>Eliminar</button>
         </div>
       </div>
     </div>
@@ -678,20 +792,23 @@ function Toast({ toast }) {
   if (!toast) return null;
   const isError = toast.type === 'error';
   return (
-    <div className="fixed bottom-5 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-lg border font-body text-sm flex items-center gap-2 animate-in" style={{ backgroundColor: 'var(--bg-elevated)', borderColor: isError ? 'var(--rust)' : 'var(--brass)', color: 'var(--text-primary)', zIndex: 60, maxWidth: '90vw' }}>
+    <div className="fixed bottom-5 toast-pos left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-lg border font-body text-sm flex items-center gap-2 animate-in" role="status" style={{ backgroundColor: 'var(--bg-elevated)', borderColor: isError ? 'var(--rust)' : 'var(--brass)', color: 'var(--text-primary)', zIndex: 60, maxWidth: '90vw', boxShadow: 'var(--shadow-lg)' }}>
       {isError ? <AlertTriangle size={15} className="text-rust" style={{flexShrink:0}} /> : <CheckCircle2 size={15} className="text-brass" style={{flexShrink:0}} />}
       <span className="truncate">{toast.msg}</span>
     </div>
   );
 }
 
-function EmptyState({ message, cta, onCta, icon: Icon = Info }) {
+function EmptyState({ message, cta, onCta, icon: Icon = Info, hint }) {
   return (
-    <div className="flex flex-col items-center justify-center text-center py-10 px-4">
-      <Icon size={26} className="text-faint mb-3" />
-      <p className="text-sm text-muted font-body max-w-xs">{message}</p>
+    <div className="flex flex-col items-center justify-center text-center py-12 px-4">
+      <span className="rounded-xl p-3 mb-3.5" style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-hair)' }}>
+        <Icon size={22} className="text-faint" style={{ display: 'block' }} />
+      </span>
+      <p className="text-sm text-primary font-body max-w-xs font-medium">{message}</p>
+      {hint && <p className="text-xs text-faint font-body max-w-sm mt-1.5">{hint}</p>}
       {cta && (
-        <button onClick={onCta} type="button" className="mt-4 px-4 py-2 rounded-lg text-sm font-body border border-hair" style={{ backgroundColor: 'rgba(30,166,180,0.12)', color: 'var(--brass)' }}>
+        <button onClick={onCta} type="button" className="btn mt-4" style={{ backgroundColor: 'var(--brass-soft)', borderColor: 'var(--brass)', color: 'var(--brass)' }}>
           {cta}
         </button>
       )}
@@ -704,7 +821,7 @@ function LoadingScreen() {
     <div className="min-h-screen bg-base flex flex-col items-center justify-center gap-4">
       <img src={LOGO_SRC} alt="PTMANAGER" style={{ width: 64, height: 64 }} />
       <Loader2 size={24} className="text-brass spin" />
-      <span className="font-body text-sm text-muted">Carregando...</span>
+      <span className="font-body text-sm text-muted">A carregar...</span>
     </div>
   );
 }
@@ -784,7 +901,7 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
       return;
     }
     if (!email || !password) {
-      setMessage('Digite e-mail e senha.');
+      setMessage('Introduza o e-mail e a palavra-passe.');
       return;
     }
     if (mode === 'signin') {
@@ -796,7 +913,7 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
       }
     }
     if (TURNSTILE_SITE_KEY && !captchaToken) {
-      setMessage('Confirme que você não é um robô.');
+      setMessage('Confirme que não é um robô.');
       return;
     }
     setBusy(true);
@@ -845,12 +962,12 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
         </div>
         <div>
           <h1 className="font-display text-lg font-semibold text-primary">{mode === 'signup' ? 'Criar acesso' : 'Entrar no painel'}</h1>
-          <p className="text-xs font-body text-muted mt-1">Entre para acessar seu CRM de alunos, agenda, avaliações e finanças.</p>
+          <p className="text-xs font-body text-muted mt-1">Inicie sessão para aceder ao seu CRM de alunos, agenda, avaliações e finanças.</p>
         </div>
         <FormField label="E-mail">
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="input-field" placeholder="voce@email.com" />
         </FormField>
-        <FormField label="Senha">
+        <FormField label="Palavra-passe">
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="input-field" placeholder="Mínimo 6 caracteres" />
         </FormField>
         {TURNSTILE_SITE_KEY && !isLocked && (
@@ -886,7 +1003,7 @@ async function edgeFunctionErrorMessage(error, fallback) {
 }
 
 function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
-  const whatsappReady = Boolean(SALES_WHATSAPP_URL);
+  const supportReady = Boolean(SUPPORT_EMAIL);
   const [checkoutPlan, setCheckoutPlan] = useState(null);
   const [checkoutError, setCheckoutError] = useState('');
 
@@ -967,13 +1084,13 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
         {checkoutReturn?.status === 'success' && (
           <div className="border rounded-xl p-4 text-sm font-body flex items-center gap-2" style={{ borderColor: 'var(--brass)', backgroundColor: 'rgba(30,166,180,0.10)', color: 'var(--text-primary)' }}>
             <Loader2 size={15} className="text-brass spin" />
-            <span>{checkoutReturn.message || 'Pagamento recebido. Verificando assinatura...'}</span>
+            <span>{checkoutReturn.message || 'Pagamento recebido. A verificar subscrição...'}</span>
           </div>
         )}
 
         {checkoutReturn?.status === 'cancelled' && (
           <div className="border rounded-xl p-4 text-sm font-body" style={{ borderColor: 'var(--border-hair)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-muted)' }}>
-            Checkout cancelado. Você pode escolher um plano quando quiser.
+            Pagamento cancelado. Pode escolher um plano quando quiser.
           </div>
         )}
 
@@ -985,14 +1102,23 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
                 {plan.highlight && <span className="text-2xs uppercase tracking-wide font-mono px-2 py-1 rounded-full" style={{ backgroundColor: 'rgba(30,166,180,0.16)', color: 'var(--brass)' }}>Mais escolhido</span>}
               </div>
               <div>
-                <div className="font-mono text-3xl font-semibold text-primary">{plan.price}</div>
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <span className="font-mono text-3xl font-semibold text-primary">{plan.price}</span>
+                  {plan.bonusMonths > 0 && <span className="font-mono text-xs text-faint">≈ {plan.perMonth}</span>}
+                </div>
                 <div className="text-xs text-faint font-body mt-1">{plan.note}</div>
               </div>
+              {plan.bonusLabel && (
+                <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)' }}>
+                  <Gift size={14} style={{ flexShrink: 0 }} />
+                  <span className="text-xs font-body font-semibold">{plan.bonusLabel}</span>
+                </div>
+              )}
               <ul className="text-sm text-muted font-body flex flex-col gap-2">
                 <li>Gestão completa de alunos e planos</li>
                 <li>Agenda semanal e mensal</li>
                 <li>Avaliações físicas com fotos</li>
-                <li>Controle financeiro do personal</li>
+                <li>Controlo financeiro do personal trainer</li>
               </ul>
               <div className="mt-auto flex flex-col gap-2">
                 <button
@@ -1002,7 +1128,7 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
                   className="px-4 py-2.5 rounded-lg text-sm font-body font-medium disabled:opacity-60"
                   style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}
                 >
-                  {checkoutPlan === `card:${plan.id}` ? 'Abrindo checkout...' : 'Pagar com cartão'}
+                  {checkoutPlan === `card:${plan.id}` ? 'A abrir checkout...' : 'Pagar com cartão'}
                 </button>
                 <button
                   type="button"
@@ -1011,13 +1137,13 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
                   className="px-4 py-2.5 rounded-lg text-sm font-body font-medium border disabled:opacity-60"
                   style={{ backgroundColor: 'rgba(214,83,74,0.14)', borderColor: 'var(--rust)', color: 'var(--rust)' }}
                 >
-                  {checkoutPlan === `mbway:${plan.id}` ? 'Abrindo MB WAY...' : 'Pagar com MB WAY'}
+                  {checkoutPlan === `mbway:${plan.id}` ? 'A abrir MB WAY...' : 'Pagar com MB WAY'}
                 </button>
                 <div className="text-2xs text-faint font-body text-center">MB WAY não renova automaticamente.</div>
               </div>
-              {whatsappReady && (
-                <a href={SALES_WHATSAPP_URL} target="_blank" rel="noreferrer" className="text-center text-xs font-body link-sky">
-                  Falar pelo WhatsApp
+              {supportReady && (
+                <a href={supportMailtoHref(`Dúvida sobre o plano ${plan.name} do PTMANAGER`)} className="text-center text-xs font-body link-sky">
+                  Falar com o suporte
                 </a>
               )}
             </div>
@@ -1029,7 +1155,7 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
             <div className="text-sm font-body font-medium text-primary">Já contrataram seu plano?</div>
             <div className="text-xs text-muted font-body">Atualize após a ativação no Supabase para entrar no painel.</div>
           </div>
-          <button onClick={onRefresh} type="button" className="px-3.5 py-2 rounded-lg text-xs font-body border border-hair btn-surface text-muted">Verificar assinatura</button>
+          <button onClick={onRefresh} type="button" className="px-3.5 py-2 rounded-lg text-xs font-body border border-hair btn-surface text-muted">Verificar subscrição</button>
         </div>
       </main>
       <DeveloperCredit />
@@ -1079,10 +1205,9 @@ function paymentMethodLabel(subscription) {
   return subscription.paymentMethodLast4 ? `${brand} •••• ${subscription.paymentMethodLast4}` : brand;
 }
 
-function whatsappHref(message) {
-  if (!SALES_WHATSAPP_URL) return '';
-  const separator = SALES_WHATSAPP_URL.includes('?') ? '&' : '?';
-  return `${SALES_WHATSAPP_URL}${separator}text=${encodeURIComponent(message)}`;
+function supportMailtoHref(subject) {
+  if (!SUPPORT_EMAIL) return '';
+  return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}`;
 }
 
 function ProfileView({ user, subscription, onSignOut, onRefreshSubscription }) {
@@ -1097,7 +1222,7 @@ function ProfileView({ user, subscription, onSignOut, onRefreshSubscription }) {
   const paymentLabel = paymentMethodLabel(subscription);
   const currentTierIndex = SALES_PLANS.findIndex((plan) => plan.id === subscription?.tier);
   const upgradePlans = SALES_PLANS.filter((_, index) => currentTierIndex < 0 || index > currentTierIndex);
-  const hasWhatsApp = Boolean(SALES_WHATSAPP_URL);
+  const hasSupportEmail = Boolean(SUPPORT_EMAIL);
   const hasRecurringStripeSubscription = Boolean(subscription?.stripeSubscriptionId);
   const [portalBusy, setPortalBusy] = useState(false);
   const [portalError, setPortalError] = useState('');
@@ -1124,7 +1249,7 @@ function ProfileView({ user, subscription, onSignOut, onRefreshSubscription }) {
     <div className="px-4 py-4 max-w-5xl mx-auto flex flex-col gap-5">
       <div>
         <h1 className="font-display font-semibold text-2xl text-primary tracking-wide">Perfil</h1>
-        <p className="text-sm text-muted font-body mt-1">Dados da sua conta e informações do plano assinado.</p>
+        <p className="text-sm text-muted font-body mt-1">Dados da sua conta e informações do plano subscrito.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1133,12 +1258,12 @@ function ProfileView({ user, subscription, onSignOut, onRefreshSubscription }) {
             <img src={LOGO_SRC} alt="PTMANAGER" style={{ width: 42, height: 42, flexShrink: 0 }} />
             <div className="min-w-0">
               <div className="text-2xs uppercase tracking-wide text-faint font-mono">Conta</div>
-              <div className="font-body text-base text-primary truncate">{user?.email || 'Usuário local'}</div>
+              <div className="font-body text-base text-primary truncate">{user?.email || 'Utilizador local'}</div>
             </div>
           </div>
           <div className="grid grid-cols-1 gap-2 text-sm font-body">
             <div className="flex justify-between gap-3 border-t border-hair pt-3">
-              <span className="text-muted">ID do usuário</span>
+              <span className="text-muted">ID do utilizador</span>
               <span className="text-faint font-mono text-xs truncate max-w-52">{user?.id || 'local'}</span>
             </div>
             <div className="flex justify-between gap-3">
@@ -1167,12 +1292,33 @@ function ProfileView({ user, subscription, onSignOut, onRefreshSubscription }) {
               {subscriptionStatusLabel(subscription?.status)}
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <StatCard label="Valor" value={planValue} icon={Wallet} accent="brass" />
-            <StatCard label="Ciclo" value={billingInterval} icon={CalendarRange} accent="sky" />
-            <StatCard label={isManualPayment ? 'Vencimento' : subscription?.cancelAtPeriodEnd ? 'Fim do acesso' : 'Próxima renovação'} value={renewalLabel} icon={CalendarDays} accent={subscription?.cancelAtPeriodEnd ? 'rust' : 'slate'} />
-            <StatCard label="Pagamento" value={paymentLabel} icon={Wallet} accent="sky" />
-          </div>
+          {/* Linhas simples em vez de StatCards: evita cartão dentro de cartão. */}
+          <dl className="flex flex-col text-sm font-body border-t border-hair">
+            {[
+              { icon: Wallet, label: 'Valor', value: planValue, strong: true },
+              { icon: CalendarRange, label: 'Ciclo', value: billingInterval },
+              {
+                icon: CalendarDays,
+                label: isManualPayment ? 'Vencimento' : subscription?.cancelAtPeriodEnd ? 'Fim do acesso' : 'Próxima renovação',
+                value: renewalLabel,
+                tone: subscription?.cancelAtPeriodEnd ? 'var(--rust)' : undefined,
+              },
+              { icon: CreditCard, label: 'Pagamento', value: paymentLabel },
+            ].map((row) => (
+              <div key={row.label} className="flex items-center justify-between gap-3 py-2.5 border-b border-hair">
+                <span className="flex items-center gap-2 text-muted min-w-0">
+                  <row.icon size={14} className="text-faint flex-shrink-0" />
+                  <span className="truncate">{row.label}</span>
+                </span>
+                <span
+                  className={`text-right flex-shrink-0 ${row.strong ? 'font-mono font-semibold' : ''}`}
+                  style={{ color: row.tone || 'var(--text-primary)' }}
+                >
+                  {row.value}
+                </span>
+              </div>
+            ))}
+          </dl>
           {subscription?.cancelAtPeriodEnd && (
             <div className="text-xs font-body px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(214,83,74,0.12)', color: 'var(--rust)' }}>
               Cancelamento agendado. O acesso permanece até {fmtDateLong(subscription.currentPeriodEnd)}.
@@ -1186,40 +1332,37 @@ function ProfileView({ user, subscription, onSignOut, onRefreshSubscription }) {
 
       <div className="bg-surface border border-hair rounded-xl p-5 flex flex-col gap-4">
         <div>
-          <h2 className="font-display text-lg font-semibold text-primary">Cobrança e assinatura</h2>
+          <h2 className="font-display text-lg font-semibold text-primary">Faturação e subscrição</h2>
           <p className="text-xs text-muted font-body mt-1">Resumo operacional para suporte, cobrança e conciliação.</p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm font-body">
-          <div className="border border-hair rounded-lg p-3">
-            <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-1">Início do ciclo</div>
-            <div className="text-primary">{fmtDateLong(subscription?.currentPeriodStart)}</div>
-          </div>
-          <div className="border border-hair rounded-lg p-3">
-            <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-1">Vencimento</div>
-            <div className="text-primary">{fmtDateLong(subscription?.currentPeriodEnd)}</div>
-          </div>
-          <div className="border border-hair rounded-lg p-3">
-            <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-1">Último pagamento</div>
-            <div className="text-primary">{subscription?.lastPaymentStatus || 'Não informado'}</div>
-          </div>
-          <div className="border border-hair rounded-lg p-3">
-            <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-1">Última atualização</div>
-            <div className="text-primary">{fmtDateLong(subscription?.updatedAt)}</div>
-          </div>
-          <div className="border border-hair rounded-lg p-3 sm:col-span-2">
-            <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-1">Cliente Stripe</div>
-            <div className="text-faint font-mono text-xs break-all">{subscription?.stripeCustomerId || 'Ainda não vinculado'}</div>
-          </div>
-          <div className="border border-hair rounded-lg p-3 sm:col-span-2">
-            <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-1">Assinatura Stripe</div>
-            <div className="text-faint font-mono text-xs break-all">{subscription?.stripeSubscriptionId || 'Ainda não vinculada'}</div>
-          </div>
+        {/* Grelha achatada, sem caixas próprias: só divisórias entre os campos. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 text-sm font-body border-t border-hair">
+          {[
+            { label: 'Início do ciclo', value: fmtDateLong(subscription?.currentPeriodStart) },
+            { label: 'Vencimento', value: fmtDateLong(subscription?.currentPeriodEnd) },
+            { label: 'Último pagamento', value: subscription?.lastPaymentStatus || 'Não informado' },
+            { label: 'Última atualização', value: fmtDateLong(subscription?.updatedAt) },
+          ].map((f) => (
+            <div key={f.label} className="py-3 pr-4 border-b border-hair min-w-0">
+              <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-1">{f.label}</div>
+              <div className="text-primary truncate" title={String(f.value)}>{f.value}</div>
+            </div>
+          ))}
+          {[
+            { label: 'Cliente Stripe', value: subscription?.stripeCustomerId || 'Ainda não vinculado' },
+            { label: 'Subscrição Stripe', value: subscription?.stripeSubscriptionId || 'Ainda não vinculada' },
+          ].map((f) => (
+            <div key={f.label} className="py-3 pr-4 border-b border-hair sm:col-span-2 min-w-0">
+              <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-1">{f.label}</div>
+              <div className="text-faint font-mono text-xs break-all">{f.value}</div>
+            </div>
+          ))}
         </div>
       </div>
 
       <div className="bg-surface border border-hair rounded-xl p-5 flex flex-col gap-4">
         <div>
-          <h2 className="font-display text-lg font-semibold text-primary">Gerenciar plano</h2>
+          <h2 className="font-display text-lg font-semibold text-primary">Gerir plano</h2>
           <p className="text-xs text-muted font-body mt-1">
             {hasRecurringStripeSubscription
               ? 'Atualize cartão, veja cobranças, altere plano ou cancele pelo portal seguro da Stripe.'
@@ -1234,36 +1377,39 @@ function ProfileView({ user, subscription, onSignOut, onRefreshSubscription }) {
             className="px-4 py-2.5 rounded-lg text-sm font-body font-medium disabled:opacity-60"
             style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}
           >
-            {portalBusy ? 'Abrindo portal...' : 'Gerenciar assinatura na Stripe'}
+            {portalBusy ? 'A abrir portal...' : 'Gerir subscrição na Stripe'}
           </button>
-          {!hasRecurringStripeSubscription && <span className="text-xs text-faint font-body">Disponível apenas para assinatura automática por cartão.</span>}
+          {!hasRecurringStripeSubscription && <span className="text-xs text-faint font-body">Disponível apenas para subscrição automática por cartão.</span>}
         </div>
         {portalError && (
           <div className="border rounded-lg p-3 text-xs font-body" style={{ borderColor: 'var(--rust)', backgroundColor: 'rgba(214,83,74,0.10)', color: 'var(--rust)' }}>
             {portalError}
           </div>
         )}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {/* Lista achatada com divisórias: os planos não são cartões dentro do cartão. */}
+        <div className="flex flex-col border-t border-hair">
           {(upgradePlans.length ? upgradePlans : SALES_PLANS).map((plan) => {
             const isCurrent = plan.id === subscription?.tier;
-            const message = isCurrent
-              ? `Quero falar sobre meu plano ${plan.name} no PTMANAGER.`
-              : `Quero mudar meu plano do PTMANAGER para ${plan.name}.`;
+            const subject = isCurrent
+              ? `Dúvida sobre o meu plano ${plan.name} do PTMANAGER`
+              : `Mudança de plano do PTMANAGER para ${plan.name}`;
             return (
-              <div key={plan.id} className="border border-hair rounded-lg p-4 flex flex-col gap-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="font-body font-medium text-primary">{plan.name}</div>
-                  {isCurrent && <span className="text-2xs text-brass font-mono">Atual</span>}
+              <div key={plan.id} className="flex items-center justify-between gap-3 py-3 border-b border-hair flex-wrap">
+                <div className="flex items-baseline gap-2.5 min-w-0">
+                  <span className="font-body font-medium text-primary">{plan.name}</span>
+                  <span className="font-mono text-sm text-muted">{plan.price}</span>
+                  {plan.bonusLabel && (
+                    <span className="badge" style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)' }}>{plan.bonusLabel}</span>
+                  )}
+                  {isCurrent && <span className="badge" style={{ backgroundColor: 'var(--brass-soft)', color: 'var(--brass)' }}>Atual</span>}
                 </div>
-                <div className="font-mono text-xl text-primary">{plan.price}</div>
                 <a
-                  href={hasWhatsApp ? whatsappHref(message) : undefined}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-disabled={!hasWhatsApp}
-                  className="mt-auto text-center px-3 py-2 rounded-lg text-xs font-body border border-hair btn-surface text-muted"
+                  href={hasSupportEmail ? supportMailtoHref(subject) : undefined}
+                  aria-disabled={!hasSupportEmail}
+                  className="btn btn-ghost flex-shrink-0"
+                  style={{ padding: '7px 12px', fontSize: 12 }}
                 >
-                  {isCurrent ? 'Falar sobre plano' : 'Solicitar upgrade'}
+                  {isCurrent ? 'Falar sobre plano' : 'Mudar de plano'}
                 </a>
               </div>
             );
@@ -1271,35 +1417,35 @@ function ProfileView({ user, subscription, onSignOut, onRefreshSubscription }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <a
-            href={hasWhatsApp ? whatsappHref('Quero atualizar a forma de pagamento do meu plano PTMANAGER.') : undefined}
-            target="_blank"
-            rel="noreferrer"
-            aria-disabled={!hasWhatsApp}
-            className="px-3.5 py-2 rounded-lg text-xs font-body border border-hair btn-surface text-muted"
+            href={hasSupportEmail ? supportMailtoHref('Atualizar a forma de pagamento do plano PTMANAGER') : undefined}
+            aria-disabled={!hasSupportEmail}
+            className="btn btn-ghost"
+            style={{ padding: '8px 14px', fontSize: 12 }}
           >
-            Atualizar pagamento
+            <Mail size={13} /> Atualizar pagamento
           </a>
           <a
-            href={hasWhatsApp ? whatsappHref('Quero segunda via ou suporte sobre uma cobrança do PTMANAGER.') : undefined}
-            target="_blank"
-            rel="noreferrer"
-            aria-disabled={!hasWhatsApp}
-            className="px-3.5 py-2 rounded-lg text-xs font-body border border-hair btn-surface text-muted"
+            href={hasSupportEmail ? supportMailtoHref('Segunda via ou dúvida sobre uma cobrança do PTMANAGER') : undefined}
+            aria-disabled={!hasSupportEmail}
+            className="btn btn-ghost"
+            style={{ padding: '8px 14px', fontSize: 12 }}
           >
-            Suporte de cobrança
+            <Mail size={13} /> Suporte de faturação
           </a>
           <a
-            href={hasWhatsApp ? whatsappHref('Quero cancelar meu plano do PTMANAGER.') : undefined}
-            target="_blank"
-            rel="noreferrer"
-            aria-disabled={!hasWhatsApp}
-            className="px-3.5 py-2 rounded-lg text-xs font-body border btn-surface"
-            style={{ borderColor: 'var(--rust)', color: 'var(--rust)' }}
+            href={hasSupportEmail ? supportMailtoHref('Cancelamento do plano PTMANAGER') : undefined}
+            aria-disabled={!hasSupportEmail}
+            className="btn"
+            style={{ padding: '8px 14px', fontSize: 12, borderColor: 'var(--rust)', color: 'var(--rust)', backgroundColor: 'transparent' }}
           >
             Solicitar cancelamento
           </a>
         </div>
-        {!hasWhatsApp && <div className="text-xs text-rust font-body">Configure `VITE_SALES_WHATSAPP_URL` para ativar os links comerciais.</div>}
+        {!hasSupportEmail && (
+          <div className="text-xs text-faint font-body">
+            Defina <code className="font-mono">VITE_SUPPORT_EMAIL</code> para ativar os contactos de suporte.
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1308,13 +1454,15 @@ function ProfileView({ user, subscription, onSignOut, onRefreshSubscription }) {
 function StatCard({ label, value, icon: Icon, accent = 'brass', sub }) {
   const hex = ACCENT_HEX[accent];
   return (
-    <div className="bg-surface border border-hair rounded-xl p-4 flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <span className="text-2xs uppercase tracking-wide text-muted font-body">{label}</span>
-        <Icon size={16} style={{ color: hex }} />
+    <div className="card card-hover p-4 flex flex-col gap-2.5 min-w-0">
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-2xs uppercase tracking-wide text-muted font-body leading-tight">{label}</span>
+        <span className="rounded-md p-1.5 flex-shrink-0" style={{ backgroundColor: `${hex}1F` }}>
+          <Icon size={14} style={{ color: hex, display: 'block' }} />
+        </span>
       </div>
-      <span className="font-mono text-xl sm:text-2xl text-primary font-semibold">{value}</span>
-      {sub && <span className="text-2xs text-faint font-body">{sub}</span>}
+      <span className="font-mono text-xl sm:text-2xl text-primary font-semibold leading-none truncate" style={{ letterSpacing: '-0.02em' }}>{value}</span>
+      {sub && <span className="text-2xs text-faint font-body leading-tight">{sub}</span>}
     </div>
   );
 }
@@ -1382,14 +1530,15 @@ function StudentFinanceCard({ student, finance }) {
 
 function AlertChip({ icon: Icon, label, count, accent }) {
   const hex = ACCENT_HEX[accent];
+  const active = Number(count) > 0;
   return (
-    <div className="bg-surface border border-hair rounded-xl p-3 flex items-center gap-2.5">
-      <div className="p-2 rounded-lg flex-shrink-0" style={{ backgroundColor: `${hex}22` }}>
-        <Icon size={15} style={{ color: hex }} />
+    <div className="card p-3 flex items-center gap-2.5 min-w-0" style={{ borderColor: active ? `${hex}59` : 'var(--border-hair)' }}>
+      <div className="p-2 rounded-lg flex-shrink-0" style={{ backgroundColor: active ? `${hex}24` : 'rgba(255,255,255,0.04)' }}>
+        <Icon size={15} style={{ color: active ? hex : 'var(--text-faint)', display: 'block' }} />
       </div>
       <div className="min-w-0">
-        <div className="font-mono text-lg text-primary leading-none">{count}</div>
-        <div className="text-2xs text-faint font-body truncate">{label}</div>
+        <div className="font-mono text-lg leading-none" style={{ color: active ? 'var(--text-primary)' : 'var(--text-faint)' }}>{count}</div>
+        <div className="text-2xs text-faint font-body truncate mt-1">{label}</div>
       </div>
     </div>
   );
@@ -1489,7 +1638,7 @@ function AssessmentFields({ form, set, studentHeight, studentSex }) {
         </div>
       )}
       {bmi == null && !studentHeight && (
-        <div className="text-2xs text-faint font-body">Adicione a altura do aluno no cadastro para calcular o IMC automaticamente.</div>
+        <div className="text-2xs text-faint font-body">Adicione a altura do aluno no registo para calcular o IMC automaticamente.</div>
       )}
 
       <FormField label="Método de avaliação">
@@ -1523,7 +1672,7 @@ function AssessmentFields({ form, set, studentHeight, studentSex }) {
               {FOLD_PROTOCOLS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
             </select>
           </FormField>
-          {!studentSex && <div className="text-2xs text-rust font-body">Defina o sexo biológico do aluno no cadastro para este protocolo calcular corretamente.</div>}
+          {!studentSex && <div className="text-2xs text-rust font-body">Defina o sexo biológico do aluno no registo para este protocolo calcular corretamente.</div>}
           {protocol.needsAge && !form.assessAge && <div className="text-2xs text-rust font-body">Informe a idade acima — este protocolo precisa dela para calcular.</div>}
           <div className="grid grid-cols-2 gap-3">
             {activeSites.map((id) => (
@@ -1593,20 +1742,28 @@ function SessionCard({ session, student, onOpen, onQuickStatus, customCategories
       role="button"
       tabIndex={0}
       onKeyDown={(e) => { if (e.key === 'Enter') onOpen(); }}
-      className={`rounded-lg border border-hair bg-elevated pl-3 pr-1.5 py-2 cursor-pointer card-hover animate-in ${isCancelado ? 'opacity-50' : ''}`}
-      style={{ borderLeftWidth: '3px', borderLeftColor: color }}
+      className={`rounded-lg border border-hair pl-3 pr-1.5 py-2.5 cursor-pointer card-hover animate-in ${isCancelado ? 'opacity-50' : ''}`}
+      style={{
+        backgroundColor: 'var(--bg-elevated)',
+        borderLeftWidth: '3px',
+        borderLeftColor: color,
+        // Evento pessoal usa fundo tracejado subtil para se distinguir de uma aula.
+        borderStyle: isEvento ? 'dashed solid solid dashed' : 'solid',
+      }}
     >
       <div className="flex items-start justify-between gap-1">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <span className="font-mono text-2xs text-muted">{session.startTime}</span>
-            <TypeIcon size={11} style={{ color: type.color }} />
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="font-mono text-2xs text-muted tabular-nums">{session.startTime}</span>
+            <span className="rounded p-0.5 flex-shrink-0" style={{ backgroundColor: `${type.color}22` }}>
+              <TypeIcon size={10} style={{ color: type.color, display: 'block' }} />
+            </span>
             {!isEvento && <span className="text-2xs font-body text-faint truncate">{type.label}</span>}
           </div>
-          <div className={`font-body text-sm text-primary truncate ${isFalta ? 'line-through' : ''}`}>
+          <div className={`font-body text-sm text-primary truncate ${isFalta ? 'line-through' : ''}`} style={{ fontWeight: 500 }}>
             {isEvento ? type.label : (student?.name || 'Aluno removido')}
           </div>
-          <span className="inline-block text-2xs font-body mt-0.5 px-1.5 py-0.5 rounded" style={{ color: statusInfo?.color, backgroundColor: 'rgba(255,255,255,0.05)' }}>
+          <span className="badge mt-1.5" style={{ color: statusInfo?.color, backgroundColor: `${statusInfo?.color}1F` }}>
             {statusInfo?.label}
           </span>
         </div>
@@ -1635,16 +1792,16 @@ function Header({ onOpenSettings }) {
   const now = new Date();
   const dateLabel = `${DAY_NAMES[now.getDay()]}, ${now.getDate()} de ${MONTH_NAMES[now.getMonth()]}`;
   return (
-    <header className="border-b border-hair bg-surface">
-      <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <img src={LOGO_SRC} alt="PTMANAGER" style={{ width: 30, height: 30, flexShrink: 0 }} />
-          <span className="font-display font-semibold text-xl tracking-wide" style={{ color: '#F5F5F5' }}>PT<span style={{ color: 'var(--brass)' }}>MANAGER</span></span>
+    <header className="border-b border-hair" style={{ backgroundColor: 'var(--bg-surface)' }}>
+      <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <img src={LOGO_SRC} alt="" style={{ width: 30, height: 30, flexShrink: 0 }} />
+          <span className="font-display font-semibold text-xl tracking-wide truncate text-primary">PT<span style={{ color: 'var(--brass)' }}>MANAGER</span></span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-shrink-0">
           <span className="text-xs font-body text-faint hidden sm:inline">{dateLabel}</span>
-          <button onClick={onOpenSettings} type="button" className="p-2 rounded-lg btn-surface" aria-label="Configurações">
-            <Settings size={17} className="text-muted" />
+          <button onClick={onOpenSettings} type="button" className="p-2 rounded-lg btn-surface border border-transparent" aria-label="Definições" title="Definições">
+            <Settings size={17} className="text-muted" style={{ display: 'block' }} />
           </button>
         </div>
       </div>
@@ -1652,36 +1809,73 @@ function Header({ onOpenSettings }) {
   );
 }
 
+const NAV_TABS = [
+  { id: 'dashboard', label: 'Painel', icon: LayoutDashboard },
+  { id: 'weekly', label: 'Semana', icon: CalendarDays },
+  { id: 'monthly', label: 'Mês', icon: CalendarRange },
+  { id: 'students', label: 'Alunos', icon: Users },
+  { id: 'assessments', label: 'Avaliações', icon: Activity },
+  { id: 'finances', label: 'Finanças', icon: Wallet },
+  // CircleUser (não Settings): a engrenagem já identifica as Definições no cabeçalho.
+  { id: 'profile', label: 'Perfil', icon: CircleUser },
+];
+
+// Desktop/tablet: separadores no topo. Telemóvel: barra fixa no fundo, ao alcance
+// do polegar, com área de toque de 56px e respeito pela safe-area do iOS.
 function NavTabs({ view, setView }) {
-  const tabs = [
-    { id: 'dashboard', label: 'Painel', icon: LayoutDashboard },
-    { id: 'weekly', label: 'Semana', icon: CalendarDays },
-    { id: 'monthly', label: 'Mês', icon: CalendarRange },
-    { id: 'students', label: 'Alunos', icon: Users },
-    { id: 'assessments', label: 'Avaliações', icon: Activity },
-    { id: 'finances', label: 'Finanças', icon: Wallet },
-    { id: 'profile', label: 'Perfil', icon: Settings },
-  ];
   return (
-    <nav className="border-b border-hair bg-surface sticky top-0" style={{ zIndex: 30 }}>
-      <div className="max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto">
-        {tabs.map((t) => {
-          const Icon = t.icon;
-          const active = view === t.id;
-          return (
-            <button
-              key={t.id}
-              onClick={() => setView(t.id)}
-              type="button"
-              className="flex items-center gap-1.5 px-4 py-3 text-sm font-body flex-shrink-0"
-              style={{ color: active ? 'var(--brass)' : 'var(--text-muted)', borderBottom: active ? '2px solid var(--brass)' : '2px solid transparent' }}
-            >
-              <Icon size={15} /> {t.label}
-            </button>
-          );
-        })}
-      </div>
-    </nav>
+    <>
+      <nav className="border-b border-hair sticky top-0 hidden sm:block" style={{ zIndex: 30, backgroundColor: 'var(--bg-surface)' }} aria-label="Navegação principal">
+        <div className="max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto">
+          {NAV_TABS.map((t) => {
+            const Icon = t.icon;
+            const active = view === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setView(t.id)}
+                type="button"
+                aria-current={active ? 'page' : undefined}
+                className="flex items-center gap-1.5 px-4 py-3 text-sm font-body flex-shrink-0 btn-surface"
+                style={{
+                  color: active ? 'var(--brass)' : 'var(--text-muted)',
+                  borderBottom: active ? '2px solid var(--brass)' : '2px solid transparent',
+                  fontWeight: active ? 600 : 400,
+                }}
+              >
+                <Icon size={15} style={{ display: 'block' }} /> {t.label}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
+      <nav
+        className="fixed bottom-0 left-0 right-0 border-t border-hair sm:hidden"
+        style={{ zIndex: 30, backgroundColor: 'var(--bg-surface)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+        aria-label="Navegação principal"
+      >
+        <div className="flex">
+          {NAV_TABS.map((t) => {
+            const Icon = t.icon;
+            const active = view === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setView(t.id)}
+                type="button"
+                aria-current={active ? 'page' : undefined}
+                className="flex-1 flex flex-col items-center justify-center gap-1 min-w-0"
+                style={{ height: 56, color: active ? 'var(--brass)' : 'var(--text-faint)' }}
+              >
+                <Icon size={18} style={{ display: 'block' }} />
+                <span className="font-body truncate w-full text-center px-0.5" style={{ fontSize: '0.625rem', lineHeight: 1, fontWeight: active ? 600 : 400 }}>{t.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+    </>
   );
 }
 
@@ -1745,7 +1939,7 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
   if (students.length === 0) {
     return (
       <div className="px-4 py-4 max-w-6xl mx-auto">
-        <EmptyState icon={Users} message="Nenhum aluno cadastrado ainda. Cadastre seu primeiro aluno para ver o painel financeiro e montar sua agenda." cta="Cadastrar aluno" onCta={() => setView('students')} />
+        <EmptyState icon={Users} message="Nenhum aluno registado ainda. Registe seu primeiro aluno para ver o painel financeiro e montar sua agenda." cta="Registar aluno" onCta={() => setView('students')} />
       </div>
     );
   }
@@ -1792,8 +1986,8 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
                   <Pie data={typeDistData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={3}>
                     {typeDistData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                   </Pie>
-                  <Tooltip contentStyle={{ background: '#1F1F1F', border: '1px solid #333333', borderRadius: 8, color: '#F5F5F5' }} />
-                  <Legend wrapperStyle={{ fontSize: 11, color: '#999999' }} />
+                  <Tooltip contentStyle={CHART.tooltip} />
+                  <Legend wrapperStyle={CHART.legend} />
                 </PieChart>
               </ResponsiveContainer>
             )}
@@ -1802,12 +1996,12 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
         <div className="bg-surface border border-hair rounded-xl p-4">
           <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-2">Receita Líquida por Aluno</div>
           <ErrorBoundary compact>
-            {topStudentsData.length === 0 ? <EmptyState message="Cadastre alunos para ver o ranking." /> : (
+            {topStudentsData.length === 0 ? <EmptyState message="Registe alunos para ver o ranking." /> : (
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={topStudentsData} layout="vertical" margin={{ left: 0, right: 16, top: 4, bottom: 4 }}>
                   <XAxis type="number" hide />
-                  <YAxis type="category" dataKey="name" width={70} tick={{ fill: '#999999', fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <Tooltip formatter={(v) => currency(v)} contentStyle={{ background: '#1F1F1F', border: '1px solid #333333', borderRadius: 8, color: '#F5F5F5' }} />
+                  <YAxis type="category" dataKey="name" width={70} tick={CHART.tick} axisLine={false} tickLine={false} />
+                  <Tooltip formatter={(v) => currency(v)} contentStyle={CHART.tooltip} />
                   <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={16}>
                     {topStudentsData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                   </Bar>
@@ -1958,8 +2152,8 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
                   <Pie data={financeCategoryData} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75} paddingAngle={3}>
                     {financeCategoryData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                   </Pie>
-                  <Tooltip formatter={(v) => currency(v)} contentStyle={{ background: '#1F1F1F', border: '1px solid #333333', borderRadius: 8, color: '#F5F5F5' }} />
-                  <Legend wrapperStyle={{ fontSize: 11, color: '#999999' }} />
+                  <Tooltip formatter={(v) => currency(v)} contentStyle={CHART.tooltip} />
+                  <Legend wrapperStyle={CHART.legend} />
                 </PieChart>
               </ResponsiveContainer>
             </ErrorBoundary>
@@ -2176,7 +2370,7 @@ function StudentsView({ students, sessions, onEdit, onNew }) {
       <div className="flex gap-2 items-center">
         <div className="relative flex-1">
           <Search size={15} className="absolute text-faint" style={{ left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar aluno..." className="input-field" style={{ paddingLeft: '34px' }} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Procurar aluno..." aria-label="Procurar aluno" className="input-field" style={{ paddingLeft: '34px' }} />
         </div>
         <div className="flex rounded-lg border border-hair overflow-hidden flex-shrink-0">
           <button onClick={() => setFilter('ativos')} type="button" className="px-3 py-2 text-xs font-body" style={{ backgroundColor: filter === 'ativos' ? 'var(--bg-elevated)' : 'transparent', color: filter === 'ativos' ? 'var(--text-primary)' : 'var(--text-muted)' }}>Ativos</button>
@@ -2185,35 +2379,41 @@ function StudentsView({ students, sessions, onEdit, onNew }) {
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyState icon={Users} message={students.length === 0 ? 'Nenhum aluno cadastrado ainda.' : 'Nenhum aluno encontrado.'} cta={students.length === 0 ? 'Cadastrar primeiro aluno' : undefined} onCta={onNew} />
+        <EmptyState icon={Users} message={students.length === 0 ? 'Nenhum aluno registado ainda.' : 'Nenhum aluno encontrado.'} cta={students.length === 0 ? 'Registar primeiro aluno' : undefined} onCta={onNew} />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {filtered.map((s) => {
             const f = studentFinance(s);
             const pf = pendingFaltas(s.id, sessions);
             return (
-              <div key={s.id} onClick={() => onEdit(s)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') onEdit(s); }} className="bg-surface border border-hair rounded-xl p-4 cursor-pointer card-hover">
-                <div className="flex items-start justify-between mb-2">
+              <div key={s.id} onClick={() => onEdit(s)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') onEdit(s); }} className="card card-hover p-4 cursor-pointer">
+                <div className="flex items-start justify-between gap-2 mb-3">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
+                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
                     <div className="min-w-0">
-                      <div className="font-body text-sm font-medium text-primary truncate">{s.name}</div>
-                      <div className="text-xs text-faint font-body">{s.planType}{s.memberNumber ? ` · Sócio ${s.memberNumber}` : ''}</div>
+                      <div className="font-body text-sm font-semibold text-primary truncate">{s.name}</div>
+                      <div className="text-xs text-faint font-body truncate">{s.planType}{s.memberNumber ? ` · Sócio ${s.memberNumber}` : ''}</div>
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                    {!s.active && <span className="text-2xs px-2 py-0.5 rounded-full font-body" style={{ backgroundColor: 'rgba(255,255,255,0.06)', color: 'var(--text-faint)' }}>Inativo</span>}
+                    {!s.active && <span className="badge" style={{ backgroundColor: 'rgba(255,255,255,0.06)', color: 'var(--text-faint)' }}>Inativo</span>}
                     {pf > 0 && (
-                      <span className="text-2xs px-2 py-0.5 rounded-full font-body flex items-center gap-1" style={{ backgroundColor: 'rgba(214,83,74,0.15)', color: 'var(--rust)' }}>
+                      <span className="badge" style={{ backgroundColor: 'var(--rust-soft)', color: 'var(--rust)' }}>
                         <UserX size={10} />{pf} {pf > 1 ? 'faltas' : 'falta'}
                       </span>
                     )}
                   </div>
                 </div>
-                <RevenueLoadBar gross={f.gross} tax={f.tax} gymFee={f.gymFee} net={f.net} height={18} showLabels={false} />
-                <div className="flex justify-between mt-2 text-xs font-mono">
-                  <span className="text-muted">{currency(f.gross)}</span>
-                  <span className="text-brass font-semibold">{currency(f.net)} líq.</span>
+                <RevenueLoadBar gross={f.gross} tax={f.tax} gymFee={f.gymFee} net={f.net} height={16} showLabels={false} />
+                <div className="flex items-end justify-between mt-2.5 gap-2">
+                  <span className="flex flex-col min-w-0">
+                    <span className="text-2xs uppercase tracking-wide text-faint font-body">Bruto</span>
+                    <span className="font-mono text-xs text-muted">{currency(f.gross)}</span>
+                  </span>
+                  <span className="flex flex-col items-end min-w-0">
+                    <span className="text-2xs uppercase tracking-wide text-faint font-body">Líquido</span>
+                    <span className="font-mono text-sm text-brass font-semibold">{currency(f.net)}</span>
+                  </span>
                 </div>
               </div>
             );
@@ -2386,7 +2586,7 @@ function StudentFormModal({ student, sessions, customCategories, onAddCategory, 
         {isEdit && (
           <button type="button" onClick={() => onGoToAssessments(student)} className="flex items-center justify-between text-sm font-body px-3 py-2.5 rounded-lg border border-hair btn-surface">
             <span className="flex items-center gap-2 text-primary"><Activity size={15} className="text-brass" /> Avaliações Físicas</span>
-            <span className="text-2xs text-faint font-mono">{assessmentCount} registrada(s) →</span>
+            <span className="text-2xs text-faint font-mono">{assessmentCount} registada(s) →</span>
           </button>
         )}
 
@@ -2395,19 +2595,19 @@ function StudentFormModal({ student, sessions, customCategories, onAddCategory, 
         <div className="flex gap-2 pt-2 mobile-stack">
           {isEdit && (
             <button onClick={() => setConfirmDelete(true)} type="button" className="px-4 py-2.5 rounded-lg text-sm font-body border border-hair text-rust btn-surface">
-              <Trash2 size={15} className="inline mr-1.5" style={{ marginTop: '-2px' }} />Excluir
+              <Trash2 size={15} className="inline mr-1.5" style={{ marginTop: '-2px' }} />Eliminar
             </button>
           )}
           <button onClick={handleSubmit} type="button" className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
-            Salvar Aluno
+            Guardar Aluno
           </button>
         </div>
       </div>
 
       {confirmDelete && (
         <ConfirmDialog
-          title="Excluir aluno"
-          message={`Tem certeza que deseja excluir ${form.name || 'este aluno'}? Todas as aulas e avaliações registradas para ele também serão removidas.`}
+          title="Eliminar aluno"
+          message={`Tem a certeza de que pretende eliminar ${form.name || 'este aluno'}? Todas as aulas e avaliações registadas para ele também serão removidas.`}
           onCancel={() => setConfirmDelete(false)}
           onConfirm={() => { onDelete(form.id); setConfirmDelete(false); }}
         />
@@ -2473,7 +2673,7 @@ function SessionFormModal({ session, students, defaultDate, customCategories, on
         )}
 
         {!isEvento && students.length === 0 ? (
-          <EmptyState message="Cadastre um aluno antes de agendar uma aula. Você ainda pode adicionar um evento pessoal." />
+          <EmptyState message="Registe um aluno antes de agendar uma aula. Pode ainda assim adicionar um evento pessoal." />
         ) : (
           <>
             {!isEvento && (
@@ -2568,19 +2768,19 @@ function SessionFormModal({ session, students, defaultDate, customCategories, on
         <div className="flex gap-2 pt-2 mobile-stack">
           {isEdit && (
             <button onClick={() => setConfirmDelete(true)} type="button" className="px-4 py-2.5 rounded-lg text-sm font-body border border-hair text-rust btn-surface">
-              <Trash2 size={15} className="inline mr-1.5" style={{ marginTop: '-2px' }} />Excluir
+              <Trash2 size={15} className="inline mr-1.5" style={{ marginTop: '-2px' }} />Eliminar
             </button>
           )}
           {(isEvento || students.length > 0) && (
             <button onClick={handleSubmit} type="button" className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
-              {isEvento ? 'Salvar Evento' : 'Salvar Aula'}
+              {isEvento ? 'Guardar Evento' : 'Guardar Aula'}
             </button>
           )}
         </div>
       </div>
 
       {confirmDelete && (
-        <ConfirmDialog title={isEvento ? 'Excluir evento' : 'Excluir aula'} message={`Tem certeza que deseja excluir ${isEvento ? 'este evento' : 'esta aula'} da agenda?`} onCancel={() => setConfirmDelete(false)} onConfirm={() => { onDelete(form.id); setConfirmDelete(false); }} />
+        <ConfirmDialog title={isEvento ? 'Eliminar evento' : 'Eliminar aula'} message={`Tem a certeza de que pretende eliminar ${isEvento ? 'este evento' : 'esta aula'} da agenda?`} onCancel={() => setConfirmDelete(false)} onConfirm={() => { onDelete(form.id); setConfirmDelete(false); }} />
       )}
     </Modal>
   );
@@ -2603,7 +2803,7 @@ function NewAssessmentForm({ student, onSave, onCancel, photosById, onUploadPhot
         onRemove={(id) => { onRemovePhoto(id); set('photoIds', form.photoIds.filter((x) => x !== id)); }} />
       <div className="flex gap-2 pt-1">
         <button type="button" onClick={onCancel} className="px-4 py-2.5 rounded-lg text-sm font-body border border-hair btn-surface text-muted">Cancelar</button>
-        <button type="button" onClick={() => onSave(form)} className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>Salvar Avaliação</button>
+        <button type="button" onClick={() => onSave(form)} className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>Guardar Avaliação</button>
       </div>
     </div>
   );
@@ -2622,11 +2822,11 @@ function AssessmentComparisonChart({ assessments }) {
     <ErrorBoundary compact>
       <ResponsiveContainer width="100%" height={220}>
         <LineChart data={data} margin={{ left: -16, right: 8, top: 8, bottom: 0 }}>
-          <CartesianGrid stroke="#333333" strokeDasharray="3 3" />
-          <XAxis dataKey="date" tick={{ fill: '#999999', fontSize: 11 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: '#999999', fontSize: 11 }} axisLine={false} tickLine={false} />
-          <Tooltip contentStyle={{ background: '#1F1F1F', border: '1px solid #333333', borderRadius: 8, color: '#F5F5F5' }} />
-          <Legend wrapperStyle={{ fontSize: 11, color: '#999999' }} />
+          <CartesianGrid stroke={CHART.grid} strokeDasharray="3 3" />
+          <XAxis dataKey="date" tick={CHART.tick} axisLine={false} tickLine={false} />
+          <YAxis tick={CHART.tick} axisLine={false} tickLine={false} />
+          <Tooltip contentStyle={CHART.tooltip} />
+          <Legend wrapperStyle={CHART.legend} />
           <Line type="monotone" dataKey="peso" name="Peso (kg)" stroke="#1EA6B4" strokeWidth={2} dot={{ r: 3 }} connectNulls />
           <Line type="monotone" dataKey="gordura" name="% Gordura" stroke="#D6534A" strokeWidth={2} dot={{ r: 3 }} connectNulls />
         </LineChart>
@@ -2679,7 +2879,7 @@ function AssessmentDetail({ student, sessions, photosById, onBack, onSaveAssessm
 
       <div>
         <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-2">Histórico ({assessments.length})</div>
-        {assessments.length === 0 ? <EmptyState message="Nenhuma avaliação registrada ainda." /> : (
+        {assessments.length === 0 ? <EmptyState message="Nenhuma avaliação registada ainda." /> : (
           <div className="flex flex-col gap-2">
             {assessments.map((a) => {
               const methodLabel = a.assessMethod === 'dobras' ? (FOLD_PROTOCOLS.find((p) => p.id === a.assessProtocol)?.label || 'Dobras') : 'Bioimpedância';
@@ -2691,7 +2891,7 @@ function AssessmentDetail({ student, sessions, photosById, onBack, onSaveAssessm
                       <div className="font-mono text-xs text-muted">{fmtDateBR(new Date(`${a.date}T00:00:00`))}</div>
                       <div className="text-2xs text-faint font-body">{methodLabel}</div>
                     </div>
-                    <button onClick={() => setConfirmDeleteId(a.id)} type="button" className="p-1 rounded btn-surface" aria-label="Excluir avaliação"><Trash2 size={13} className="text-rust" /></button>
+                    <button onClick={() => setConfirmDeleteId(a.id)} type="button" className="p-1 rounded btn-surface" aria-label="Eliminar avaliação"><Trash2 size={13} className="text-rust" /></button>
                   </div>
                   <div className="text-sm font-body text-primary">
                     {a.assessWeight ? `${a.assessWeight} kg` : '—'}
@@ -2711,7 +2911,7 @@ function AssessmentDetail({ student, sessions, photosById, onBack, onSaveAssessm
       </div>
 
       {confirmDeleteId && (
-        <ConfirmDialog title="Excluir avaliação" message="Tem certeza que deseja excluir esta avaliação física?" onCancel={() => setConfirmDeleteId(null)} onConfirm={() => { onDeleteAssessment(confirmDeleteId); setConfirmDeleteId(null); }} />
+        <ConfirmDialog title="Eliminar avaliação" message="Tem a certeza de que pretende eliminar esta avaliação física?" onCancel={() => setConfirmDeleteId(null)} onConfirm={() => { onDeleteAssessment(confirmDeleteId); setConfirmDeleteId(null); }} />
       )}
     </div>
   );
@@ -2733,10 +2933,10 @@ function AssessmentsView({ students, sessions, photosById, onSaveAssessment, onU
           <Plus size={15} /> Nova Avaliação
         </button>
       </div>
-      <p className="text-xs font-body text-muted">Toque num aluno para ver o histórico e registrar uma nova avaliação física.</p>
+      <p className="text-xs font-body text-muted">Toque num aluno para ver o histórico e registar uma nova avaliação física.</p>
 
       {students.length === 0 ? (
-        <EmptyState icon={Users} message="Nenhum aluno cadastrado ainda. Cadastre um aluno antes de fazer uma avaliação física." />
+        <EmptyState icon={Users} message="Nenhum aluno registado ainda. Registe um aluno antes de fazer uma avaliação física." />
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {students.map((s) => {
@@ -2869,16 +3069,16 @@ function TransactionFormModal({ tx, defaultType, customCategories, onAddCategory
         <div className="flex gap-2 pt-2 mobile-stack">
           {isEdit && (
             <button onClick={() => setConfirmDelete(true)} type="button" className="px-4 py-2.5 rounded-lg text-sm font-body border border-hair text-rust btn-surface">
-              <Trash2 size={15} className="inline mr-1.5" style={{ marginTop: '-2px' }} />Excluir
+              <Trash2 size={15} className="inline mr-1.5" style={{ marginTop: '-2px' }} />Eliminar
             </button>
           )}
           <button onClick={handleSubmit} type="button" className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
-            Salvar
+            Guardar
           </button>
         </div>
       </div>
       {confirmDelete && (
-        <ConfirmDialog title="Excluir lançamento" message="Tem certeza que deseja excluir este lançamento?" onCancel={() => setConfirmDelete(false)} onConfirm={() => { onDelete(form.id); setConfirmDelete(false); }} />
+        <ConfirmDialog title="Eliminar lançamento" message="Tem a certeza de que pretende eliminar este lançamento?" onCancel={() => setConfirmDelete(false)} onConfirm={() => { onDelete(form.id); setConfirmDelete(false); }} />
       )}
     </Modal>
   );
@@ -2942,8 +3142,8 @@ function FinancesView({ finances, monthCursor, setMonthCursor, onOpenTransaction
                 <Pie data={categoryData} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75} paddingAngle={3}>
                   {categoryData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                 </Pie>
-                <Tooltip formatter={(v) => currency(v)} contentStyle={{ background: '#1F1F1F', border: '1px solid #333333', borderRadius: 8, color: '#F5F5F5' }} />
-                <Legend wrapperStyle={{ fontSize: 11, color: '#999999' }} />
+                <Tooltip formatter={(v) => currency(v)} contentStyle={CHART.tooltip} />
+                <Legend wrapperStyle={CHART.legend} />
               </PieChart>
             </ResponsiveContainer>
           </ErrorBoundary>
@@ -2996,7 +3196,7 @@ function SettingsPanel({ students, sessions, finances, photos, customCategories,
         if (!data.categorias) data.categorias = EMPTY_CUSTOM_CATEGORIES;
         setPendingRestore(data);
       } catch (err) {
-        setRestoreError('Não foi possível ler este arquivo. Confira se é um backup exportado por este app.');
+        setRestoreError('Não foi possível ler este ficheiro. Verifique se é uma cópia de segurança exportada por esta aplicação.');
       }
     };
     reader.readAsText(file);
@@ -3008,7 +3208,7 @@ function SettingsPanel({ students, sessions, finances, photos, customCategories,
 
       <div className="border border-hair rounded-lg p-4">
         <div className="text-sm font-body font-medium text-primary mb-1">Backup dos dados</div>
-        <p className="text-xs font-body text-muted mb-3">Baixe um arquivo com alunos, aulas, avaliações, finanças e fotos — guarde-o em algum lugar seguro. Você pode restaurar esse arquivo aqui se precisar.</p>
+        <p className="text-xs font-body text-muted mb-3">Transfira um ficheiro com alunos, aulas, avaliações, finanças e fotos — guarde-o em algum lugar seguro. Pode restaurar este ficheiro aqui se precisar.</p>
         <div className="flex gap-2 flex-wrap">
           <button onClick={() => downloadBackup(students, sessions, finances, photos, customCategories)} type="button" className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
             <Download size={14} /> Exportar backup
@@ -3023,7 +3223,7 @@ function SettingsPanel({ students, sessions, finances, photos, customCategories,
 
       <div className="border rounded-lg p-4" style={{ borderColor: 'var(--rust)' }}>
         <div className="text-sm font-body font-medium text-primary mb-1">Apagar todos os dados</div>
-        <p className="text-xs font-body text-muted mb-3">Remove todos os alunos, aulas, avaliações, finanças e fotos salvos neste aplicativo. Essa ação não pode ser desfeita.</p>
+        <p className="text-xs font-body text-muted mb-3">Remove todos os alunos, aulas, avaliações, finanças e fotos guardadas nesta aplicação. Esta ação não pode ser desfeita.</p>
         <button onClick={() => setConfirm(true)} type="button" className="px-3.5 py-2 rounded-lg text-xs font-body" style={{ backgroundColor: 'var(--rust)', color: '#0A0A0A' }}>
           Apagar tudo
         </button>
@@ -3045,7 +3245,7 @@ function SettingsPanel({ students, sessions, finances, photos, customCategories,
       {pendingRestore && (
         <ConfirmDialog
           title="Restaurar backup"
-          message={`Isso vai SUBSTITUIR os dados atuais pelos ${pendingRestore.alunos.length} aluno(s), ${pendingRestore.agenda.length} aula(s), ${pendingRestore.financas.length} lançamento(s) e ${pendingRestore.fotos.length} foto(s) do arquivo. Essa ação não pode ser desfeita.`}
+          message={`Isso vai SUBSTITUIR os dados atuais pelos ${pendingRestore.alunos.length} aluno(s), ${pendingRestore.agenda.length} aula(s), ${pendingRestore.financas.length} lançamento(s) e ${pendingRestore.fotos.length} foto(s) do ficheiro. Esta ação não pode ser desfeita.`}
           onCancel={() => setPendingRestore(null)}
           onConfirm={() => { onRestore(pendingRestore.alunos, pendingRestore.agenda, pendingRestore.financas, pendingRestore.fotos, pendingRestore.categorias); setPendingRestore(null); }}
         />
@@ -3154,14 +3354,14 @@ function AppInner() {
     }
 
     let cancelled = false;
-    setCheckoutReturn({ status: 'success', message: 'Pagamento recebido. Verificando assinatura...' });
+    setCheckoutReturn({ status: 'success', message: 'Pagamento recebido. A verificar subscrição...' });
 
     async function verifyPaidSubscription() {
       const waits = [0, 1200, 2200, 3500, 5000];
       for (let i = 0; i < waits.length; i += 1) {
         if (waits[i] > 0) await new Promise((resolve) => setTimeout(resolve, waits[i]));
         if (cancelled) return;
-        setCheckoutReturn({ status: 'success', message: i === 0 ? 'Pagamento recebido. Verificando assinatura...' : 'Ainda verificando a ativação do plano...' });
+        setCheckoutReturn({ status: 'success', message: i === 0 ? 'Pagamento recebido. A verificar subscrição...' : 'Ainda a verificar a ativação do plano...' });
         const status = await readSubscriptionStatus();
         if (cancelled) return;
         setSubscriptionActive(status.active);
@@ -3176,7 +3376,7 @@ function AppInner() {
     }
 
     verifyPaidSubscription().catch(() => {
-      if (!cancelled) setCheckoutReturn({ status: 'success', message: 'Pagamento recebido. Clique em verificar assinatura para concluir.' });
+      if (!cancelled) setCheckoutReturn({ status: 'success', message: 'Pagamento recebido. Clique em verificar subscrição para concluir.' });
     });
 
     return () => { cancelled = true; };
@@ -3237,7 +3437,7 @@ function AppInner() {
         currentPeriodEnd: null, cancelAtPeriodEnd: false, paymentMethodBrand: null, paymentMethodLast4: null,
         stripeCustomerId: null, stripeSubscriptionId: null, lastPaymentStatus: null, updatedAt: null,
       });
-      showToast('Não foi possível verificar sua assinatura.', 'error');
+      showToast('Não foi possível verificar a sua subscrição.', 'error');
     }
     setSubscriptionReady(true);
   }
@@ -3247,29 +3447,29 @@ function AppInner() {
   async function persistStudents(next) {
     setStudents(next);
     if (!storageOk) { showToast('Dados salvos apenas nesta sessão (armazenamento indisponível).'); return; }
-    try { await writeStoredValue('alunos', JSON.stringify(next)); } catch (e) { showToast('Erro ao salvar. Tente novamente.', 'error'); }
+    try { await writeStoredValue('alunos', JSON.stringify(next)); } catch (e) { showToast('Erro ao guardar. Tente novamente.', 'error'); }
   }
   async function persistSessions(next) {
     setSessions(next);
     if (!storageOk) return;
-    try { await writeStoredValue('agenda', JSON.stringify(next)); } catch (e) { showToast('Erro ao salvar. Tente novamente.', 'error'); }
+    try { await writeStoredValue('agenda', JSON.stringify(next)); } catch (e) { showToast('Erro ao guardar. Tente novamente.', 'error'); }
   }
   async function persistFinances(next) {
     setFinances(next);
     if (!storageOk) return;
-    try { await writeStoredValue('financas', JSON.stringify(next)); } catch (e) { showToast('Erro ao salvar. Tente novamente.', 'error'); }
+    try { await writeStoredValue('financas', JSON.stringify(next)); } catch (e) { showToast('Erro ao guardar. Tente novamente.', 'error'); }
   }
   async function persistPhotos(next) {
     setPhotos(next);
     if (!storageOk) return;
-    try { await writeStoredValue('fotos', JSON.stringify(next)); } catch (e) { showToast('Erro ao salvar fotos — tente imagens menores.', 'error'); }
+    try { await writeStoredValue('fotos', JSON.stringify(next)); } catch (e) { showToast('Erro ao guardar fotos — experimente imagens mais pequenas.', 'error'); }
   }
 
   async function persistCustomCategories(next) {
     const normalized = { ...EMPTY_CUSTOM_CATEGORIES, ...(next || {}) };
     setCustomCategories(normalized);
     if (!storageOk) return;
-    try { await writeStoredValue('categorias', JSON.stringify(normalized)); } catch (e) { showToast('Erro ao salvar categoria.', 'error'); }
+    try { await writeStoredValue('categorias', JSON.stringify(normalized)); } catch (e) { showToast('Erro ao guardar categoria.', 'error'); }
   }
 
   function addCategory(kind, item) {
@@ -3311,7 +3511,7 @@ function AppInner() {
     const next = exists ? students.map((s) => (s.id === student.id ? student : s)) : [...students, student];
     persistStudents(next);
     setShowStudentModal(false);
-    showToast(exists ? 'Aluno atualizado.' : 'Aluno cadastrado.');
+    showToast(exists ? 'Aluno atualizado.' : 'Aluno registado.');
   }
   function deleteStudent(id) {
     persistStudents(students.filter((s) => s.id !== id));
@@ -3346,7 +3546,7 @@ function AppInner() {
   }
   function quickStatus(session, status) {
     persistSessions(sessions.map((s) => (s.id === session.id ? { ...s, status } : s)));
-    showToast(status === 'falta' ? 'Falta registrada.' : 'Aula marcada como realizada.');
+    showToast(status === 'falta' ? 'Falta registada.' : 'Aula marcada como realizada.');
   }
 
   function saveNewAssessment(studentId, form) {
@@ -3355,7 +3555,7 @@ function AppInner() {
       type: 'avaliacao', status: 'realizado', notes: '', ...form,
     };
     persistSessions([...sessions, session]);
-    showToast('Avaliação registrada.');
+    showToast('Avaliação registada.');
   }
   function deleteAssessment(id) {
     persistSessions(sessions.filter((s) => s.id !== id));
@@ -3424,7 +3624,7 @@ function AppInner() {
       <LandingPage
         logoSrc={LOGO_SRC}
         plans={SALES_PLANS}
-        whatsappUrl={SALES_WHATSAPP_URL}
+        supportEmail={SUPPORT_EMAIL}
         onGetStarted={() => openLogin('signup')}
         onLogin={() => openLogin('signin')}
       />
@@ -3436,7 +3636,7 @@ function AppInner() {
     <div className="min-h-screen bg-base flex flex-col">
       <Header onOpenSettings={() => setSettingsOpen(true)} />
       <NavTabs view={view} setView={setView} />
-      <main className="flex-1 pb-10">
+      <main className="flex-1 pb-10 pb-nav">
         {view === 'dashboard' && <Dashboard students={students} sessions={sessions} finances={finances} customCategories={customCategories} setView={setView} onAddSession={openNewSession} onOpenSession={openEditSession} onQuickStatus={quickStatus} />}
         {view === 'weekly' && <WeeklyView sessions={sessions} students={students} weekStart={weekStart} setWeekStart={setWeekStart} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} customCategories={customCategories} />}
         {view === 'monthly' && <MonthlyView sessions={sessions} students={students} monthCursor={monthCursor} setMonthCursor={setMonthCursor} onOpenDay={setDayDetailIso} customCategories={customCategories} />}
@@ -3445,7 +3645,7 @@ function AppInner() {
           <AssessmentsView students={students} sessions={sessions} photosById={photosById}
             selectedStudentId={assessmentsStudentId} setSelectedStudentId={setAssessmentsStudentId}
             onSaveAssessment={saveNewAssessment} onUploadPhotos={uploadPhotos} onRemovePhoto={removePhoto} onDeleteAssessment={deleteAssessment}
-            onNoStudents={() => showToast('Cadastre um aluno antes de fazer uma avaliação física.', 'error')} />
+            onNoStudents={() => showToast('Registe um aluno antes de fazer uma avaliação física.', 'error')} />
         )}
         {view === 'finances' && <FinancesView finances={finances} monthCursor={financeMonthCursor} setMonthCursor={setFinanceMonthCursor} onOpenTransaction={openEditTransaction} onNewTransaction={openNewTransaction} onQuickComplete={quickCompleteTransaction} customCategories={customCategories} />}
         {view === 'profile' && <ProfileView user={user} subscription={subscription} onSignOut={supabaseConfigured ? signOut : null} onRefreshSubscription={refreshSubscription} />}

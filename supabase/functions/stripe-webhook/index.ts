@@ -12,11 +12,51 @@ const planByPriceId = {
   [Deno.env.get('STRIPE_PRICE_YEARLY') || '']: { tier: 'anual', interval: 'Anual' },
 };
 
+// months = tempo total de acesso concedido por pagamento (já inclui os meses grátis).
 const oneTimePlanDetails = {
   mensal: { tier: 'mensal', interval: 'Mensal', value: 13.90, months: 1 },
-  trimestral: { tier: 'trimestral', interval: 'Trimestral', value: 39.90, months: 3 },
-  anual: { tier: 'anual', interval: 'Anual', value: 129.90, months: 12 },
+  trimestral: { tier: 'trimestral', interval: 'Trimestral', value: 39.90, months: 4 },
+  anual: { tier: 'anual', interval: 'Anual', value: 129.90, months: 14 },
 };
+
+// Acesso total esperado no primeiro período de uma assinatura recorrente.
+// Se o preço na Stripe já cobrir esse tempo (ex: preço trimestral configurado
+// para 4 meses), o cálculo abaixo não acrescenta nada — evita duplicar o bónus.
+const PLAN_ACCESS_MONTHS = { mensal: 1, trimestral: 4, anual: 14 };
+const SECONDS_PER_MONTH = 30.44 * 24 * 60 * 60;
+
+function periodStartOf(subscription) {
+  return subscription.current_period_start
+    || subscription.items?.data?.[0]?.current_period_start
+    || subscription.start_date
+    || null;
+}
+
+function periodEndOf(subscription) {
+  return subscription.current_period_end
+    || subscription.items?.data?.[0]?.current_period_end
+    || subscription.cancel_at
+    || null;
+}
+
+// O bónus só vale no primeiro ciclo: nas renovações o período volta ao normal.
+function isFirstCycle(subscription) {
+  const start = subscription.start_date;
+  const periodStart = periodStartOf(subscription);
+  if (!start || !periodStart) return false;
+  return Math.abs(periodStart - start) < 24 * 60 * 60;
+}
+
+// Quantos meses de bónus ainda faltam para chegar ao acesso prometido.
+function bonusMonthsFor(subscription, tier) {
+  const accessMonths = PLAN_ACCESS_MONTHS[tier];
+  if (!accessMonths || !isFirstCycle(subscription)) return 0;
+  const start = periodStartOf(subscription);
+  const end = periodEndOf(subscription);
+  if (!start || !end || end <= start) return 0;
+  const coveredMonths = Math.round((end - start) / SECONDS_PER_MONTH);
+  return Math.max(0, accessMonths - coveredMonths);
+}
 
 Deno.serve(async (req) => {
   try {
@@ -130,14 +170,20 @@ async function syncSubscription(subscription, stripeSecretKey, supabaseUrl, serv
   const active = ['active', 'trialing'].includes(subscription.status);
   const pastDue = ['past_due', 'unpaid', 'incomplete', 'incomplete_expired'].includes(subscription.status);
 
+  const rawPeriodEnd = periodEndOf(subscription);
+  const bonusMonths = bonusMonthsFor(subscription, plan.tier);
+  const periodEndIso = bonusMonths && rawPeriodEnd
+    ? addMonths(new Date(rawPeriodEnd * 1000), bonusMonths).toISOString()
+    : toIso(rawPeriodEnd);
+
   const payload = {
     user_id: userId,
     plan_status: deleted ? 'canceled' : active ? 'active' : pastDue ? 'past_due' : subscription.status,
     plan_tier: plan.tier,
     plan_value: planValue,
     billing_interval: plan.interval,
-    current_period_start: toIso(subscription.current_period_start || firstItem?.current_period_start || subscription.start_date),
-    current_period_end: toIso(subscription.current_period_end || firstItem?.current_period_end || subscription.cancel_at),
+    current_period_start: toIso(periodStartOf(subscription)),
+    current_period_end: periodEndIso,
     cancel_at_period_end: Boolean(subscription.cancel_at_period_end),
     payment_method_brand: paymentMethod?.card?.brand || null,
     payment_method_last4: paymentMethod?.card?.last4 || null,

@@ -3,10 +3,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// months = tempo de acesso concedido por pagamento, já com os meses grátis incluídos
+// (trimestral: 3 pagos + 1 grátis; anual: 12 pagos + 2 grátis).
 const PLAN_DETAILS: Record<string, { name: string; unitAmount: number; interval: string; months: number }> = {
   mensal: { name: 'PTMANAGER Mensal', unitAmount: 1390, interval: 'Mensal', months: 1 },
-  trimestral: { name: 'PTMANAGER Trimestral', unitAmount: 3990, interval: 'Trimestral', months: 3 },
-  anual: { name: 'PTMANAGER Anual', unitAmount: 12990, interval: 'Anual', months: 12 },
+  trimestral: { name: 'PTMANAGER Trimestral (3 meses + 1 grátis)', unitAmount: 3990, interval: 'Trimestral', months: 4 },
+  anual: { name: 'PTMANAGER Anual (12 meses + 2 grátis)', unitAmount: 12990, interval: 'Anual', months: 14 },
 };
 
 Deno.serve(async (req) => {

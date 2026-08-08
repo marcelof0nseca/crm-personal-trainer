@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
     const user = await userRes.json();
     const { returnUrl } = await req.json().catch(() => ({}));
     const subscriptionRes = await fetch(
-      `${supabaseUrl}/rest/v1/personal_subscriptions?user_id=eq.${encodeURIComponent(user.id)}&select=stripe_customer_id&limit=1`,
+      `${supabaseUrl}/rest/v1/personal_subscriptions?user_id=eq.${encodeURIComponent(user.id)}&select=stripe_customer_id,stripe_subscription_id&limit=1`,
       {
         headers: {
           apikey: serviceRoleKey,
@@ -56,14 +56,18 @@ Deno.serve(async (req) => {
 
     const subscriptions = await subscriptionRes.json();
     const customerId = subscriptions[0]?.stripe_customer_id;
+    const subscriptionId = subscriptions[0]?.stripe_subscription_id;
     if (!customerId) {
       return json({ error: 'Stripe customer not found for this user.' }, 404);
     }
+    if (!subscriptionId) {
+      return json({ error: 'No recurring Stripe subscription found for this user.' }, 404);
+    }
 
-    const origin = req.headers.get('Origin') || 'http://localhost:5173';
+    const origin = safeOrigin(req.headers.get('Origin'));
     const params = new URLSearchParams();
     params.set('customer', customerId);
-    params.set('return_url', typeof returnUrl === 'string' && returnUrl.startsWith('http') ? returnUrl : origin);
+    params.set('return_url', safeReturnUrl(returnUrl, origin));
 
     const stripeRes = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {
       method: 'POST',
@@ -90,4 +94,23 @@ function json(payload: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+function safeOrigin(value: string | null) {
+  try {
+    const url = new URL(value || 'http://localhost:5173');
+    return url.origin;
+  } catch {
+    return 'http://localhost:5173';
+  }
+}
+
+function safeReturnUrl(value: unknown, origin: string) {
+  if (typeof value !== 'string') return origin;
+  try {
+    const url = new URL(value);
+    return url.origin === origin ? url.toString() : origin;
+  } catch {
+    return origin;
+  }
 }

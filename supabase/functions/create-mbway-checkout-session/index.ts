@@ -51,13 +51,9 @@ Deno.serve(async (req) => {
       return json({ error: 'Invalid plan.' }, 400);
     }
 
-    const origin = req.headers.get('Origin') || 'http://localhost:5173';
-    const finalSuccessUrl = typeof successUrl === 'string' && successUrl.startsWith('http')
-      ? successUrl
-      : `${origin}?checkout=success`;
-    const finalCancelUrl = typeof cancelUrl === 'string' && cancelUrl.startsWith('http')
-      ? cancelUrl
-      : `${origin}?checkout=cancelled`;
+    const origin = safeOrigin(req.headers.get('Origin'));
+    const finalSuccessUrl = safeReturnUrl(successUrl, origin, '?checkout=success');
+    const finalCancelUrl = safeReturnUrl(cancelUrl, origin, '?checkout=cancelled');
 
     const params = new URLSearchParams();
     params.set('mode', 'payment');
@@ -103,4 +99,23 @@ function json(payload: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+function safeOrigin(value: string | null) {
+  try {
+    const url = new URL(value || 'http://localhost:5173');
+    return url.origin;
+  } catch {
+    return 'http://localhost:5173';
+  }
+}
+
+function safeReturnUrl(value: unknown, origin: string, fallbackPath: string) {
+  if (typeof value !== 'string') return `${origin}${fallbackPath}`;
+  try {
+    const url = new URL(value);
+    return url.origin === origin ? url.toString() : `${origin}${fallbackPath}`;
+  } catch {
+    return `${origin}${fallbackPath}`;
+  }
 }

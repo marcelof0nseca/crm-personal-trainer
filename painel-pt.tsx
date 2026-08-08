@@ -471,13 +471,11 @@ function GlobalStyles() {
         background-color: var(--bg-base);
         margin: 0;
         min-width: 0;
-        overflow-x: hidden;
         overscroll-behavior-y: none;
       }
       #root {
         min-height: 100dvh;
         width: 100%;
-        overflow-x: hidden;
       }
       img, svg, canvas, video { max-width: 100%; }
       h1, h2, h3, p, span, button, a, td, th { overflow-wrap: anywhere; }

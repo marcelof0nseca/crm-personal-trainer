@@ -12,6 +12,7 @@ import {
 import { supabase, supabaseConfigured } from './src/supabaseClient';
 import logoSrc from './src/assets/ptmanager-logo.png';
 import LandingPage from './src/components/LandingPage';
+import Turnstile from './src/components/Turnstile';
 
 /* ============================== LOGO ============================== */
 
@@ -77,6 +78,7 @@ function slugify(label) {
 const EMPTY_CUSTOM_CATEGORIES = { expense: [], income: [], planTypes: [], sessionTypes: [] };
 
 const SALES_WHATSAPP_URL = import.meta.env.VITE_SALES_WHATSAPP_URL || '';
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY || '';
 const CREATOR_ACTIVE_PLAN_EMAILS = ['maf@cesar.school', 'bfpersonal@live.com'];
 const DEV_ACTIVE_PLAN_EMAILS = (import.meta.env.VITE_DEV_ACTIVE_PLAN_EMAILS || '')
   .split(',')
@@ -703,12 +705,64 @@ function DeveloperCredit() {
   );
 }
 
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_SECONDS = 60;
+
+function loginAttemptKey(email) {
+  return `ptmanager_login_attempts_${email.trim().toLowerCase()}`;
+}
+
+function getLoginAttemptState(email) {
+  if (!email || typeof window === 'undefined') return { count: 0, lockedUntil: 0 };
+  try {
+    const raw = window.localStorage.getItem(loginAttemptKey(email));
+    if (!raw) return { count: 0, lockedUntil: 0 };
+    const parsed = JSON.parse(raw);
+    return { count: parsed.count || 0, lockedUntil: parsed.lockedUntil || 0 };
+  } catch (e) {
+    return { count: 0, lockedUntil: 0 };
+  }
+}
+
+function setLoginAttemptState(email, state) {
+  if (!email || typeof window === 'undefined') return;
+  try { window.localStorage.setItem(loginAttemptKey(email), JSON.stringify(state)); } catch (e) { /* localStorage indisponível */ }
+}
+
+function clearLoginAttemptState(email) {
+  if (!email || typeof window === 'undefined') return;
+  try { window.localStorage.removeItem(loginAttemptKey(email)); } catch (e) { /* localStorage indisponível */ }
+}
+
 function LoginScreen({ onBack, initialMode = 'signin' }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState(initialMode);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [lockedUntil, setLockedUntil] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaReset, setCaptchaReset] = useState(0);
+
+  useEffect(() => {
+    if (mode !== 'signin' || !email) return;
+    const attempt = getLoginAttemptState(email);
+    if (attempt.lockedUntil > Date.now()) { setLockedUntil(attempt.lockedUntil); setNow(Date.now()); }
+  }, [email, mode]);
+
+  useEffect(() => {
+    if (!lockedUntil) return undefined;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [lockedUntil]);
+
+  useEffect(() => {
+    if (lockedUntil && Date.now() >= lockedUntil) setLockedUntil(0);
+  }, [now, lockedUntil]);
+
+  const secondsLeft = lockedUntil ? Math.max(0, Math.ceil((lockedUntil - now) / 1000)) : 0;
+  const isLocked = secondsLeft > 0;
 
   async function submit(e) {
     e.preventDefault();
@@ -721,13 +775,46 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
       setMessage('Digite e-mail e senha.');
       return;
     }
+    if (mode === 'signin') {
+      const attempt = getLoginAttemptState(email);
+      if (attempt.lockedUntil > Date.now()) {
+        setLockedUntil(attempt.lockedUntil);
+        setNow(Date.now());
+        return;
+      }
+    }
+    if (TURNSTILE_SITE_KEY && !captchaToken) {
+      setMessage('Confirme que você não é um robô.');
+      return;
+    }
     setBusy(true);
+    const options = captchaToken ? { captchaToken } : undefined;
     const action = mode === 'signup'
-      ? supabase.auth.signUp({ email, password })
-      : supabase.auth.signInWithPassword({ email, password });
+      ? supabase.auth.signUp({ email, password, options })
+      : supabase.auth.signInWithPassword({ email, password, options });
     const { error } = await action;
-    if (error) setMessage(error.message);
-    else if (mode === 'signup') setMessage('Conta criada. Se o Supabase pedir confirmação, verifique seu e-mail.');
+    setCaptchaToken('');
+    setCaptchaReset((n) => n + 1);
+    if (error) {
+      setMessage(error.message);
+      if (mode === 'signin') {
+        const attempt = getLoginAttemptState(email);
+        const count = attempt.count + 1;
+        if (count >= LOGIN_MAX_ATTEMPTS) {
+          const until = Date.now() + LOGIN_LOCKOUT_SECONDS * 1000;
+          setLoginAttemptState(email, { count: 0, lockedUntil: until });
+          setLockedUntil(until);
+          setNow(Date.now());
+        } else {
+          setLoginAttemptState(email, { count, lockedUntil: 0 });
+        }
+      }
+    } else if (mode === 'signup') {
+      setMessage('Conta criada. Se o Supabase pedir confirmação, verifique seu e-mail.');
+    } else {
+      clearLoginAttemptState(email);
+      setLockedUntil(0);
+    }
     setBusy(false);
   }
 
@@ -754,9 +841,14 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
         <FormField label="Senha">
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="input-field" placeholder="Mínimo 6 caracteres" />
         </FormField>
-        {message && <div className="text-xs font-body text-rust">{message}</div>}
-        <button type="submit" disabled={busy} className="px-4 py-2.5 rounded-lg text-sm font-body font-medium disabled:opacity-60" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
-          {busy ? 'Aguarde...' : mode === 'signup' ? 'Criar conta' : 'Entrar'}
+        {TURNSTILE_SITE_KEY && !isLocked && (
+          <Turnstile siteKey={TURNSTILE_SITE_KEY} onVerify={setCaptchaToken} resetSignal={captchaReset} />
+        )}
+        {isLocked ? (
+          <div className="text-xs font-body text-rust">Muitas tentativas de login. Tente novamente em {secondsLeft}s.</div>
+        ) : message && <div className="text-xs font-body text-rust">{message}</div>}
+        <button type="submit" disabled={busy || isLocked || (Boolean(TURNSTILE_SITE_KEY) && !captchaToken)} className="px-4 py-2.5 rounded-lg text-sm font-body font-medium disabled:opacity-60" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
+          {isLocked ? `Aguarde ${secondsLeft}s` : busy ? 'Aguarde...' : mode === 'signup' ? 'Criar conta' : 'Entrar'}
         </button>
         <button type="button" onClick={() => { setMode(mode === 'signup' ? 'signin' : 'signup'); setMessage(''); }} className="text-xs font-body link-sky">
           {mode === 'signup' ? 'Já tenho conta' : 'Criar primeira conta'}

@@ -1321,6 +1321,67 @@ function StatCard({ label, value, icon: Icon, accent = 'brass', sub }) {
   );
 }
 
+function StudentSessionsCard({ student, weekCount, monthCount, yearCount, pendingFaltasCount }) {
+  return (
+    <div className="bg-elevated border border-hair rounded-lg p-3 flex flex-col gap-3">
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: student.color }} />
+        <span className="text-primary font-body text-sm truncate min-w-0" title={student.name}>{student.name}</span>
+      </div>
+      <div className="grid grid-cols-4 gap-2 text-center">
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span className="text-2xs uppercase tracking-wide text-faint font-body truncate">Sem.</span>
+          <span className="font-mono text-sm text-primary">{weekCount}</span>
+        </div>
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span className="text-2xs uppercase tracking-wide text-faint font-body truncate">Mês</span>
+          <span className="font-mono text-sm text-primary">{monthCount}</span>
+        </div>
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span className="text-2xs uppercase tracking-wide text-faint font-body truncate">Ano</span>
+          <span className="font-mono text-sm text-primary">{yearCount}</span>
+        </div>
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span className="text-2xs uppercase tracking-wide text-faint font-body truncate">Faltas</span>
+          <span className="font-mono text-sm font-semibold" style={{ color: pendingFaltasCount > 0 ? 'var(--rust)' : 'var(--text-faint)' }}>{pendingFaltasCount}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StudentFinanceCard({ student, finance }) {
+  return (
+    <div className="bg-elevated border border-hair rounded-lg p-3 flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: student.color }} />
+          <span className="text-primary font-body text-sm truncate min-w-0" title={student.name}>{student.name}</span>
+        </div>
+        <span className="text-2xs text-faint font-body flex-shrink-0 truncate max-w-[35%]" title={student.planType}>{student.planType}</span>
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span className="text-2xs uppercase tracking-wide text-faint font-body truncate">Bruto</span>
+          <span className="font-mono text-xs text-primary truncate">{currency(finance.gross)}</span>
+        </div>
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span className="text-2xs uppercase tracking-wide text-faint font-body truncate">Imposto</span>
+          <span className="font-mono text-xs text-rust truncate">{currency(finance.tax)}</span>
+        </div>
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span className="text-2xs uppercase tracking-wide text-faint font-body truncate">Ginásio</span>
+          <span className="font-mono text-xs text-slate-acc truncate">{currency(finance.gymFee)}</span>
+        </div>
+      </div>
+      <div className="flex items-center justify-between pt-2.5 border-t border-hair">
+        <span className="text-2xs uppercase tracking-wide text-faint font-body">Líquido</span>
+        <span className="font-mono text-sm text-brass font-semibold">{currency(finance.net)}</span>
+      </div>
+    </div>
+  );
+}
+
 function AlertChip({ icon: Icon, label, count, accent }) {
   const hex = ACCENT_HEX[accent];
   return (
@@ -1786,15 +1847,29 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
 
       <div>
         <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-3">Aulas por Aluno (Semana / Mês / Ano)</div>
-        <div className="bg-surface border border-hair rounded-xl overflow-x-auto">
+
+        <div className="sm:hidden flex flex-col gap-2">
+          {activeStudents.map((s) => (
+            <StudentSessionsCard
+              key={s.id}
+              student={s}
+              weekCount={countActiveSessions(s.id, bounds.weekStart, bounds.weekEnd, sessions)}
+              monthCount={countActiveSessions(s.id, bounds.monthStart, bounds.monthEnd, sessions)}
+              yearCount={countActiveSessions(s.id, bounds.yearStart, bounds.yearEnd, sessions)}
+              pendingFaltasCount={pendingFaltas(s.id, sessions)}
+            />
+          ))}
+        </div>
+
+        <div className="hidden sm:block bg-surface border border-hair rounded-xl overflow-x-auto">
           <table className="w-full text-sm font-body" style={{ minWidth: '520px' }}>
             <thead>
               <tr className="border-b border-hair text-left">
-                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium">Aluno</th>
-                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium text-right">Semana</th>
-                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium text-right">Mês</th>
-                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium text-right">Ano</th>
-                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium text-right">Faltas Pend.</th>
+                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium whitespace-nowrap">Aluno</th>
+                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium text-right whitespace-nowrap">Semana</th>
+                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium text-right whitespace-nowrap">Mês</th>
+                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium text-right whitespace-nowrap">Ano</th>
+                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium text-right whitespace-nowrap">Faltas Pend.</th>
               </tr>
             </thead>
             <tbody>
@@ -1803,15 +1878,15 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
                 return (
                   <tr key={s.id} className="border-b border-hair">
                     <td className="px-4 py-2.5">
-                      <span className="flex items-center gap-2">
+                      <span className="flex items-center gap-2 max-w-[140px] sm:max-w-[220px]">
                         <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
-                        <span className="text-primary">{s.name}</span>
+                        <span className="text-primary truncate min-w-0" title={s.name}>{s.name}</span>
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-primary">{countActiveSessions(s.id, bounds.weekStart, bounds.weekEnd, sessions)}</td>
-                    <td className="px-4 py-2.5 text-right font-mono text-primary">{countActiveSessions(s.id, bounds.monthStart, bounds.monthEnd, sessions)}</td>
-                    <td className="px-4 py-2.5 text-right font-mono text-primary">{countActiveSessions(s.id, bounds.yearStart, bounds.yearEnd, sessions)}</td>
-                    <td className="px-4 py-2.5 text-right font-mono font-semibold" style={{ color: pf > 0 ? 'var(--rust)' : 'var(--text-faint)' }}>{pf}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-primary whitespace-nowrap">{countActiveSessions(s.id, bounds.weekStart, bounds.weekEnd, sessions)}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-primary whitespace-nowrap">{countActiveSessions(s.id, bounds.monthStart, bounds.monthEnd, sessions)}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-primary whitespace-nowrap">{countActiveSessions(s.id, bounds.yearStart, bounds.yearEnd, sessions)}</td>
+                    <td className="px-4 py-2.5 text-right font-mono font-semibold whitespace-nowrap" style={{ color: pf > 0 ? 'var(--rust)' : 'var(--text-faint)' }}>{pf}</td>
                   </tr>
                 );
               })}
@@ -1822,16 +1897,23 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
 
       <div>
         <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-3">Detalhamento Financeiro por Aluno</div>
-        <div className="bg-surface border border-hair rounded-xl overflow-x-auto">
+
+        <div className="sm:hidden flex flex-col gap-2">
+          {activeStudents.map((s) => (
+            <StudentFinanceCard key={s.id} student={s} finance={studentFinance(s)} />
+          ))}
+        </div>
+
+        <div className="hidden sm:block bg-surface border border-hair rounded-xl overflow-x-auto">
           <table className="w-full text-sm font-body" style={{ minWidth: '560px' }}>
             <thead>
               <tr className="border-b border-hair text-left">
-                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium">Aluno</th>
-                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium">Plano</th>
-                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium text-right">Bruto</th>
-                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium text-right">Imposto</th>
-                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium text-right">Taxa Ginásio</th>
-                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium text-right">Líquido</th>
+                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium whitespace-nowrap">Aluno</th>
+                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium whitespace-nowrap">Plano</th>
+                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium text-right whitespace-nowrap">Bruto</th>
+                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium text-right whitespace-nowrap">Imposto</th>
+                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium text-right whitespace-nowrap">Taxa Ginásio</th>
+                <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium text-right whitespace-nowrap">Líquido</th>
               </tr>
             </thead>
             <tbody>
@@ -1840,16 +1922,16 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
                 return (
                   <tr key={s.id} className="border-b border-hair">
                     <td className="px-4 py-2.5">
-                      <span className="flex items-center gap-2">
+                      <span className="flex items-center gap-2 max-w-[120px] sm:max-w-[200px]">
                         <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
-                        <span className="text-primary">{s.name}</span>
+                        <span className="text-primary truncate min-w-0" title={s.name}>{s.name}</span>
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-muted">{s.planType}</td>
-                    <td className="px-4 py-2.5 text-right font-mono text-primary">{currency(f.gross)}</td>
-                    <td className="px-4 py-2.5 text-right font-mono text-rust">{currency(f.tax)}</td>
-                    <td className="px-4 py-2.5 text-right font-mono text-slate-acc">{currency(f.gymFee)}</td>
-                    <td className="px-4 py-2.5 text-right font-mono text-brass font-semibold">{currency(f.net)}</td>
+                    <td className="px-4 py-2.5 text-muted whitespace-nowrap">{s.planType}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-primary whitespace-nowrap">{currency(f.gross)}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-rust whitespace-nowrap">{currency(f.tax)}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-slate-acc whitespace-nowrap">{currency(f.gymFee)}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-brass font-semibold whitespace-nowrap">{currency(f.net)}</td>
                   </tr>
                 );
               })}

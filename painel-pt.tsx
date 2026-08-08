@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import { supabase, supabaseConfigured } from './src/supabaseClient';
 import logoSrc from './src/assets/ptmanager-logo.png';
+import LandingPage from './src/components/LandingPage';
 
 /* ============================== LOGO ============================== */
 
@@ -699,10 +700,10 @@ function DeveloperCredit() {
   );
 }
 
-function LoginScreen() {
+function LoginScreen({ onBack, initialMode = 'signin' }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [mode, setMode] = useState('signin');
+  const [mode, setMode] = useState(initialMode);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -731,9 +732,14 @@ function LoginScreen() {
     <div className="min-h-screen bg-base flex flex-col px-4">
       <div className="flex-1 flex items-center justify-center">
       <form onSubmit={submit} className="bg-surface border border-hair rounded-xl p-5 w-full max-w-sm flex flex-col gap-4">
-        <div className="flex items-center gap-2.5">
-          <img src={LOGO_SRC} alt="PTMANAGER" style={{ width: 34, height: 34, flexShrink: 0 }} />
-          <span className="font-display font-semibold text-xl tracking-wide text-primary">PT<span style={{ color: 'var(--brass)' }}>MANAGER</span></span>
+        <div className="flex items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5">
+            <img src={LOGO_SRC} alt="PTMANAGER" style={{ width: 34, height: 34, flexShrink: 0 }} />
+            <span className="font-display font-semibold text-xl tracking-wide text-primary">PT<span style={{ color: 'var(--brass)' }}>MANAGER</span></span>
+          </div>
+          {onBack && (
+            <button type="button" onClick={onBack} className="text-xs font-body link-sky flex-shrink-0">Voltar</button>
+          )}
         </div>
         <div>
           <h1 className="font-display text-lg font-semibold text-primary">{mode === 'signup' ? 'Criar acesso' : 'Entrar no painel'}</h1>
@@ -2795,7 +2801,14 @@ function AppInner() {
   const [showSessionModal, setShowSessionModal] = useState(false);
   const [showStudentModal, setShowStudentModal] = useState(false);
   const [showTransactionModal, setShowTransactionModal] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [loginMode, setLoginMode] = useState('signin');
   const storageOk = browserStorageAvailable();
+
+  function openLogin(mode = 'signin') {
+    setLoginMode(mode);
+    setShowLogin(true);
+  }
 
   useEffect(() => {
     if (!supabaseConfigured || !supabase) {
@@ -2987,6 +3000,7 @@ function AppInner() {
     if (!supabase) return;
     await supabase.auth.signOut();
     setSettingsOpen(false);
+    setShowLogin(false);
     clearLoadedData();
   }
 
@@ -3115,7 +3129,18 @@ function AppInner() {
   }
 
   if (!authReady || !subscriptionReady || loading) return <LoadingScreen />;
-  if (supabaseConfigured && !user) return <LoginScreen />;
+  if (supabaseConfigured && !user) {
+    if (showLogin) return <LoginScreen initialMode={loginMode} onBack={() => setShowLogin(false)} />;
+    return (
+      <LandingPage
+        logoSrc={LOGO_SRC}
+        plans={SALES_PLANS}
+        whatsappUrl={SALES_WHATSAPP_URL}
+        onGetStarted={() => openLogin('signup')}
+        onLogin={() => openLogin('signin')}
+      />
+    );
+  }
   if (supabaseConfigured && !subscriptionActive) return <SalesPlansPage onSignOut={signOut} onRefresh={refreshSubscription} checkoutReturn={checkoutReturn} />;
 
   return (

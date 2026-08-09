@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import {
   MessageCircle, CalendarDays, RotateCcw, ClipboardCheck, Images, Wallet, TrendingDown,
   ShieldCheck, LogIn, RefreshCcw, Lock, ChevronDown, CheckCircle2, TrendingUp, ArrowRight, UserPlus, Gift, Mail,
+  MousePointerClick,
 } from 'lucide-react';
 
 /* ============================== MOCK DATA (previews) ============================== */
@@ -27,11 +28,40 @@ const MOCK_STUDENTS = [
 ];
 
 const WEEK_DAYS = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM'];
-const MOCK_WEEK = [
-  ['#5DA9E9', '#6FCF97'], ['#C77DFF'], [], ['#5DA9E9', '#EF88AD'], ['#F2A65A'], [], [],
+// Dia · nº de marcações — o dia ativo é o índice 3 (quinta).
+const MOCK_WEEK_DAYS = [
+  { d: '03', n: 3 }, { d: '04', n: 2 }, { d: '05', n: 0 }, { d: '06', n: 4 },
+  { d: '07', n: 2 }, { d: '08', n: 1 }, { d: '09', n: 0 },
+];
+
+// Um dia real da agenda: aula, evento pessoal, reposição e avaliação.
+const MOCK_DAY_SESSIONS = [
+  { time: '08:00', name: 'Rita Almeida', type: 'Horário Fixo', color: '#5DA9E9', status: 'Realizado', statusColor: '#5FBFA0' },
+  { time: '10:30', name: 'João Pereira', type: 'Horário Fixo', color: '#C77DFF', status: 'Agendado', statusColor: '#8C8C8C' },
+  { time: '13:00', name: 'Horário de Almoço', type: 'Evento pessoal', color: '#F2A65A', status: 'Agendado', statusColor: '#8C8C8C', evento: true },
+  { time: '17:00', name: 'Tiago Costa', type: 'Reposição', color: '#5FBFA0', status: 'Agendado', statusColor: '#8C8C8C' },
 ];
 
 const FAT_TREND = [22, 20.5, 19.4, 18.2];
+
+// Rótulos iguais aos do painel (BIA_FIELDS em painel-pt.tsx).
+const MOCK_BIA = [
+  { label: '% Massa Muscular', value: '38,4' },
+  { label: 'Massa Gorda (kg)', value: '11,7' },
+  { label: '% Água Corporal', value: '54,2' },
+  { label: 'Gordura Visceral', value: '4' },
+  { label: 'TMB (kcal)', value: '1.412' },
+  { label: 'Idade Metabólica', value: '27' },
+];
+
+// Os cinco protocolos de dobras realmente implementados no app.
+const FOLD_PROTOCOLS_MOCK = [
+  'Jackson-Pollock 7 Dobras',
+  'Jackson-Pollock 3 Dobras',
+  'Durnin-Womersley 4 Dobras',
+  'Faulkner 4 Dobras',
+  'Guedes 3 Dobras',
+];
 
 const PHOTO_DATES = ['Jan', 'Mar', 'Mai', 'Jul'];
 const PHOTO_GRADIENTS = [
@@ -85,14 +115,22 @@ const FEATURE_SECTIONS = [
   },
   {
     heading: 'A sua semana, sob controlo',
-    body: 'Aulas fixas, flutuantes e eventos pessoais — como horário livre, reunião ou almoço — na mesma agenda, com vista semanal e mensal.',
-    bullets: ['Faltas e reposições registadas', 'Eventos pessoais além das aulas', 'Vista semanal e mensal'],
+    body: 'Vê a semana inteira com o nome de cada aluno e a hora de cada aula. Basta tocar no aluno para marcar presença, falta ou reposição — e ajustar horário, tipo de aula ou notas.',
+    bullets: [
+      'Nome do aluno e hora visíveis em cada dia',
+      'Presença, falta e reposição num toque',
+      'Eventos pessoais na mesma agenda, com vista semanal e mensal',
+    ],
     Mockup: AgendaMockup,
   },
   {
     heading: 'Evolução documentada, não só recordada',
-    body: 'Peso, percentagem de gordura por vários protocolos de pregas, IMC e medidas — histórico completo para mostrar resultados reais.',
-    bullets: ['Vários protocolos de avaliação', 'Evolução por aluno ao longo do tempo', 'IMC calculado automaticamente'],
+    body: 'Registe por bioimpedância — massa muscular, água corporal, gordura visceral, TMB — ou por dobras cutâneas, com cinco protocolos à escolha. Com fotos ligadas a cada avaliação.',
+    bullets: [
+      'Bioimpedância com 12 campos e fotos da avaliação',
+      'Cinco protocolos de dobras: Jackson-Pollock 7 e 3, Durnin-Womersley, Faulkner e Guedes',
+      '% de gordura e IMC calculados automaticamente',
+    ],
     Mockup: AssessmentMockup,
   },
   {
@@ -184,54 +222,159 @@ function StudentsMockup() {
 }
 
 function AgendaMockup() {
+  const activeDay = 3;
   return (
-    <MockupFrame label="agenda · esta semana">
-      <div className="grid grid-cols-7 gap-1.5">
-        {WEEK_DAYS.map((d, i) => (
-          <div key={d} className="flex flex-col items-center gap-1.5">
-            <span className="text-2xs font-mono text-faint">{d}</span>
-            <div className="bg-elevated border border-hair rounded-lg w-full flex flex-col items-center justify-center gap-1 py-2.5" style={{ minHeight: 60 }}>
-              {MOCK_WEEK[i].map((color, idx) => (
-                <span key={idx} className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-              ))}
+    <MockupFrame label="agenda · semana de 3 a 9 de agosto">
+      {/* Seletor de dia da semana, com o nº de marcações de cada dia */}
+      <div className="grid grid-cols-7 gap-1.5 mb-3">
+        {WEEK_DAYS.map((d, i) => {
+          const active = i === activeDay;
+          return (
+            <div
+              key={d}
+              className="flex flex-col items-center gap-0.5 rounded-lg border py-1.5"
+              style={{
+                borderColor: active ? 'var(--brass)' : 'var(--border-hair)',
+                backgroundColor: active ? 'rgba(30,166,180,0.12)' : 'transparent',
+              }}
+            >
+              <span className="text-2xs font-body" style={{ color: active ? 'var(--brass)' : 'var(--text-faint)' }}>{d}</span>
+              <span className="font-mono text-xs" style={{ color: active ? 'var(--brass)' : 'var(--text-primary)' }}>{MOCK_WEEK_DAYS[i].d}</span>
+              <span className="font-mono text-2xs text-faint">{MOCK_WEEK_DAYS[i].n || '–'}</span>
             </div>
+          );
+        })}
+      </div>
+
+      {/* Marcações do dia selecionado, com o nome de cada aluno */}
+      <div className="flex flex-col gap-2">
+        {MOCK_DAY_SESSIONS.map((s) => (
+          <div
+            key={s.time}
+            className="rounded-lg border border-hair pl-2.5 pr-2 py-2 flex items-center gap-2.5"
+            style={{
+              backgroundColor: 'var(--bg-elevated)',
+              borderLeftWidth: 3,
+              borderLeftColor: s.color,
+              borderStyle: s.evento ? 'dashed solid solid dashed' : 'solid',
+            }}
+          >
+            <span className="font-mono text-2xs text-muted flex-shrink-0">{s.time}</span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-body text-primary truncate" style={{ fontWeight: 500 }}>{s.name}</span>
+              <span className="block text-2xs font-body text-faint truncate">{s.type}</span>
+            </span>
+            <span className="badge flex-shrink-0" style={{ color: s.statusColor, backgroundColor: `${s.statusColor}1F` }}>{s.status}</span>
           </div>
         ))}
       </div>
-      <div className="flex items-center gap-2 mt-3.5 text-2xs font-body text-faint">
-        <RotateCcw size={12} className="text-rust flex-shrink-0" /> 2 reposições pendentes esta semana
+
+      <div className="flex items-start gap-2 mt-3 text-2xs font-body text-faint">
+        <MousePointerClick size={12} className="text-brass flex-shrink-0" style={{ marginTop: 1 }} />
+        <span>Toque no nome do aluno para marcar presença, falta ou reposição.</span>
       </div>
     </MockupFrame>
   );
 }
 
 function AssessmentMockup() {
-  const max = Math.max(...FAT_TREND);
+  // Escala com margem em vez de partir do zero: entre 22% e 18,2% a diferença
+  // é pequena em absoluto, e a partir do zero a descida ficaria invisível.
+  const lo = Math.min(...FAT_TREND) - 1.5;
+  const hi = Math.max(...FAT_TREND) + 0.5;
+  const heightPct = (v) => ((v - lo) / (hi - lo)) * 100;
   return (
     <MockupFrame label="avaliação física · Rita Almeida">
-      <div className="grid grid-cols-3 gap-2 mb-3">
-        <div className="bg-elevated border border-hair rounded-lg p-2.5 flex flex-col gap-0.5">
-          <span className="text-2xs uppercase text-faint font-body">Peso</span>
-          <span className="font-mono text-sm text-primary">64,2 kg</span>
+      {/* Escolha do método, tal como no painel */}
+      <div className="text-2xs uppercase tracking-wide text-faint font-body mb-1.5">Método de avaliação</div>
+      <div className="grid grid-cols-2 gap-2 mb-3.5">
+        <div className="rounded-lg border px-3 py-2 text-center text-xs font-body" style={{ borderColor: 'var(--brass)', backgroundColor: 'rgba(30,166,180,0.12)', color: 'var(--brass)' }}>
+          Bioimpedância
         </div>
-        <div className="bg-elevated border border-hair rounded-lg p-2.5 flex flex-col gap-0.5">
-          <span className="text-2xs uppercase text-faint font-body">Gordura</span>
-          <span className="font-mono text-sm text-brass">18,2%</span>
-        </div>
-        <div className="bg-elevated border border-hair rounded-lg p-2.5 flex flex-col gap-0.5">
-          <span className="text-2xs uppercase text-faint font-body">IMC</span>
-          <span className="font-mono text-sm text-primary">21,4</span>
+        <div className="rounded-lg border border-hair px-3 py-2 text-center text-xs font-body text-muted">
+          Dobras Cutâneas
         </div>
       </div>
+
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        {[
+          { l: 'Peso', v: '64,2 kg', accent: false },
+          { l: 'Gordura', v: '18,2%', accent: true },
+          { l: 'IMC', v: '21,4', accent: false },
+        ].map((m) => (
+          <div key={m.l} className="bg-elevated border border-hair rounded-lg p-2.5 flex flex-col gap-0.5">
+            <span className="text-2xs uppercase text-faint font-body">{m.l}</span>
+            <span className={`font-mono text-sm ${m.accent ? 'text-brass' : 'text-primary'}`}>{m.v}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Dados completos de bioimpedância */}
+      <div className="bg-elevated border border-hair rounded-lg p-3 mb-3">
+        <div className="text-2xs uppercase tracking-wide text-faint font-body mb-2">Dados de bioimpedância</div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+          {MOCK_BIA.map((f) => (
+            <div key={f.label} className="flex items-baseline justify-between gap-2 min-w-0">
+              <span className="text-2xs font-body text-muted truncate">{f.label}</span>
+              <span className="font-mono text-2xs text-primary flex-shrink-0">{f.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Fotos ligadas à avaliação */}
+      <div className="bg-elevated border border-hair rounded-lg p-3 mb-3">
+        <div className="text-2xs uppercase tracking-wide text-faint font-body mb-2">Fotos desta avaliação</div>
+        <div className="grid grid-cols-4 gap-2">
+          {PHOTO_GRADIENTS.map((g, i) => (
+            <div key={i} className="rounded-md aspect-square" style={{ background: g }} />
+          ))}
+        </div>
+      </div>
+
+      {/* Todos os protocolos de dobras disponíveis */}
+      <div className="bg-elevated border border-hair rounded-lg p-3 mb-3">
+        <div className="text-2xs uppercase tracking-wide text-faint font-body mb-2">Protocolos de dobras disponíveis</div>
+        <div className="flex flex-wrap gap-1.5">
+          {FOLD_PROTOCOLS_MOCK.map((p, i) => (
+            <span
+              key={p}
+              className="rounded-md border px-2 py-1 text-2xs font-body"
+              style={{
+                borderColor: i === 0 ? 'var(--brass)' : 'var(--border-hair)',
+                color: i === 0 ? 'var(--brass)' : 'var(--text-muted)',
+                backgroundColor: i === 0 ? 'rgba(30,166,180,0.12)' : 'transparent',
+              }}
+            >
+              {p}
+            </span>
+          ))}
+        </div>
+      </div>
+
       <div className="bg-elevated border border-hair rounded-lg p-3">
-        <div className="text-2xs uppercase text-faint font-body mb-2.5">Evolução da % de gordura</div>
-        <div className="flex items-end gap-2" style={{ height: 52 }}>
+        <div className="flex items-baseline justify-between gap-2 mb-2.5">
+          <span className="text-2xs uppercase text-faint font-body">Evolução da % de gordura</span>
+          <span className="text-2xs font-mono text-brass">−3,8 p.p.</span>
+        </div>
+        <div className="flex items-end gap-2" style={{ height: 56 }}>
           {FAT_TREND.map((v, i) => (
             <div
               key={i}
               className="flex-1 rounded-t"
-              style={{ height: `${(v / max) * 100}%`, backgroundColor: i === FAT_TREND.length - 1 ? 'var(--brass)' : 'var(--border-hair)' }}
+              style={{ height: `${heightPct(v)}%`, backgroundColor: i === FAT_TREND.length - 1 ? 'var(--brass)' : 'var(--border-hair)' }}
             />
+          ))}
+        </div>
+        <div className="flex gap-2 mt-1.5">
+          {FAT_TREND.map((v, i) => (
+            <span
+              key={i}
+              className="flex-1 text-center font-mono text-2xs"
+              style={{ color: i === FAT_TREND.length - 1 ? 'var(--brass)' : 'var(--text-faint)' }}
+            >
+              {String(v).replace('.', ',')}%
+            </span>
           ))}
         </div>
       </div>

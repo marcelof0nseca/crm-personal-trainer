@@ -5,7 +5,7 @@ import {
   Sparkles, UserX, ChevronLeft, ChevronRight, Search, Wallet, Percent, Building2,
   Loader2, Settings, Check, Info, Activity, Ban, Download, Upload,
   Camera, ArrowLeft, LineChart as LineChartIcon, Tag,
-  Coffee, Dumbbell, UtensilsCrossed, Stethoscope, Gift, CreditCard, Mail, CircleUser,
+  Coffee, Dumbbell, UtensilsCrossed, Stethoscope, Gift, CreditCard, Mail, CircleUser, KeyRound,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
@@ -57,6 +57,11 @@ const CHART = {
     background: '#1B1E24', border: '1px solid #363C45', borderRadius: 10,
     color: '#F2F4F7', boxShadow: '0 6px 16px -6px rgba(0,0,0,0.6)', fontSize: 12,
   },
+  // O Recharts usa preto por omissão no rótulo do tooltip e um cursor cinzento
+  // claro — ilegíveis sobre fundo escuro. Definidos explicitamente.
+  tooltipLabel: { color: '#F2F4F7', fontWeight: 600, marginBottom: 4 },
+  tooltipItem: { color: '#A0A6B0', padding: 0 },
+  cursor: { fill: 'rgba(255,255,255,0.06)' },
   legend: { fontSize: 11, color: '#A0A6B0' },
   tick: { fill: '#7C838F', fontSize: 11 },
   grid: '#262A31',
@@ -247,6 +252,53 @@ function studentFinance(student, monthKey) {
   const gymFee = student.gymFeeType === 'fixed' ? (Number(student.gymFeeValue) || 0) : (gross * (Number(student.gymFeeValue) || 0)) / 100;
   const net = gross - tax - gymFee;
   return { gross, tax, gymFee, net };
+}
+
+// A receita dos alunos é DERIVADA das fichas dos alunos, não gravada como
+// lançamento. Assim nunca duplica, e atualiza-se sozinha quando um aluno é
+// criado, editado, desativado ou removido. Painel e Finanças usam esta função,
+// para mostrarem sempre o mesmo valor.
+function studentsNetForMonth(students, monthKey) {
+  return (students || [])
+    .filter((s) => s.active)
+    .reduce((sum, s) => sum + studentFinance(s, monthKey).net, 0);
+}
+
+function autoStudentRevenueTx(students, monthKey, monthStartIso) {
+  const net = studentsNetForMonth(students, monthKey);
+  if (net <= 0) return null;
+  return {
+    id: `auto-alunos-${monthKey}`,
+    type: 'entrada',
+    description: 'Receita líquida de alunos',
+    category: 'rendimento_pt',
+    amount: net,
+    date: monthStartIso,
+    status: 'concluido',
+    auto: true,
+  };
+}
+
+// Lançamentos do mês já com a entrada automática dos alunos incluída.
+function monthTransactions(finances, students, year, month) {
+  const monthStart = fmtDateISO(new Date(year, month, 1));
+  const monthEnd = fmtDateISO(new Date(year, month + 1, 0));
+  const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+  const real = (finances || []).filter((t) => t.date >= monthStart && t.date <= monthEnd);
+  const auto = autoStudentRevenueTx(students, monthKey, monthStart);
+  return auto ? [auto, ...real] : real;
+}
+
+// Plural correto em vez de "avaliação(ões)" / "aluno(s)".
+function plural(count, singular, pluralForm) {
+  return `${count} ${Number(count) === 1 ? singular : pluralForm}`;
+}
+
+// Ordenação alfabética portuguesa: ignora maiúsculas e ordena acentos
+// corretamente (Álvaro antes de Ana, Óscar depois de Marta).
+const PT_COLLATOR = new Intl.Collator('pt', { sensitivity: 'base', numeric: true });
+function byNamePt(a, b) {
+  return PT_COLLATOR.compare(a || '', b || '');
 }
 
 function pendingFaltas(studentId, sessions) {
@@ -524,6 +576,11 @@ function GlobalStyles() {
       }
       img, svg, canvas, video { max-width: 100%; }
       h1, h2, h3, p, span, button, a, td, th { overflow-wrap: anywhere; }
+      /* Números, horas e valores nunca devem partir a meio ("07:00" virava
+         "07" / ":0" / "0" em colunas estreitas). break-all continua a funcionar
+         onde é pedido explicitamente (IDs longos da Stripe). */
+      .font-mono { overflow-wrap: normal; }
+      .nowrap { white-space: nowrap; }
 
       .font-display { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
       .font-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
@@ -1193,10 +1250,10 @@ function daysUntil(value) {
 function daysLeftLabel(value, cancelAtPeriodEnd, manualRenewal = false) {
   const days = daysUntil(value);
   if (days == null) return 'Sem vencimento';
-  if (days < 0) return `Vencido há ${Math.abs(days)} dia(s)`;
+  if (days < 0) return `Vencido há ${plural(Math.abs(days), 'dia', 'dias')}`;
   if (days === 0) return cancelAtPeriodEnd ? 'Cancela hoje' : 'Vence hoje';
-  if (manualRenewal) return `Vence em ${days} dia(s)`;
-  return cancelAtPeriodEnd ? `Cancela em ${days} dia(s)` : `Renova em ${days} dia(s)`;
+  if (manualRenewal) return `Vence em ${plural(days, 'dia', 'dias')}`;
+  return cancelAtPeriodEnd ? `Cancela em ${plural(days, 'dia', 'dias')}` : `Renova em ${plural(days, 'dia', 'dias')}`;
 }
 
 function paymentMethodLabel(subscription) {
@@ -1210,7 +1267,64 @@ function supportMailtoHref(subject) {
   return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}`;
 }
 
-function ProfileView({ user, subscription, onSignOut, onRefreshSubscription }) {
+function ChangePasswordModal({ email, onClose, onDone }) {
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function submit(e) {
+    e.preventDefault();
+    setError('');
+    if (!current || !next || !confirm) { setError('Preencha todos os campos.'); return; }
+    if (next.length < 6) { setError('A nova palavra-passe deve ter pelo menos 6 caracteres.'); return; }
+    if (next !== confirm) { setError('A nova palavra-passe e a confirmação não coincidem.'); return; }
+    if (next === current) { setError('A nova palavra-passe tem de ser diferente da atual.'); return; }
+    if (!supabase) { setError('Supabase não configurado.'); return; }
+
+    setBusy(true);
+    // O Supabase não valida a palavra-passe atual no updateUser, por isso
+    // confirmamo-la primeiro com um início de sessão — evita que alguém com a
+    // sessão aberta troque a palavra-passe sem a saber.
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password: current });
+    if (signInError) {
+      setBusy(false);
+      setError('A palavra-passe atual está incorreta.');
+      return;
+    }
+    const { error: updateError } = await supabase.auth.updateUser({ password: next });
+    setBusy(false);
+    if (updateError) { setError(updateError.message); return; }
+    onDone('Palavra-passe alterada com sucesso.');
+    onClose();
+  }
+
+  return (
+    <Modal title="Alterar palavra-passe" onClose={onClose}>
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        <FormField label="Palavra-passe atual">
+          <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} className="input-field" autoComplete="current-password" />
+        </FormField>
+        <FormField label="Nova palavra-passe">
+          <input type="password" value={next} onChange={(e) => setNext(e.target.value)} className="input-field" autoComplete="new-password" placeholder="Mínimo 6 caracteres" />
+        </FormField>
+        <FormField label="Confirmar nova palavra-passe">
+          <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} className="input-field" autoComplete="new-password" />
+        </FormField>
+        {error && <div className="text-sm font-body text-rust">{error}</div>}
+        <div className="flex gap-2 pt-1 mobile-stack">
+          <button type="button" onClick={onClose} className="btn btn-ghost">Cancelar</button>
+          <button type="submit" disabled={busy} className="btn btn-primary flex-1">
+            {busy ? 'A guardar...' : 'Guardar nova palavra-passe'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ProfileView({ user, subscription, onSignOut, onRefreshSubscription, onChangePassword }) {
   const currentPlan = planByTier(subscription?.tier);
   const planName = currentPlan?.name || subscription?.tier || 'Nenhum plano';
   const planValue = subscription?.value != null
@@ -1261,25 +1375,36 @@ function ProfileView({ user, subscription, onSignOut, onRefreshSubscription }) {
               <div className="font-body text-base text-primary truncate">{user?.email || 'Utilizador local'}</div>
             </div>
           </div>
-          <div className="grid grid-cols-1 gap-2 text-sm font-body">
-            <div className="flex justify-between gap-3 border-t border-hair pt-3">
-              <span className="text-muted">ID do utilizador</span>
-              <span className="text-faint font-mono text-xs truncate max-w-52">{user?.id || 'local'}</span>
+          <dl className="flex flex-col text-sm font-body border-t border-hair">
+            {[
+              { label: 'E-mail de acesso', value: user?.email || 'Conta local', mono: false },
+              { label: 'ID do utilizador', value: user?.id || 'local', mono: true },
+              { label: 'Último acesso', value: user?.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleString('pt-PT', { dateStyle: 'short', timeStyle: 'short' }) : 'Agora' },
+              { label: 'Conta criada', value: fmtDateLong(user?.created_at) },
+            ].map((row) => (
+              <div key={row.label} className="flex items-center justify-between gap-3 py-2.5 border-b border-hair min-w-0">
+                <span className="text-muted flex-shrink-0">{row.label}</span>
+                <span className={`text-right truncate min-w-0 ${row.mono ? 'font-mono text-xs text-faint' : 'text-primary'}`} title={String(row.value)}>{row.value}</span>
+              </div>
+            ))}
+            {/* Nunca mostrar a palavra-passe real — apenas a máscara. */}
+            <div className="flex items-center justify-between gap-3 py-2.5 border-b border-hair">
+              <span className="text-muted">Palavra-passe</span>
+              <span className="font-mono text-primary tracking-widest" aria-label="Palavra-passe oculta">••••••••</span>
             </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-muted">Último acesso</span>
-              <span className="text-primary">{user?.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString('pt-PT') : 'Agora'}</span>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-muted">Conta criada</span>
-              <span className="text-primary">{fmtDateLong(user?.created_at)}</span>
-            </div>
+          </dl>
+          <div className="flex flex-col sm:flex-row gap-2 mt-auto">
+            {onChangePassword && (
+              <button onClick={onChangePassword} type="button" className="btn btn-ghost flex-1" style={{ fontSize: 12 }}>
+                <KeyRound size={14} /> Alterar palavra-passe
+              </button>
+            )}
+            {onSignOut && (
+              <button onClick={onSignOut} type="button" className="btn btn-ghost flex-1" style={{ fontSize: 12 }}>
+                Terminar sessão
+              </button>
+            )}
           </div>
-          {onSignOut && (
-            <button onClick={onSignOut} type="button" className="mt-auto px-3.5 py-2 rounded-lg text-xs font-body border border-hair btn-surface text-muted">
-              Sair da conta
-            </button>
-          )}
         </div>
 
         <div className="bg-surface border border-hair rounded-xl p-5 flex flex-col gap-4">
@@ -1726,7 +1851,10 @@ function PhotoPicker({ photoIds, onAdd, onRemove, photosById, busy }) {
 
 /* ============================== SESSION CARD ============================== */
 
-function SessionCard({ session, student, onOpen, onQuickStatus, customCategories }) {
+// compact = coluna estreita da semana no desktop. Aí o rótulo do tipo é
+// omitido (o ícone colorido já o identifica) e as ações ficam lado a lado,
+// para o nome do aluno ter a largura toda.
+function SessionCard({ session, student, onOpen, onQuickStatus, customCategories, compact }) {
   const isEvento = session.kind === 'evento';
   const type = isEvento ? eventTypeFor(session.type, customCategories) : sessionTypeFor(session.type, customCategories);
   const TypeIcon = type.icon || Tag;
@@ -1751,37 +1879,81 @@ function SessionCard({ session, student, onOpen, onQuickStatus, customCategories
         borderStyle: isEvento ? 'dashed solid solid dashed' : 'solid',
       }}
     >
-      <div className="flex items-start justify-between gap-1">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 mb-1">
-            <span className="font-mono text-2xs text-muted tabular-nums">{session.startTime}</span>
+      {/* Compacto: hora + ações na 1.ª linha, nome na 2.ª, estado com a linha
+          toda na 3.ª — assim "Agendado" nunca é cortado a meio. */}
+      {compact ? (
+        <div className="flex flex-col gap-1 min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="font-mono text-2xs text-muted nowrap">{session.startTime}</span>
             <span className="rounded p-0.5 flex-shrink-0" style={{ backgroundColor: `${type.color}22` }}>
               <TypeIcon size={10} style={{ color: type.color, display: 'block' }} />
             </span>
-            {!isEvento && <span className="text-2xs font-body text-faint truncate">{type.label}</span>}
+            <span className="flex-1" />
+            {!isEvento && (
+              <span className="flex gap-0.5 flex-shrink-0">
+                {!isRealizado && !isCancelado && !isFalta && (
+                  <button onClick={(e) => { e.stopPropagation(); onQuickStatus(session, 'realizado'); }} type="button" className="p-1 rounded btn-surface" aria-label="Marcar como realizado" title="Marcar como realizado">
+                    <CheckCircle2 size={13} className="text-slate-acc" style={{ display: 'block' }} />
+                  </button>
+                )}
+                {!isFalta && !isCancelado && (
+                  <button onClick={(e) => { e.stopPropagation(); onQuickStatus(session, 'falta'); }} type="button" className="p-1 rounded btn-surface" aria-label="Reportar falta" title="Reportar falta">
+                    <UserX size={13} className="text-rust" style={{ display: 'block' }} />
+                  </button>
+                )}
+              </span>
+            )}
           </div>
-          <div className={`font-body text-sm text-primary truncate ${isFalta ? 'line-through' : ''}`} style={{ fontWeight: 500 }}>
+          <div
+            className={`font-body text-sm text-primary truncate ${isFalta ? 'line-through' : ''}`}
+            style={{ fontWeight: 500 }}
+            title={isEvento ? type.label : (student?.name || 'Aluno removido')}
+          >
             {isEvento ? type.label : (student?.name || 'Aluno removido')}
+          </div>
+          <span className="badge self-start" style={{ color: statusInfo?.color, backgroundColor: `${statusInfo?.color}1F` }}>
+            {statusInfo?.label}
+          </span>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-start justify-between gap-1">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 mb-1 min-w-0">
+                <span className="font-mono text-2xs text-muted nowrap">{session.startTime}</span>
+                <span className="rounded p-0.5 flex-shrink-0" style={{ backgroundColor: `${type.color}22` }}>
+                  <TypeIcon size={10} style={{ color: type.color, display: 'block' }} />
+                </span>
+                {!isEvento && <span className="text-2xs font-body text-faint truncate">{type.label}</span>}
+              </div>
+              <div
+                className={`font-body text-sm text-primary truncate ${isFalta ? 'line-through' : ''}`}
+                style={{ fontWeight: 500 }}
+                title={isEvento ? type.label : (student?.name || 'Aluno removido')}
+              >
+                {isEvento ? type.label : (student?.name || 'Aluno removido')}
+              </div>
+            </div>
+            {!isEvento && (
+              <div className="flex flex-col gap-0.5 flex-shrink-0">
+                {!isRealizado && !isCancelado && !isFalta && (
+                  <button onClick={(e) => { e.stopPropagation(); onQuickStatus(session, 'realizado'); }} type="button" className="p-1 rounded btn-surface" aria-label="Marcar como realizado" title="Marcar como realizado">
+                    <CheckCircle2 size={14} className="text-slate-acc" style={{ display: 'block' }} />
+                  </button>
+                )}
+                {!isFalta && !isCancelado && (
+                  <button onClick={(e) => { e.stopPropagation(); onQuickStatus(session, 'falta'); }} type="button" className="p-1 rounded btn-surface" aria-label="Reportar falta" title="Reportar falta">
+                    <UserX size={14} className="text-rust" style={{ display: 'block' }} />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
           <span className="badge mt-1.5" style={{ color: statusInfo?.color, backgroundColor: `${statusInfo?.color}1F` }}>
             {statusInfo?.label}
           </span>
-        </div>
-        {!isEvento && (
-          <div className="flex flex-col gap-0.5 flex-shrink-0">
-            {!isRealizado && !isCancelado && !isFalta && (
-              <button onClick={(e) => { e.stopPropagation(); onQuickStatus(session, 'realizado'); }} type="button" className="p-1 rounded btn-surface" aria-label="Marcar como realizado" title="Marcar como realizado">
-                <CheckCircle2 size={14} className="text-slate-acc" />
-              </button>
-            )}
-            {!isFalta && !isCancelado && (
-              <button onClick={(e) => { e.stopPropagation(); onQuickStatus(session, 'falta'); }} type="button" className="p-1 rounded btn-surface" aria-label="Reportar falta" title="Reportar falta">
-                <UserX size={14} className="text-rust" />
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1911,7 +2083,12 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
   const comparecimentoBase = aulasRealizadasMes + avaliacoesRealizadasMes + faltasMes;
   const taxaComparecimento = comparecimentoBase > 0 ? Math.round(((aulasRealizadasMes + avaliacoesRealizadasMes) / comparecimentoBase) * 100) : null;
 
-  const financeMonthTx = useMemo(() => finances.filter((t) => t.date >= bounds.monthStart && t.date <= bounds.monthEnd), [finances, bounds]);
+  // Mesma função usada pela aba Finanças: a entrada automática dos alunos entra
+  // nos dois sítios com o mesmo valor.
+  const financeMonthTx = useMemo(() => {
+    const now = new Date();
+    return monthTransactions(finances, students, now.getFullYear(), now.getMonth());
+  }, [finances, students]);
   const financeEntradasMes = financeMonthTx.filter((t) => t.type === 'entrada').reduce((s, t) => s + (Number(t.amount) || 0), 0);
   const financeSaidasMes = financeMonthTx.filter((t) => t.type === 'gasto').reduce((s, t) => s + (Number(t.amount) || 0), 0);
   const financeSaldoMes = financeEntradasMes - financeSaidasMes;
@@ -1924,10 +2101,42 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
     name: t.label, value: weekSessions.filter((s) => s.type === t.id).length, color: t.color,
   })).filter((d) => d.value > 0), [weekSessions, customCategories]);
 
-  const topStudentsData = useMemo(() => [...activeStudents]
-    .map((s) => ({ name: s.name.split(' ')[0], value: studentFinance(s).net, color: s.color }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 6), [activeStudents]);
+  // Todos os alunos ativos (antes cortava nos 6 primeiros e escondia o resto).
+  // O nome completo vai no tooltip; o eixo mostra uma versão curta mas única.
+  const studentRevenueData = useMemo(() => {
+    const firstNames = {};
+    activeStudents.forEach((s) => {
+      const first = (s.name || '').trim().split(/\s+/)[0] || '—';
+      firstNames[first] = (firstNames[first] || 0) + 1;
+    });
+    return [...activeStudents]
+      .map((s) => {
+        const parts = (s.name || '').trim().split(/\s+/);
+        const first = parts[0] || '—';
+        // Se houver nomes próprios repetidos, junta a inicial do apelido.
+        const short = firstNames[first] > 1 && parts[1] ? `${first} ${parts[1][0]}.` : first;
+        const f = studentFinance(s);
+        return { name: short, fullName: s.name, bruto: f.gross, liquido: f.net, color: s.color };
+      })
+      .sort((a, b) => b.liquido - a.liquido);
+  }, [activeStudents]);
+
+  // Altura cresce com o nº de alunos para nenhum ficar escondido.
+  const revenueChartHeight = Math.max(220, studentRevenueData.length * 34 + 40);
+
+  // Entradas e saídas pessoais agrupadas por semana do mês (mais legível que
+  // dia a dia num ecrã estreito, e não fica vazio quando há poucos lançamentos).
+  const personalFlowData = useMemo(() => {
+    const weeks = [1, 2, 3, 4, 5].map((w) => ({ label: `S${w}`, entradas: 0, saidas: 0 }));
+    financeMonthTx.forEach((t) => {
+      const dayOfMonth = Number(String(t.date).slice(8, 10)) || 1;
+      const idx = Math.min(4, Math.floor((dayOfMonth - 1) / 7));
+      const amount = Number(t.amount) || 0;
+      if (t.type === 'entrada') weeks[idx].entradas += amount;
+      else weeks[idx].saidas += amount;
+    });
+    return weeks.filter((w) => w.entradas > 0 || w.saidas > 0);
+  }, [financeMonthTx]);
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -1986,27 +2195,42 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
                   <Pie data={typeDistData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={3}>
                     {typeDistData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                   </Pie>
-                  <Tooltip contentStyle={CHART.tooltip} />
+                  <Tooltip contentStyle={CHART.tooltip} labelStyle={CHART.tooltipLabel} itemStyle={CHART.tooltipItem} cursor={CHART.cursor} />
                   <Legend wrapperStyle={CHART.legend} />
                 </PieChart>
               </ResponsiveContainer>
             )}
           </ErrorBoundary>
         </div>
-        <div className="bg-surface border border-hair rounded-xl p-4">
-          <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-2">Receita Líquida por Aluno</div>
+        <div className="bg-surface border border-hair rounded-xl p-4 min-w-0">
+          <div className="flex items-baseline justify-between gap-2 mb-2">
+            <span className="text-2xs uppercase tracking-wide text-faint font-mono">Bruto vs. Líquido por Aluno</span>
+            <span className="text-2xs font-body text-faint">{plural(studentRevenueData.length, 'aluno', 'alunos')}</span>
+          </div>
           <ErrorBoundary compact>
-            {topStudentsData.length === 0 ? <EmptyState message="Registe alunos para ver o ranking." /> : (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={topStudentsData} layout="vertical" margin={{ left: 0, right: 16, top: 4, bottom: 4 }}>
-                  <XAxis type="number" hide />
-                  <YAxis type="category" dataKey="name" width={70} tick={CHART.tick} axisLine={false} tickLine={false} />
-                  <Tooltip formatter={(v) => currency(v)} contentStyle={CHART.tooltip} />
-                  <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={16}>
-                    {topStudentsData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+            {studentRevenueData.length === 0 ? (
+              <EmptyState icon={Users} message="Ainda não há alunos ativos." hint="Registe um aluno com valor de plano para comparar o que entra e o que sobra depois de impostos e taxa de ginásio." />
+            ) : (
+              // Rola na vertical quando há muitos alunos, em vez de os esconder.
+              <div style={{ maxHeight: 340, overflowY: 'auto', overflowX: 'hidden' }}>
+                <ResponsiveContainer width="100%" height={revenueChartHeight}>
+                  <BarChart data={studentRevenueData} layout="vertical" margin={{ left: 0, right: 16, top: 4, bottom: 4 }} barGap={2}>
+                    <XAxis type="number" hide />
+                    <YAxis type="category" dataKey="name" width={92} tick={CHART.tick} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      cursor={CHART.cursor}
+                      contentStyle={CHART.tooltip}
+                      labelStyle={CHART.tooltipLabel}
+                      itemStyle={CHART.tooltipItem}
+                      formatter={(v, n) => [currency(v), n === 'bruto' ? 'Bruto' : 'Líquido']}
+                      labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName || ''}
+                    />
+                    <Legend wrapperStyle={CHART.legend} formatter={(v) => (v === 'bruto' ? 'Bruto' : 'Líquido')} />
+                    <Bar dataKey="bruto" fill="var(--slate-acc)" radius={[0, 3, 3, 0]} barSize={9} />
+                    <Bar dataKey="liquido" fill="var(--brass)" radius={[0, 3, 3, 0]} barSize={9} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             )}
           </ErrorBoundary>
         </div>
@@ -2137,26 +2361,54 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
           <StatCard label="Entradas" value={currency(financeEntradasMes)} icon={TrendingUp} accent="brass" />
           <StatCard label="Saídas" value={currency(financeSaidasMes)} icon={Wallet} accent="rust" />
-          <StatCard label="Saldo" value={currency(financeSaldoMes)} icon={Activity} accent={financeSaldoMes >= 0 ? 'sky' : 'rust'} sub={financePendenciasMes > 0 ? `${financePendenciasMes} pendência(s)` : undefined} />
+          <StatCard label="Saldo" value={currency(financeSaldoMes)} icon={Activity} accent={financeSaldoMes >= 0 ? 'sky' : 'rust'} sub={financePendenciasMes > 0 ? `${plural(financePendenciasMes, 'pendência', 'pendências')}` : undefined} />
         </div>
         {financeCategoryData.length === 0 ? (
           <div className="bg-surface border border-hair rounded-xl">
             <EmptyState icon={Wallet} message="Nenhum gasto pessoal lançado este mês ainda." cta="Ir para Finanças" onCta={() => setView('finances')} />
           </div>
         ) : (
-          <div className="bg-surface border border-hair rounded-xl p-4">
-            <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-2">Gastos Pessoais por Categoria</div>
-            <ErrorBoundary compact>
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={financeCategoryData} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75} paddingAngle={3}>
-                    {financeCategoryData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                  </Pie>
-                  <Tooltip formatter={(v) => currency(v)} contentStyle={CHART.tooltip} />
-                  <Legend wrapperStyle={CHART.legend} />
-                </PieChart>
-              </ResponsiveContainer>
-            </ErrorBoundary>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="bg-surface border border-hair rounded-xl p-4 min-w-0">
+              <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-2">Gastos Pessoais por Categoria</div>
+              <ErrorBoundary compact>
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie data={financeCategoryData} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75} paddingAngle={3}>
+                      {financeCategoryData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                    </Pie>
+                    <Tooltip formatter={(v) => currency(v)} contentStyle={CHART.tooltip} labelStyle={CHART.tooltipLabel} itemStyle={CHART.tooltipItem} cursor={CHART.cursor} />
+                    <Legend wrapperStyle={CHART.legend} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </ErrorBoundary>
+            </div>
+            <div className="bg-surface border border-hair rounded-xl p-4 min-w-0">
+              <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-2">Movimentações do Mês (Entradas vs. Saídas)</div>
+              <ErrorBoundary compact>
+                {personalFlowData.length === 0 ? (
+                  <EmptyState icon={Wallet} message="Sem movimentações este mês." hint="Lance entradas e gastos em Finanças para ver a evolução do saldo ao longo do mês." />
+                ) : (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart data={personalFlowData} margin={{ left: 0, right: 8, top: 4, bottom: 4 }}>
+                      <CartesianGrid stroke={CHART.grid} strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="label" tick={CHART.tick} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                      <YAxis tick={CHART.tick} axisLine={false} tickLine={false} width={44} />
+                      <Tooltip
+                        cursor={CHART.cursor}
+                        contentStyle={CHART.tooltip}
+                        labelStyle={CHART.tooltipLabel}
+                        itemStyle={CHART.tooltipItem}
+                        formatter={(v, n) => [currency(v), n === 'entradas' ? 'Entradas' : 'Saídas']}
+                      />
+                      <Legend wrapperStyle={CHART.legend} formatter={(v) => (v === 'entradas' ? 'Entradas' : 'Saídas')} />
+                      <Bar dataKey="entradas" fill="var(--brass)" radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="saidas" fill="var(--rust)" radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </ErrorBoundary>
+            </div>
           </div>
         )}
       </div>
@@ -2170,21 +2422,24 @@ function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSess
   const iso = fmtDateISO(date);
   const isToday = iso === fmtDateISO(new Date());
   return (
-    <div className="bg-surface border border-hair rounded-xl p-3 flex flex-col" style={{ minHeight: '140px' }}>
-      <div className="flex items-center justify-between mb-2">
-        <div>
-          <div className="text-2xs uppercase tracking-wide text-muted font-body">{compact ? DAY_SHORT[date.getDay()] : DAY_NAMES[date.getDay()]}</div>
-          <div className={`font-display font-medium text-lg ${isToday ? 'text-brass' : 'text-primary'}`}>{fmtDateBR(date)}</div>
+    <div
+      className="bg-surface border border-hair rounded-xl p-3 flex flex-col min-w-0"
+      style={{ minHeight: '140px', borderColor: isToday ? 'var(--brass)' : 'var(--border-hair)' }}
+    >
+      <div className="flex items-center justify-between gap-1 mb-2 min-w-0">
+        <div className="min-w-0">
+          <div className="text-2xs uppercase tracking-wide text-muted font-body nowrap">{compact ? DAY_SHORT[date.getDay()] : DAY_NAMES[date.getDay()]}</div>
+          <div className={`font-display font-medium text-lg nowrap ${isToday ? 'text-brass' : 'text-primary'}`}>{fmtDateBR(date)}</div>
         </div>
-        <button onClick={() => onAddSession(iso)} type="button" className="p-1.5 rounded-lg btn-surface" aria-label="Adicionar">
-          <Plus size={16} className="text-muted" />
+        <button onClick={() => onAddSession(iso)} type="button" className="p-1.5 rounded-lg btn-surface flex-shrink-0" aria-label="Adicionar">
+          <Plus size={16} className="text-muted" style={{ display: 'block' }} />
         </button>
       </div>
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 min-w-0">
         {sessionsList.length === 0 && <div className="text-xs text-faint font-body py-3 text-center">Nada agendado</div>}
         {sessionsList.map((s) => {
           const student = students.find((st) => st.id === s.studentId);
-          return <SessionCard key={s.id} session={s} student={student} onOpen={() => onOpenSession(s)} onQuickStatus={onQuickStatus} customCategories={customCategories} />;
+          return <SessionCard key={s.id} session={s} student={student} onOpen={() => onOpenSession(s)} onQuickStatus={onQuickStatus} customCategories={customCategories} compact={compact} />;
         })}
       </div>
     </div>
@@ -2249,11 +2504,15 @@ function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession
         <DayColumn date={days.find((d) => fmtDateISO(d) === selectedDay) || days[0]} sessionsList={sessionsForDay(selectedDay)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} customCategories={customCategories} />
       </div>
 
-      <div className="hidden md:grid md:grid-cols-7 gap-3">
-        {days.map((d) => {
-          const iso = fmtDateISO(d);
-          return <DayColumn key={iso} date={d} sessionsList={sessionsForDay(iso)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} compact customCategories={customCategories} />;
-        })}
+      {/* Largura mínima por coluna: abaixo disso os nomes ficavam ilegíveis.
+          Se não couber, a semana desliza na horizontal em vez de esmagar. */}
+      <div className="hidden md:block overflow-x-auto pb-1">
+        <div className="grid grid-cols-7 gap-3" style={{ minWidth: 980 }}>
+          {days.map((d) => {
+            const iso = fmtDateISO(d);
+            return <DayColumn key={iso} date={d} sessionsList={sessionsForDay(iso)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} compact customCategories={customCategories} />;
+          })}
+        </div>
       </div>
     </div>
   );
@@ -2348,15 +2607,40 @@ function DayDetailModal({ iso, sessions, students, onClose, onOpenSession, onQui
 
 /* ============================== STUDENTS VIEW ============================== */
 
+const STUDENT_SORTS = [
+  { id: 'az', label: 'Nome (A–Z)' },
+  { id: 'za', label: 'Nome (Z–A)' },
+  { id: 'plano_desc', label: 'Plano (maior primeiro)' },
+  { id: 'plano_asc', label: 'Plano (menor primeiro)' },
+];
+
 function StudentsView({ students, sessions, onEdit, onNew }) {
   const [filter, setFilter] = useState('ativos');
   const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('az');
 
-  const filtered = students.filter((s) => {
-    if (filter === 'ativos' && !s.active) return false;
-    if (search && !s.name.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
+  // A ordenação aplica-se a todos os alunos filtrados, não só aos visíveis.
+  const filtered = useMemo(() => {
+    // Procura sem acentos: escrever "alvaro" encontra "Álvaro".
+    const norm = (v) => (v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const term = norm(search);
+    const list = students.filter((s) => {
+      if (filter === 'ativos' && !s.active) return false;
+      if (term && !norm(s.name).includes(term)) return false;
+      return true;
+    });
+    // Alunos sem valor de plano vão para o fim em ambas as ordenações por plano.
+    const planValueOf = (s) => {
+      const v = studentGross(s);
+      return Number.isFinite(v) ? v : 0;
+    };
+    const sorted = [...list];
+    if (sortBy === 'az') sorted.sort((a, b) => byNamePt(a.name, b.name));
+    else if (sortBy === 'za') sorted.sort((a, b) => byNamePt(b.name, a.name));
+    else if (sortBy === 'plano_desc') sorted.sort((a, b) => planValueOf(b) - planValueOf(a) || byNamePt(a.name, b.name));
+    else if (sortBy === 'plano_asc') sorted.sort((a, b) => planValueOf(a) - planValueOf(b) || byNamePt(a.name, b.name));
+    return sorted;
+  }, [students, filter, search, sortBy]);
 
   return (
     <div className="px-4 py-4 max-w-4xl mx-auto flex flex-col gap-4">
@@ -2367,16 +2651,28 @@ function StudentsView({ students, sessions, onEdit, onNew }) {
         </button>
       </div>
 
-      <div className="flex gap-2 items-center">
-        <div className="relative flex-1">
+      <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+        <div className="relative flex-1 min-w-0">
           <Search size={15} className="absolute text-faint" style={{ left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Procurar aluno..." aria-label="Procurar aluno" className="input-field" style={{ paddingLeft: '34px' }} />
         </div>
-        <div className="flex rounded-lg border border-hair overflow-hidden flex-shrink-0">
-          <button onClick={() => setFilter('ativos')} type="button" className="px-3 py-2 text-xs font-body" style={{ backgroundColor: filter === 'ativos' ? 'var(--bg-elevated)' : 'transparent', color: filter === 'ativos' ? 'var(--text-primary)' : 'var(--text-muted)' }}>Ativos</button>
-          <button onClick={() => setFilter('todos')} type="button" className="px-3 py-2 text-xs font-body" style={{ backgroundColor: filter === 'todos' ? 'var(--bg-elevated)' : 'transparent', color: filter === 'todos' ? 'var(--text-primary)' : 'var(--text-muted)' }}>Todos</button>
+        <div className="flex gap-2 flex-shrink-0">
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            aria-label="Ordenar alunos"
+            className="input-field"
+            style={{ width: 'auto', minWidth: 165 }}
+          >
+            {STUDENT_SORTS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </select>
+          <div className="flex rounded-lg border border-hair overflow-hidden flex-shrink-0">
+            <button onClick={() => setFilter('ativos')} type="button" className="px-3 py-2 text-xs font-body nowrap" style={{ backgroundColor: filter === 'ativos' ? 'var(--bg-elevated)' : 'transparent', color: filter === 'ativos' ? 'var(--text-primary)' : 'var(--text-muted)' }}>Ativos</button>
+            <button onClick={() => setFilter('todos')} type="button" className="px-3 py-2 text-xs font-body nowrap" style={{ backgroundColor: filter === 'todos' ? 'var(--bg-elevated)' : 'transparent', color: filter === 'todos' ? 'var(--text-primary)' : 'var(--text-muted)' }}>Todos</button>
+          </div>
         </div>
       </div>
+      <div className="text-2xs font-body text-faint">{plural(filtered.length, 'aluno', 'alunos')}</div>
 
       {filtered.length === 0 ? (
         <EmptyState icon={Users} message={students.length === 0 ? 'Nenhum aluno registado ainda.' : 'Nenhum aluno encontrado.'} cta={students.length === 0 ? 'Registar primeiro aluno' : undefined} onCta={onNew} />
@@ -2586,7 +2882,7 @@ function StudentFormModal({ student, sessions, customCategories, onAddCategory, 
         {isEdit && (
           <button type="button" onClick={() => onGoToAssessments(student)} className="flex items-center justify-between text-sm font-body px-3 py-2.5 rounded-lg border border-hair btn-surface">
             <span className="flex items-center gap-2 text-primary"><Activity size={15} className="text-brass" /> Avaliações Físicas</span>
-            <span className="text-2xs text-faint font-mono">{assessmentCount} registada(s) →</span>
+            <span className="text-2xs text-faint font-mono">{plural(assessmentCount, 'registada', 'registadas')} →</span>
           </button>
         )}
 
@@ -2638,6 +2934,8 @@ function SessionFormModal({ session, students, defaultDate, customCategories, on
   function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
   const selectedStudent = students.find((s) => s.id === form.studentId);
   const isEvento = form.kind === 'evento';
+  // Lista do select por ordem alfabética portuguesa (não pela ordem de registo).
+  const sortedStudents = useMemo(() => [...students].sort((a, b) => byNamePt(a.name, b.name)), [students]);
 
   function switchKind(kind) {
     if (isEdit || kind === form.kind) return;
@@ -2679,7 +2977,7 @@ function SessionFormModal({ session, students, defaultDate, customCategories, on
             {!isEvento && (
               <FormField label="Aluno">
                 <select value={form.studentId} onChange={(e) => set('studentId', e.target.value)} className="input-field">
-                  {students.map((s) => <option key={s.id} value={s.id}>{s.name}{!s.active ? ' (inativo)' : ''}</option>)}
+                  {sortedStudents.map((s) => <option key={s.id} value={s.id}>{s.name}{!s.active ? ' (inativo)' : ''}</option>)}
                 </select>
               </FormField>
             )}
@@ -2825,7 +3123,7 @@ function AssessmentComparisonChart({ assessments }) {
           <CartesianGrid stroke={CHART.grid} strokeDasharray="3 3" />
           <XAxis dataKey="date" tick={CHART.tick} axisLine={false} tickLine={false} />
           <YAxis tick={CHART.tick} axisLine={false} tickLine={false} />
-          <Tooltip contentStyle={CHART.tooltip} />
+          <Tooltip contentStyle={CHART.tooltip} labelStyle={CHART.tooltipLabel} itemStyle={CHART.tooltipItem} cursor={CHART.cursor} />
           <Legend wrapperStyle={CHART.legend} />
           <Line type="monotone" dataKey="peso" name="Peso (kg)" stroke="#1EA6B4" strokeWidth={2} dot={{ r: 3 }} connectNulls />
           <Line type="monotone" dataKey="gordura" name="% Gordura" stroke="#D6534A" strokeWidth={2} dot={{ r: 3 }} connectNulls />
@@ -2939,16 +3237,16 @@ function AssessmentsView({ students, sessions, photosById, onSaveAssessment, onU
         <EmptyState icon={Users} message="Nenhum aluno registado ainda. Registe um aluno antes de fazer uma avaliação física." />
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {students.map((s) => {
+          {[...students].sort((a, b) => byNamePt(a.name, b.name)).map((s) => {
             const count = sessions.filter((x) => x.studentId === s.id && x.type === 'avaliacao' && (x.assessWeight || x.assessBodyFat)).length;
             const last = sessions.filter((x) => x.studentId === s.id && x.type === 'avaliacao' && (x.assessWeight || x.assessBodyFat)).sort((a, b) => b.date.localeCompare(a.date))[0];
             return (
-              <button key={s.id} onClick={() => setSelectedStudentId(s.id)} type="button" className="bg-surface border border-hair rounded-xl p-3 text-left card-hover">
-                <div className="flex items-center gap-2 mb-1.5">
+              <button key={s.id} onClick={() => setSelectedStudentId(s.id)} type="button" className="card card-hover p-3 text-left min-w-0">
+                <div className="flex items-center gap-2 mb-1.5 min-w-0">
                   <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
-                  <span className="font-body text-sm font-medium text-primary truncate">{s.name}</span>
+                  <span className="font-body text-sm font-medium text-primary truncate" title={s.name}>{s.name}</span>
                 </div>
-                <div className="text-2xs text-faint font-body">{count} avaliação(ões){last ? ` · última em ${fmtDateBR(new Date(`${last.date}T00:00:00`))}` : ''}</div>
+                <div className="text-2xs text-faint font-body truncate">{plural(count, 'avaliação', 'avaliações')}{last ? ` · última em ${fmtDateBR(new Date(`${last.date}T00:00:00`))}` : ''}</div>
               </button>
             );
           })}
@@ -2965,22 +3263,36 @@ function TransactionCard({ tx, onOpen, onQuickComplete, customCategories }) {
   const cat = categoryFor(tx.type, tx.category, customCategories);
   const pending = tx.status === 'pendente';
   const color = isIncome ? 'var(--brass)' : 'var(--rust)';
+  // A entrada automática dos alunos é derivada das fichas: não se edita aqui.
+  const isAuto = Boolean(tx.auto);
+  const interactive = !isAuto;
   return (
-    <div onClick={onOpen} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') onOpen(); }}
-      className="rounded-lg border border-hair bg-elevated pl-3 pr-1.5 py-2 cursor-pointer card-hover animate-in flex items-center justify-between gap-2">
+    <div
+      onClick={interactive ? onOpen : undefined}
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onKeyDown={interactive ? (e) => { if (e.key === 'Enter') onOpen(); } : undefined}
+      className={`rounded-lg border border-hair bg-elevated pl-3 pr-1.5 py-2 animate-in flex items-center justify-between gap-2 ${interactive ? 'cursor-pointer card-hover' : ''}`}
+      style={isAuto ? { borderStyle: 'dashed' } : undefined}
+    >
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5 mb-0.5">
-          <span className="font-mono text-2xs text-muted">{fmtDateBR(new Date(`${tx.date}T00:00:00`))}</span>
+        <div className="flex items-center gap-1.5 mb-0.5 min-w-0">
+          <span className="font-mono text-2xs text-muted nowrap">{fmtDateBR(new Date(`${tx.date}T00:00:00`))}</span>
           <span className="text-2xs font-body px-1.5 py-0.5 rounded truncate" style={{ backgroundColor: `${cat.color}22`, color: cat.color }}>{cat.label}</span>
+          {isAuto && (
+            <span className="badge flex-shrink-0" style={{ backgroundColor: 'var(--brass-soft)', color: 'var(--brass)' }}>Automático</span>
+          )}
         </div>
         <div className="font-body text-sm text-primary truncate">{tx.description || '(sem descrição)'}</div>
-        <span className="text-2xs font-body" style={{ color: pending ? color : 'var(--text-faint)' }}>{statusLabel(tx.type, tx.status)}</span>
+        <span className="text-2xs font-body" style={{ color: isAuto ? 'var(--text-faint)' : pending ? color : 'var(--text-faint)' }}>
+          {isAuto ? 'Calculado a partir das fichas dos alunos' : statusLabel(tx.type, tx.status)}
+        </span>
       </div>
       <div className="flex items-center gap-1 flex-shrink-0">
-        <span className="font-mono text-sm font-semibold" style={{ color }}>{isIncome ? '+' : '−'} {currency(tx.amount)}</span>
-        {pending && (
+        <span className="font-mono text-sm font-semibold nowrap" style={{ color }}>{isIncome ? '+' : '−'} {currency(tx.amount)}</span>
+        {pending && !isAuto && (
           <button onClick={(e) => { e.stopPropagation(); onQuickComplete(tx); }} type="button" className="p-1 rounded btn-surface" aria-label="Marcar como concluído" title={isIncome ? 'Marcar como recebido' : 'Marcar como pago'}>
-            <CheckCircle2 size={14} className="text-slate-acc" />
+            <CheckCircle2 size={14} className="text-slate-acc" style={{ display: 'block' }} />
           </button>
         )}
       </div>
@@ -3084,12 +3396,13 @@ function TransactionFormModal({ tx, defaultType, customCategories, onAddCategory
   );
 }
 
-function FinancesView({ finances, monthCursor, setMonthCursor, onOpenTransaction, onNewTransaction, onQuickComplete, customCategories }) {
+function FinancesView({ finances, students, monthCursor, setMonthCursor, onOpenTransaction, onNewTransaction, onQuickComplete, customCategories }) {
   const year = monthCursor.getFullYear();
   const month = monthCursor.getMonth();
-  const monthStart = fmtDateISO(new Date(year, month, 1));
-  const monthEnd = fmtDateISO(new Date(year, month + 1, 0));
-  const monthTx = useMemo(() => finances.filter((t) => t.date >= monthStart && t.date <= monthEnd).sort((a, b) => b.date.localeCompare(a.date)), [finances, monthStart, monthEnd]);
+  const monthTx = useMemo(
+    () => monthTransactions(finances, students, year, month).sort((a, b) => b.date.localeCompare(a.date)),
+    [finances, students, year, month],
+  );
 
   const entradas = monthTx.filter((t) => t.type === 'entrada').reduce((s, t) => s + (Number(t.amount) || 0), 0);
   const saidas = monthTx.filter((t) => t.type === 'gasto').reduce((s, t) => s + (Number(t.amount) || 0), 0);
@@ -3142,7 +3455,7 @@ function FinancesView({ finances, monthCursor, setMonthCursor, onOpenTransaction
                 <Pie data={categoryData} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75} paddingAngle={3}>
                   {categoryData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                 </Pie>
-                <Tooltip formatter={(v) => currency(v)} contentStyle={CHART.tooltip} />
+                <Tooltip formatter={(v) => currency(v)} contentStyle={CHART.tooltip} labelStyle={CHART.tooltipLabel} itemStyle={CHART.tooltipItem} cursor={CHART.cursor} />
                 <Legend wrapperStyle={CHART.legend} />
               </PieChart>
             </ResponsiveContainer>
@@ -3204,7 +3517,7 @@ function SettingsPanel({ students, sessions, finances, photos, customCategories,
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="text-sm font-body text-muted">{studentCount} aluno(s) · {sessionCount} aula(s)/avaliação(ões) · {finances.length} lançamento(s) · {photos.length} foto(s).</div>
+      <div className="text-sm font-body text-muted">{plural(studentCount, 'aluno', 'alunos')} · {plural(sessionCount, 'aula/avaliação', 'aulas/avaliações')} · {plural(finances.length, 'lançamento', 'lançamentos')} · {plural(photos.length, 'foto', 'fotos')}.</div>
 
       <div className="border border-hair rounded-lg p-4">
         <div className="text-sm font-body font-medium text-primary mb-1">Backup dos dados</div>
@@ -3245,7 +3558,7 @@ function SettingsPanel({ students, sessions, finances, photos, customCategories,
       {pendingRestore && (
         <ConfirmDialog
           title="Restaurar backup"
-          message={`Isso vai SUBSTITUIR os dados atuais pelos ${pendingRestore.alunos.length} aluno(s), ${pendingRestore.agenda.length} aula(s), ${pendingRestore.financas.length} lançamento(s) e ${pendingRestore.fotos.length} foto(s) do ficheiro. Esta ação não pode ser desfeita.`}
+          message={`Isso vai SUBSTITUIR os dados atuais pelos ${plural(pendingRestore.alunos.length, 'aluno', 'alunos')}, ${plural(pendingRestore.agenda.length, 'aula', 'aulas')}, ${plural(pendingRestore.financas.length, 'lançamento', 'lançamentos')} e ${plural(pendingRestore.fotos.length, 'foto', 'fotos')} do ficheiro. Esta ação não pode ser desfeita.`}
           onCancel={() => setPendingRestore(null)}
           onConfirm={() => { onRestore(pendingRestore.alunos, pendingRestore.agenda, pendingRestore.financas, pendingRestore.fotos, pendingRestore.categorias); setPendingRestore(null); }}
         />
@@ -3289,6 +3602,7 @@ function AppInner() {
   const [showStudentModal, setShowStudentModal] = useState(false);
   const [showTransactionModal, setShowTransactionModal] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const [loginMode, setLoginMode] = useState('signin');
   const storageOk = browserStorageAvailable();
 
@@ -3529,7 +3843,7 @@ function AppInner() {
         ...session, id: i === 0 ? session.id : uid(), date: fmtDateISO(addDays(base, i * 7)), seriesId,
       }));
       persistSessions([...sessions, ...newOnes]);
-      showToast(isEvento ? `${repeatWeeks} eventos agendados.` : `${repeatWeeks} aulas agendadas.`);
+      showToast(isEvento ? `${plural(repeatWeeks, 'evento agendado', 'eventos agendados')}.` : `${plural(repeatWeeks, 'aula agendada', 'aulas agendadas')}.`);
     } else {
       const exists = sessions.some((s) => s.id === session.id);
       const next = exists ? sessions.map((s) => (s.id === session.id ? session : s)) : [...sessions, session];
@@ -3647,8 +3961,16 @@ function AppInner() {
             onSaveAssessment={saveNewAssessment} onUploadPhotos={uploadPhotos} onRemovePhoto={removePhoto} onDeleteAssessment={deleteAssessment}
             onNoStudents={() => showToast('Registe um aluno antes de fazer uma avaliação física.', 'error')} />
         )}
-        {view === 'finances' && <FinancesView finances={finances} monthCursor={financeMonthCursor} setMonthCursor={setFinanceMonthCursor} onOpenTransaction={openEditTransaction} onNewTransaction={openNewTransaction} onQuickComplete={quickCompleteTransaction} customCategories={customCategories} />}
-        {view === 'profile' && <ProfileView user={user} subscription={subscription} onSignOut={supabaseConfigured ? signOut : null} onRefreshSubscription={refreshSubscription} />}
+        {view === 'finances' && <FinancesView finances={finances} students={students} monthCursor={financeMonthCursor} setMonthCursor={setFinanceMonthCursor} onOpenTransaction={openEditTransaction} onNewTransaction={openNewTransaction} onQuickComplete={quickCompleteTransaction} customCategories={customCategories} />}
+        {view === 'profile' && (
+          <ProfileView
+            user={user}
+            subscription={subscription}
+            onSignOut={supabaseConfigured ? signOut : null}
+            onRefreshSubscription={refreshSubscription}
+            onChangePassword={supabaseConfigured && user?.email ? () => setShowChangePassword(true) : null}
+          />
+        )}
       </main>
       <DeveloperCredit />
 
@@ -3665,9 +3987,16 @@ function AppInner() {
         <DayDetailModal iso={dayDetailIso} sessions={sessions} students={students} onClose={() => setDayDetailIso(null)} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} customCategories={customCategories} />
       )}
       {settingsOpen && (
-        <Modal title="Configurações" onClose={() => setSettingsOpen(false)}>
+        <Modal title="Definições" onClose={() => setSettingsOpen(false)}>
           <SettingsPanel students={students} sessions={sessions} finances={finances} photos={photos} customCategories={customCategories} onReset={resetAllData} onRestore={restoreBackup} studentCount={students.length} sessionCount={sessions.length} onSignOut={supabaseConfigured ? signOut : null} />
         </Modal>
+      )}
+      {showChangePassword && user?.email && (
+        <ChangePasswordModal
+          email={user.email}
+          onClose={() => setShowChangePassword(false)}
+          onDone={(msg) => showToast(msg)}
+        />
       )}
       <Toast toast={toast} />
     </div>

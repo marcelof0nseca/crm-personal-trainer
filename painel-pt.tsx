@@ -1273,6 +1273,8 @@ function ChangePasswordModal({ email, onClose, onDone }) {
   const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaReset, setCaptchaReset] = useState(0);
 
   async function submit(e) {
     e.preventDefault();
@@ -1282,17 +1284,35 @@ function ChangePasswordModal({ email, onClose, onDone }) {
     if (next !== confirm) { setError('A nova palavra-passe e a confirmação não coincidem.'); return; }
     if (next === current) { setError('A nova palavra-passe tem de ser diferente da atual.'); return; }
     if (!supabase) { setError('Supabase não configurado.'); return; }
+    if (TURNSTILE_SITE_KEY && !captchaToken) { setError('Confirme que não é um robô.'); return; }
 
     setBusy(true);
     // O Supabase não valida a palavra-passe atual no updateUser, por isso
-    // confirmamo-la primeiro com um início de sessão — evita que alguém com a
-    // sessão aberta troque a palavra-passe sem a saber.
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password: current });
+    // confirmamo-la primeiro com um início de sessão. Com a proteção CAPTCHA
+    // ativa, este endpoint exige token — sem ele devolve captcha_failed.
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password: current,
+      options: captchaToken ? { captchaToken } : undefined,
+    });
+    // O token é de uso único: renovar antes de qualquer nova tentativa.
+    setCaptchaToken('');
+    setCaptchaReset((n) => n + 1);
+
     if (signInError) {
       setBusy(false);
-      setError('A palavra-passe atual está incorreta.');
+      const code = signInError.code || '';
+      const msg = String(signInError.message || '');
+      if (code.includes('captcha') || msg.toLowerCase().includes('captcha')) {
+        setError('Falha na verificação anti-robô. Tente novamente.');
+      } else if (code === 'over_request_rate_limit' || msg.toLowerCase().includes('rate limit')) {
+        setError('Demasiadas tentativas. Aguarde um pouco e tente de novo.');
+      } else {
+        setError('A palavra-passe atual está incorreta.');
+      }
       return;
     }
+
     const { error: updateError } = await supabase.auth.updateUser({ password: next });
     setBusy(false);
     if (updateError) { setError(updateError.message); return; }
@@ -1312,10 +1332,13 @@ function ChangePasswordModal({ email, onClose, onDone }) {
         <FormField label="Confirmar nova palavra-passe">
           <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} className="input-field" autoComplete="new-password" />
         </FormField>
+        {TURNSTILE_SITE_KEY && (
+          <Turnstile siteKey={TURNSTILE_SITE_KEY} onVerify={setCaptchaToken} resetSignal={captchaReset} />
+        )}
         {error && <div className="text-sm font-body text-rust">{error}</div>}
         <div className="flex gap-2 pt-1 mobile-stack">
           <button type="button" onClick={onClose} className="btn btn-ghost">Cancelar</button>
-          <button type="submit" disabled={busy} className="btn btn-primary flex-1">
+          <button type="submit" disabled={busy || (Boolean(TURNSTILE_SITE_KEY) && !captchaToken)} className="btn btn-primary flex-1">
             {busy ? 'A guardar...' : 'Guardar nova palavra-passe'}
           </button>
         </div>

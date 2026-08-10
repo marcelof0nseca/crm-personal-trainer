@@ -4,6 +4,7 @@ import {
   ShieldCheck, LogIn, RefreshCcw, Lock, ChevronDown, CheckCircle2, TrendingUp, ArrowRight, UserPlus, Gift, Mail,
   MousePointerClick,
 } from 'lucide-react';
+import LegalModal from './LegalDocs';
 
 /* ============================== MOCK DATA (previews) ============================== */
 
@@ -508,6 +509,7 @@ function FeatureSection({ heading, body, bullets, Mockup, reverse }) {
 
 export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted, onLogin }) {
   const mailto = (subject) => (supportEmail ? `mailto:${supportEmail}?subject=${encodeURIComponent(subject)}` : '');
+  const [legalDoc, setLegalDoc] = useState(null);
   const [openFaq, setOpenFaq] = useState(0);
   const plansRef = useRef(null);
   const featuresRef = useRef(null);
@@ -720,9 +722,16 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
         </section>
       </main>
 
-      <div className="px-4 py-4 text-center text-2xs font-body text-faint" style={{ opacity: 0.55 }}>
-        Developed by Marcelo Fonseca
-      </div>
+      <footer className="px-4 py-5 border-t border-hair flex flex-col items-center gap-2.5">
+        <div className="flex items-center gap-3 text-xs font-body">
+          <button type="button" onClick={() => setLegalDoc('termos')} className="link-sky">Termos de Utilização</button>
+          <span className="text-faint">·</span>
+          <button type="button" onClick={() => setLegalDoc('privacidade')} className="link-sky">Política de Privacidade</button>
+        </div>
+        <div className="text-2xs font-body text-faint" style={{ opacity: 0.55 }}>Developed by Marcelo Fonseca</div>
+      </footer>
+
+      {legalDoc && <LegalModal docId={legalDoc} supportEmail={supportEmail} onClose={() => setLegalDoc(null)} />}
     </div>
   );
 }

@@ -14,6 +14,7 @@ import { supabase, supabaseConfigured } from './src/supabaseClient';
 import logoSrc from './src/assets/ptmanager-logo.png';
 import LandingPage from './src/components/LandingPage';
 import Turnstile from './src/components/Turnstile';
+import LegalModal from './src/components/LegalDocs';
 
 /* ============================== LOGO ============================== */
 
@@ -946,6 +947,8 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
   const [now, setNow] = useState(() => Date.now());
   const [captchaToken, setCaptchaToken] = useState('');
   const [captchaReset, setCaptchaReset] = useState(0);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [legalDoc, setLegalDoc] = useState(null);
 
   useEffect(() => {
     if (mode !== 'signin' || !email) return;
@@ -975,6 +978,11 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
     }
     if (!email || !password) {
       setMessage('Introduza o e-mail e a palavra-passe.');
+      return;
+    }
+    // Consentimento obrigatório no registo (não no início de sessão).
+    if (mode === 'signup' && !acceptedTerms) {
+      setMessage('Para criar conta, tem de aceitar os Termos e a Política de Privacidade.');
       return;
     }
     if (mode === 'signin') {
@@ -1043,13 +1051,34 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
         <FormField label="Palavra-passe">
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="input-field" placeholder="Mínimo 6 caracteres" />
         </FormField>
+        {mode === 'signup' && (
+          <label className="flex items-start gap-2.5 text-xs font-body text-muted cursor-pointer">
+            <input
+              type="checkbox"
+              checked={acceptedTerms}
+              onChange={(e) => { setAcceptedTerms(e.target.checked); setMessage(''); }}
+              style={{ accentColor: 'var(--brass)', marginTop: 2, flexShrink: 0, width: 16, height: 16 }}
+            />
+            <span>
+              Li e aceito os{' '}
+              <button type="button" onClick={() => setLegalDoc('termos')} className="link-sky" style={{ fontSize: 'inherit' }}>Termos de Utilização</button>
+              {' '}e a{' '}
+              <button type="button" onClick={() => setLegalDoc('privacidade')} className="link-sky" style={{ fontSize: 'inherit' }}>Política de Privacidade</button>.
+            </span>
+          </label>
+        )}
         {TURNSTILE_SITE_KEY && !isLocked && (
           <Turnstile siteKey={TURNSTILE_SITE_KEY} onVerify={setCaptchaToken} resetSignal={captchaReset} />
         )}
         {isLocked ? (
           <div className="text-xs font-body text-rust">Muitas tentativas de login. Tente novamente em {secondsLeft}s.</div>
         ) : message && <div className="text-xs font-body text-rust">{message}</div>}
-        <button type="submit" disabled={busy || isLocked || (Boolean(TURNSTILE_SITE_KEY) && !captchaToken)} className="px-4 py-2.5 rounded-lg text-sm font-body font-medium disabled:opacity-60" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
+        <button
+          type="submit"
+          disabled={busy || isLocked || (Boolean(TURNSTILE_SITE_KEY) && !captchaToken) || (mode === 'signup' && !acceptedTerms)}
+          className="px-4 py-2.5 rounded-lg text-sm font-body font-medium disabled:opacity-60"
+          style={{ backgroundColor: 'var(--brass)', color: 'var(--on-accent)' }}
+        >
           {isLocked ? `Aguarde ${secondsLeft}s` : busy ? 'Aguarde...' : mode === 'signup' ? 'Criar conta' : 'Entrar'}
         </button>
         <button type="button" onClick={() => { setMode(mode === 'signup' ? 'signin' : 'signup'); setMessage(''); }} className="text-xs font-body link-sky">
@@ -1057,7 +1086,13 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
         </button>
       </form>
       </div>
+      <div className="flex items-center justify-center gap-3 pb-2 text-2xs font-body">
+        <button type="button" onClick={() => setLegalDoc('termos')} className="link-sky">Termos</button>
+        <span className="text-faint">·</span>
+        <button type="button" onClick={() => setLegalDoc('privacidade')} className="link-sky">Privacidade</button>
+      </div>
       <DeveloperCredit />
+      {legalDoc && <LegalModal docId={legalDoc} supportEmail={SUPPORT_EMAIL} onClose={() => setLegalDoc(null)} />}
     </div>
   );
 }
@@ -1412,6 +1447,7 @@ function SettingsModal({
   const [confirmReset, setConfirmReset] = useState(false);
   const [pendingRestore, setPendingRestore] = useState(null);
   const [restoreError, setRestoreError] = useState('');
+  const [legalDoc, setLegalDoc] = useState(null);
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -1683,6 +1719,18 @@ function SettingsModal({
                       </li>
                     ))}
                   </ul>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => setLegalDoc('termos')} className="btn btn-ghost" style={{ fontSize: 12 }}>Termos de Utilização</button>
+                    <button type="button" onClick={() => setLegalDoc('privacidade')} className="btn btn-ghost" style={{ fontSize: 12 }}>Política de Privacidade</button>
+                  </div>
+                </SettingsBlock>
+
+                <SettingsBlock title="Dados dos seus alunos" description="Um lembrete importante sobre a sua responsabilidade.">
+                  <div className="rounded-lg px-3.5 py-3 text-xs font-body leading-relaxed" style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--text-muted)', border: '1px solid rgba(245,180,76,0.28)' }}>
+                    Medidas corporais, avaliações físicas e fotografias são dados de saúde e exigem
+                    consentimento explícito de cada aluno, de preferência por escrito. Perante os seus
+                    alunos, é o titular da conta quem responde por esses dados.
+                  </div>
                 </SettingsBlock>
 
                 <SettingsBlock title="Cópia de segurança" description="Transfira um ficheiro com alunos, aulas, avaliações, finanças e fotos. Pode restaurá-lo aqui se precisar.">
@@ -1696,6 +1744,10 @@ function SettingsModal({
                     <input ref={fileRef} type="file" accept=".json,application/json" onChange={handleFile} style={{ display: 'none' }} />
                   </div>
                   {restoreError && <div className="text-2xs font-body text-rust">{restoreError}</div>}
+                  <p className="text-2xs font-body text-faint">
+                    O ficheiro exportado não é cifrado: contém nomes, medidas e fotografias em texto
+                    legível. Guarde-o em local seguro e evite enviá-lo por canais não protegidos.
+                  </p>
                 </SettingsBlock>
 
                 <SettingsBlock title="Apagar todos os dados" description="Remove alunos, aulas, avaliações, finanças e fotos desta aplicação. Esta ação não pode ser desfeita.">
@@ -1737,6 +1789,7 @@ function SettingsModal({
           onConfirm={() => { onRestore(pendingRestore.alunos, pendingRestore.agenda, pendingRestore.financas, pendingRestore.fotos, pendingRestore.categorias); setPendingRestore(null); }}
         />
       )}
+      {legalDoc && <LegalModal docId={legalDoc} supportEmail={SUPPORT_EMAIL} onClose={() => setLegalDoc(null)} />}
     </div>
   );
 }

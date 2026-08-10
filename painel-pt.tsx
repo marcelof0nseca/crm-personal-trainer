@@ -5,7 +5,7 @@ import {
   Sparkles, UserX, ChevronLeft, ChevronRight, Search, Wallet, Percent, Building2,
   Loader2, Settings, Check, Info, Activity, Ban, Download, Upload,
   Camera, ArrowLeft, LineChart as LineChartIcon, Tag,
-  Coffee, Dumbbell, UtensilsCrossed, Stethoscope, Gift, CreditCard, Mail, CircleUser, KeyRound,
+  Coffee, Dumbbell, UtensilsCrossed, Stethoscope, Gift, CreditCard, Mail, CircleUser, KeyRound, ShieldCheck,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
@@ -646,6 +646,12 @@ function GlobalStyles() {
       .btn-ghost:hover:not(:disabled) { background-color: var(--bg-elevated); border-color: var(--border-strong); color: var(--text-primary); }
       .btn-danger { background-color: var(--rust-soft); border-color: var(--rust); color: var(--rust); }
       .btn-danger:hover:not(:disabled) { background-color: rgba(214, 83, 74, 0.22); }
+
+      /* Definições: ecrã inteiro no telemóvel, painel centrado a partir de sm. */
+      .settings-panel { height: 100%; max-height: 100dvh; }
+      @media (min-width: 640px) {
+        .settings-panel { max-height: min(92dvh, 680px); }
+      }
 
       .badge {
         display: inline-flex; align-items: center; gap: 4px;
@@ -1357,12 +1363,66 @@ function ChangePasswordModal({ email, onClose, onDone }) {
   );
 }
 
-function ProfileView({ user, subscription, onSignOut, onRefreshSubscription, onChangePassword }) {
+/* ============================== DEFINIÇÕES (modal com secções) ============================== */
+
+const SETTINGS_SECTIONS = [
+  { id: 'conta', label: 'Conta', icon: CircleUser },
+  { id: 'subscricao', label: 'Subscrição', icon: CreditCard },
+  { id: 'dados', label: 'Dados e privacidade', icon: ShieldCheck },
+  { id: 'sobre', label: 'Sobre', icon: Info },
+];
+
+function SettingsRow({ label, value, mono, tone, icon: Icon }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-2.5 border-b border-hair min-w-0">
+      <span className="flex items-center gap-2 text-muted min-w-0 flex-shrink-0">
+        {Icon && <Icon size={14} className="text-faint flex-shrink-0" />}
+        <span className="truncate">{label}</span>
+      </span>
+      <span
+        className={`text-right truncate min-w-0 ${mono ? 'font-mono text-xs text-faint' : ''}`}
+        style={{ color: tone || (mono ? undefined : 'var(--text-primary)') }}
+        title={String(value)}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function SettingsBlock({ title, description, children }) {
+  return (
+    <section className="flex flex-col gap-3">
+      <div>
+        <h3 className="font-display text-base font-semibold text-primary">{title}</h3>
+        {description && <p className="text-xs text-muted font-body mt-1">{description}</p>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function SettingsModal({
+  user, subscription, students, sessions, finances, photos, customCategories,
+  onClose, onSignOut, onRefreshSubscription, onChangePassword, onReset, onRestore,
+}) {
+  const [section, setSection] = useState('conta');
+  const [portalBusy, setPortalBusy] = useState(false);
+  const [portalError, setPortalError] = useState('');
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [pendingRestore, setPendingRestore] = useState(null);
+  const [restoreError, setRestoreError] = useState('');
+  const fileRef = useRef(null);
+
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const currentPlan = planByTier(subscription?.tier);
   const planName = currentPlan?.name || subscription?.tier || 'Nenhum plano';
-  const planValue = subscription?.value != null
-    ? currency(subscription.value)
-    : currentPlan?.price || 'A definir';
+  const planValue = subscription?.value != null ? currency(subscription.value) : currentPlan?.price || 'A definir';
   const billingInterval = subscription?.interval || currentPlan?.interval || 'Não definido';
   const isManualPayment = subscription?.paymentMethodBrand === 'MB WAY' || String(subscription?.interval || '').includes('MB WAY');
   const renewalLabel = daysLeftLabel(subscription?.currentPeriodEnd, subscription?.cancelAtPeriodEnd, isManualPayment);
@@ -1371,8 +1431,6 @@ function ProfileView({ user, subscription, onSignOut, onRefreshSubscription, onC
   const upgradePlans = SALES_PLANS.filter((_, index) => currentTierIndex < 0 || index > currentTierIndex);
   const hasSupportEmail = Boolean(SUPPORT_EMAIL);
   const hasRecurringStripeSubscription = Boolean(subscription?.stripeSubscriptionId);
-  const [portalBusy, setPortalBusy] = useState(false);
-  const [portalError, setPortalError] = useState('');
 
   async function openCustomerPortal() {
     setPortalError('');
@@ -1392,222 +1450,297 @@ function ProfileView({ user, subscription, onSignOut, onRefreshSubscription, onC
     window.location.href = data.url;
   }
 
+  function handleFile(e) {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    setRestoreError('');
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = JSON.parse(evt.target.result);
+        if (!Array.isArray(data.alunos) || !Array.isArray(data.agenda)) throw new Error('formato inválido');
+        if (!Array.isArray(data.financas)) data.financas = [];
+        if (!Array.isArray(data.fotos)) data.fotos = [];
+        if (!data.categorias) data.categorias = EMPTY_CUSTOM_CATEGORIES;
+        setPendingRestore(data);
+      } catch (err) {
+        setRestoreError('Não foi possível ler este ficheiro. Verifique se é uma cópia de segurança exportada por esta aplicação.');
+      }
+    };
+    reader.readAsText(file);
+  }
+
   return (
-    <div className="px-4 py-4 max-w-5xl mx-auto flex flex-col gap-5">
-      <div>
-        <h1 className="font-display font-semibold text-2xl text-primary tracking-wide">Perfil</h1>
-        <p className="text-sm text-muted font-body mt-1">Dados da sua conta e informações do plano subscrito.</p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="bg-surface border border-hair rounded-xl p-5 flex flex-col gap-4">
-          <div className="flex items-center gap-3">
-            <img src={LOGO_SRC} alt="PTMANAGER" style={{ width: 42, height: 42, flexShrink: 0 }} />
-            <div className="min-w-0">
-              <div className="text-2xs uppercase tracking-wide text-faint font-mono">Conta</div>
-              <div className="font-body text-base text-primary truncate">{user?.email || 'Utilizador local'}</div>
-            </div>
-          </div>
-          <dl className="flex flex-col text-sm font-body border-t border-hair">
-            {[
-              { label: 'E-mail de acesso', value: user?.email || 'Conta local', mono: false },
-              { label: 'ID do utilizador', value: user?.id || 'local', mono: true },
-              { label: 'Último acesso', value: user?.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleString('pt-PT', { dateStyle: 'short', timeStyle: 'short' }) : 'Agora' },
-              { label: 'Conta criada', value: fmtDateLong(user?.created_at) },
-            ].map((row) => (
-              <div key={row.label} className="flex items-center justify-between gap-3 py-2.5 border-b border-hair min-w-0">
-                <span className="text-muted flex-shrink-0">{row.label}</span>
-                <span className={`text-right truncate min-w-0 ${row.mono ? 'font-mono text-xs text-faint' : 'text-primary'}`} title={String(row.value)}>{row.value}</span>
-              </div>
-            ))}
-            {/* Nunca mostrar a palavra-passe real — apenas a máscara. */}
-            <div className="flex items-center justify-between gap-3 py-2.5 border-b border-hair">
-              <span className="text-muted">Palavra-passe</span>
-              <span className="font-mono text-primary tracking-widest" aria-label="Palavra-passe oculta">••••••••</span>
-            </div>
-          </dl>
-          <div className="flex flex-col sm:flex-row gap-2 mt-auto">
-            {onChangePassword && (
-              <button onClick={onChangePassword} type="button" className="btn btn-ghost flex-1" style={{ fontSize: 12 }}>
-                <KeyRound size={14} /> Alterar palavra-passe
-              </button>
-            )}
-            {onSignOut && (
-              <button onClick={onSignOut} type="button" className="btn btn-ghost flex-1" style={{ fontSize: 12 }}>
-                Terminar sessão
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-surface border border-hair rounded-xl p-5 flex flex-col gap-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-2xs uppercase tracking-wide text-faint font-mono">Plano atual</div>
-              <div className="font-display text-2xl text-primary font-semibold mt-1">{planName}</div>
-            </div>
-            <span className="text-2xs uppercase tracking-wide font-mono px-2 py-1 rounded-full" style={{ backgroundColor: subscription?.active ? 'rgba(30,166,180,0.16)' : 'rgba(214,83,74,0.14)', color: subscription?.active ? 'var(--brass)' : 'var(--rust)' }}>
-              {subscriptionStatusLabel(subscription?.status)}
-            </span>
-          </div>
-          {/* Linhas simples em vez de StatCards: evita cartão dentro de cartão. */}
-          <dl className="flex flex-col text-sm font-body border-t border-hair">
-            {[
-              { icon: Wallet, label: 'Valor', value: planValue, strong: true },
-              { icon: CalendarRange, label: 'Ciclo', value: billingInterval },
-              {
-                icon: CalendarDays,
-                label: isManualPayment ? 'Vencimento' : subscription?.cancelAtPeriodEnd ? 'Fim do acesso' : 'Próxima renovação',
-                value: renewalLabel,
-                tone: subscription?.cancelAtPeriodEnd ? 'var(--rust)' : undefined,
-              },
-              { icon: CreditCard, label: 'Pagamento', value: paymentLabel },
-            ].map((row) => (
-              <div key={row.label} className="flex items-center justify-between gap-3 py-2.5 border-b border-hair">
-                <span className="flex items-center gap-2 text-muted min-w-0">
-                  <row.icon size={14} className="text-faint flex-shrink-0" />
-                  <span className="truncate">{row.label}</span>
-                </span>
-                <span
-                  className={`text-right flex-shrink-0 ${row.strong ? 'font-mono font-semibold' : ''}`}
-                  style={{ color: row.tone || 'var(--text-primary)' }}
-                >
-                  {row.value}
-                </span>
-              </div>
-            ))}
-          </dl>
-          {subscription?.cancelAtPeriodEnd && (
-            <div className="text-xs font-body px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(214,83,74,0.12)', color: 'var(--rust)' }}>
-              Cancelamento agendado. O acesso permanece até {fmtDateLong(subscription.currentPeriodEnd)}.
-            </div>
-          )}
-          <button onClick={onRefreshSubscription} type="button" className="px-3.5 py-2 rounded-lg text-xs font-body border border-hair btn-surface text-muted">
-            Atualizar dados do plano
+    <div
+      className="fixed inset-0 flex items-stretch sm:items-center justify-center animate-in p-0 sm:p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(3px)', zIndex: 40 }}
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Definições"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="settings-panel border border-hair w-full sm:max-w-4xl flex flex-col sm:rounded-2xl overflow-hidden"
+        style={{ backgroundColor: 'var(--bg-surface)', boxShadow: 'var(--shadow-lg)' }}
+      >
+        <header className="flex items-center justify-between gap-3 px-5 py-4 border-b border-hair flex-shrink-0">
+          <h2 className="font-display font-semibold text-lg text-primary">Definições</h2>
+          <button onClick={onClose} type="button" className="p-1.5 rounded-lg btn-surface flex-shrink-0" aria-label="Fechar">
+            <X size={18} className="text-muted" style={{ display: 'block' }} />
           </button>
-        </div>
-      </div>
+        </header>
 
-      <div className="bg-surface border border-hair rounded-xl p-5 flex flex-col gap-4">
-        <div>
-          <h2 className="font-display text-lg font-semibold text-primary">Faturação e subscrição</h2>
-          <p className="text-xs text-muted font-body mt-1">Resumo operacional para suporte, cobrança e conciliação.</p>
-        </div>
-        {/* Grelha achatada, sem caixas próprias: só divisórias entre os campos. */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 text-sm font-body border-t border-hair">
-          {[
-            { label: 'Início do ciclo', value: fmtDateLong(subscription?.currentPeriodStart) },
-            { label: 'Vencimento', value: fmtDateLong(subscription?.currentPeriodEnd) },
-            { label: 'Último pagamento', value: subscription?.lastPaymentStatus || 'Não informado' },
-            { label: 'Última atualização', value: fmtDateLong(subscription?.updatedAt) },
-          ].map((f) => (
-            <div key={f.label} className="py-3 pr-4 border-b border-hair min-w-0">
-              <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-1">{f.label}</div>
-              <div className="text-primary truncate" title={String(f.value)}>{f.value}</div>
-            </div>
-          ))}
-          {[
-            { label: 'Cliente Stripe', value: subscription?.stripeCustomerId || 'Ainda não vinculado' },
-            { label: 'Subscrição Stripe', value: subscription?.stripeSubscriptionId || 'Ainda não vinculada' },
-          ].map((f) => (
-            <div key={f.label} className="py-3 pr-4 border-b border-hair sm:col-span-2 min-w-0">
-              <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-1">{f.label}</div>
-              <div className="text-faint font-mono text-xs break-all">{f.value}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-surface border border-hair rounded-xl p-5 flex flex-col gap-4">
-        <div>
-          <h2 className="font-display text-lg font-semibold text-primary">Gerir plano</h2>
-          <p className="text-xs text-muted font-body mt-1">
-            {hasRecurringStripeSubscription
-              ? 'Atualize cartão, veja cobranças, altere plano ou cancele pelo portal seguro da Stripe.'
-              : 'Pagamentos MB WAY são únicos por período. Para renovar, alterar plano ou tirar dúvidas, fale com o suporte.'}
-          </p>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-          <button
-            onClick={openCustomerPortal}
-            type="button"
-            disabled={portalBusy || !hasRecurringStripeSubscription}
-            className="px-4 py-2.5 rounded-lg text-sm font-body font-medium disabled:opacity-60"
-            style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}
+        <div className="flex flex-col sm:flex-row flex-1 min-h-0">
+          {/* Barra lateral no desktop; tiras horizontais no telemóvel. */}
+          <nav
+            className="flex sm:flex-col gap-1 p-2 sm:p-3 border-b sm:border-b-0 sm:border-r border-hair overflow-x-auto flex-shrink-0"
+            style={{ backgroundColor: 'var(--bg-base)' }}
+            aria-label="Secções das definições"
           >
-            {portalBusy ? 'A abrir portal...' : 'Gerir subscrição na Stripe'}
-          </button>
-          {!hasRecurringStripeSubscription && <span className="text-xs text-faint font-body">Disponível apenas para subscrição automática por cartão.</span>}
-        </div>
-        {portalError && (
-          <div className="border rounded-lg p-3 text-xs font-body" style={{ borderColor: 'var(--rust)', backgroundColor: 'rgba(214,83,74,0.10)', color: 'var(--rust)' }}>
-            {portalError}
-          </div>
-        )}
-        {/* Lista achatada com divisórias: os planos não são cartões dentro do cartão. */}
-        <div className="flex flex-col border-t border-hair">
-          {(upgradePlans.length ? upgradePlans : SALES_PLANS).map((plan) => {
-            const isCurrent = plan.id === subscription?.tier;
-            const subject = isCurrent
-              ? `Dúvida sobre o meu plano ${plan.name} do PTMANAGER`
-              : `Mudança de plano do PTMANAGER para ${plan.name}`;
-            return (
-              <div key={plan.id} className="flex items-center justify-between gap-3 py-3 border-b border-hair flex-wrap">
-                <div className="flex items-baseline gap-2.5 min-w-0">
-                  <span className="font-body font-medium text-primary">{plan.name}</span>
-                  <span className="font-mono text-sm text-muted">{plan.price}</span>
-                  {plan.bonusLabel && (
-                    <span className="badge" style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)' }}>{plan.bonusLabel}</span>
+            {SETTINGS_SECTIONS.map((s) => {
+              const active = section === s.id;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setSection(s.id)}
+                  aria-current={active ? 'true' : undefined}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-body nowrap flex-shrink-0 btn-surface sm:w-52"
+                  style={{
+                    backgroundColor: active ? 'var(--brass-soft)' : 'transparent',
+                    color: active ? 'var(--brass)' : 'var(--text-muted)',
+                    fontWeight: active ? 600 : 400,
+                  }}
+                >
+                  <s.icon size={15} style={{ display: 'block', flexShrink: 0 }} />
+                  <span className="truncate">{s.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="flex-1 min-w-0 overflow-y-auto p-5 flex flex-col gap-6">
+            {section === 'conta' && (
+              <>
+                <SettingsBlock title="Conta" description="Dados de acesso ao PTMANAGER.">
+                  <div className="flex items-center gap-3 pb-1">
+                    <img src={LOGO_SRC} alt="" style={{ width: 40, height: 40, flexShrink: 0 }} />
+                    <div className="min-w-0">
+                      <div className="font-body text-base text-primary truncate">{user?.email || 'Utilizador local'}</div>
+                      <div className="text-2xs text-faint font-body">Personal trainer</div>
+                    </div>
+                  </div>
+                  <dl className="flex flex-col text-sm font-body border-t border-hair">
+                    <SettingsRow label="E-mail de acesso" value={user?.email || 'Conta local'} />
+                    <SettingsRow label="ID do utilizador" value={user?.id || 'local'} mono />
+                    <SettingsRow label="Último acesso" value={user?.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleString('pt-PT', { dateStyle: 'short', timeStyle: 'short' }) : 'Agora'} />
+                    <SettingsRow label="Conta criada" value={fmtDateLong(user?.created_at)} />
+                    {/* A palavra-passe real nunca é apresentada. */}
+                    <div className="flex items-center justify-between gap-3 py-2.5 border-b border-hair">
+                      <span className="text-muted">Palavra-passe</span>
+                      <span className="font-mono text-primary tracking-widest" aria-label="Palavra-passe oculta">••••••••</span>
+                    </div>
+                  </dl>
+                </SettingsBlock>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  {onChangePassword && (
+                    <button onClick={onChangePassword} type="button" className="btn btn-ghost flex-1" style={{ fontSize: 12 }}>
+                      <KeyRound size={14} /> Alterar palavra-passe
+                    </button>
                   )}
-                  {isCurrent && <span className="badge" style={{ backgroundColor: 'var(--brass-soft)', color: 'var(--brass)' }}>Atual</span>}
+                  {onSignOut && (
+                    <button onClick={onSignOut} type="button" className="btn btn-ghost flex-1" style={{ fontSize: 12 }}>
+                      Terminar sessão
+                    </button>
+                  )}
                 </div>
-                <a
-                  href={hasSupportEmail ? supportMailtoHref(subject) : undefined}
-                  aria-disabled={!hasSupportEmail}
-                  className="btn btn-ghost flex-shrink-0"
-                  style={{ padding: '7px 12px', fontSize: 12 }}
+              </>
+            )}
+
+            {section === 'subscricao' && (
+              <>
+                <SettingsBlock title="Plano atual">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-display text-2xl text-primary font-semibold">{planName}</span>
+                    <span className="badge" style={{ backgroundColor: subscription?.active ? 'var(--brass-soft)' : 'var(--rust-soft)', color: subscription?.active ? 'var(--brass)' : 'var(--rust)' }}>
+                      {subscriptionStatusLabel(subscription?.status)}
+                    </span>
+                  </div>
+                  <dl className="flex flex-col text-sm font-body border-t border-hair">
+                    <SettingsRow icon={Wallet} label="Valor" value={planValue} />
+                    <SettingsRow icon={CalendarRange} label="Ciclo" value={billingInterval} />
+                    <SettingsRow
+                      icon={CalendarDays}
+                      label={isManualPayment ? 'Vencimento' : subscription?.cancelAtPeriodEnd ? 'Fim do acesso' : 'Próxima renovação'}
+                      value={renewalLabel}
+                      tone={subscription?.cancelAtPeriodEnd ? 'var(--rust)' : undefined}
+                    />
+                    <SettingsRow icon={CreditCard} label="Pagamento" value={paymentLabel} />
+                  </dl>
+                  {subscription?.cancelAtPeriodEnd && (
+                    <div className="text-xs font-body px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--rust-soft)', color: 'var(--rust)' }}>
+                      Cancelamento agendado. O acesso permanece até {fmtDateLong(subscription.currentPeriodEnd)}.
+                    </div>
+                  )}
+                  <button onClick={onRefreshSubscription} type="button" className="btn btn-ghost self-start" style={{ fontSize: 12 }}>
+                    Atualizar dados do plano
+                  </button>
+                </SettingsBlock>
+
+                <SettingsBlock title="Faturação" description="Resumo para suporte e conciliação.">
+                  <dl className="flex flex-col text-sm font-body border-t border-hair">
+                    <SettingsRow label="Início do ciclo" value={fmtDateLong(subscription?.currentPeriodStart)} />
+                    <SettingsRow label="Vencimento" value={fmtDateLong(subscription?.currentPeriodEnd)} />
+                    <SettingsRow label="Último pagamento" value={subscription?.lastPaymentStatus || 'Não informado'} />
+                    <SettingsRow label="Última atualização" value={fmtDateLong(subscription?.updatedAt)} />
+                    <SettingsRow label="Cliente Stripe" value={subscription?.stripeCustomerId || 'Ainda não vinculado'} mono />
+                    <SettingsRow label="Subscrição Stripe" value={subscription?.stripeSubscriptionId || 'Ainda não vinculada'} mono />
+                  </dl>
+                </SettingsBlock>
+
+                <SettingsBlock
+                  title="Gerir plano"
+                  description={hasRecurringStripeSubscription
+                    ? 'Atualize cartão, veja cobranças, altere plano ou cancele no portal seguro da Stripe.'
+                    : 'Pagamentos MB WAY são únicos por período. Para renovar ou alterar plano, fale com o suporte.'}
                 >
-                  {isCurrent ? 'Falar sobre plano' : 'Mudar de plano'}
-                </a>
-              </div>
-            );
-          })}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <a
-            href={hasSupportEmail ? supportMailtoHref('Atualizar a forma de pagamento do plano PTMANAGER') : undefined}
-            aria-disabled={!hasSupportEmail}
-            className="btn btn-ghost"
-            style={{ padding: '8px 14px', fontSize: 12 }}
-          >
-            <Mail size={13} /> Atualizar pagamento
-          </a>
-          <a
-            href={hasSupportEmail ? supportMailtoHref('Segunda via ou dúvida sobre uma cobrança do PTMANAGER') : undefined}
-            aria-disabled={!hasSupportEmail}
-            className="btn btn-ghost"
-            style={{ padding: '8px 14px', fontSize: 12 }}
-          >
-            <Mail size={13} /> Suporte de faturação
-          </a>
-          <a
-            href={hasSupportEmail ? supportMailtoHref('Cancelamento do plano PTMANAGER') : undefined}
-            aria-disabled={!hasSupportEmail}
-            className="btn"
-            style={{ padding: '8px 14px', fontSize: 12, borderColor: 'var(--rust)', color: 'var(--rust)', backgroundColor: 'transparent' }}
-          >
-            Solicitar cancelamento
-          </a>
-        </div>
-        {!hasSupportEmail && (
-          <div className="text-xs text-faint font-body">
-            Defina <code className="font-mono">VITE_SUPPORT_EMAIL</code> para ativar os contactos de suporte.
+                  <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                    <button onClick={openCustomerPortal} type="button" disabled={portalBusy || !hasRecurringStripeSubscription} className="btn btn-primary">
+                      {portalBusy ? 'A abrir portal...' : 'Gerir subscrição na Stripe'}
+                    </button>
+                    {!hasRecurringStripeSubscription && <span className="text-xs text-faint font-body">Disponível apenas para subscrição automática por cartão.</span>}
+                  </div>
+                  {portalError && (
+                    <div className="border rounded-lg p-3 text-xs font-body" style={{ borderColor: 'var(--rust)', backgroundColor: 'var(--rust-soft)', color: 'var(--rust)' }}>
+                      {portalError}
+                    </div>
+                  )}
+                  <div className="flex flex-col border-t border-hair">
+                    {(upgradePlans.length ? upgradePlans : SALES_PLANS).map((plan) => {
+                      const isCurrent = plan.id === subscription?.tier;
+                      const subject = isCurrent
+                        ? `Dúvida sobre o meu plano ${plan.name} do PTMANAGER`
+                        : `Mudança de plano do PTMANAGER para ${plan.name}`;
+                      return (
+                        <div key={plan.id} className="flex items-center justify-between gap-3 py-3 border-b border-hair flex-wrap">
+                          <div className="flex items-baseline gap-2.5 min-w-0 flex-wrap">
+                            <span className="font-body font-medium text-primary">{plan.name}</span>
+                            <span className="font-mono text-sm text-muted">{plan.price}</span>
+                            {plan.bonusLabel && <span className="badge" style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)' }}>{plan.bonusLabel}</span>}
+                            {isCurrent && <span className="badge" style={{ backgroundColor: 'var(--brass-soft)', color: 'var(--brass)' }}>Atual</span>}
+                          </div>
+                          <a href={hasSupportEmail ? supportMailtoHref(subject) : undefined} aria-disabled={!hasSupportEmail} className="btn btn-ghost flex-shrink-0" style={{ padding: '7px 12px', fontSize: 12 }}>
+                            {isCurrent ? 'Falar sobre plano' : 'Mudar de plano'}
+                          </a>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <a href={hasSupportEmail ? supportMailtoHref('Atualizar a forma de pagamento do plano PTMANAGER') : undefined} aria-disabled={!hasSupportEmail} className="btn btn-ghost" style={{ padding: '8px 14px', fontSize: 12 }}>
+                      <Mail size={13} /> Atualizar pagamento
+                    </a>
+                    <a href={hasSupportEmail ? supportMailtoHref('Segunda via ou dúvida sobre uma cobrança do PTMANAGER') : undefined} aria-disabled={!hasSupportEmail} className="btn btn-ghost" style={{ padding: '8px 14px', fontSize: 12 }}>
+                      <Mail size={13} /> Suporte de faturação
+                    </a>
+                    <a href={hasSupportEmail ? supportMailtoHref('Cancelamento do plano PTMANAGER') : undefined} aria-disabled={!hasSupportEmail} className="btn" style={{ padding: '8px 14px', fontSize: 12, borderColor: 'var(--rust)', color: 'var(--rust)', backgroundColor: 'transparent' }}>
+                      Solicitar cancelamento
+                    </a>
+                  </div>
+                  {!hasSupportEmail && (
+                    <div className="text-xs text-faint font-body">
+                      Defina <code className="font-mono">VITE_SUPPORT_EMAIL</code> para ativar os contactos de suporte.
+                    </div>
+                  )}
+                </SettingsBlock>
+              </>
+            )}
+
+            {section === 'dados' && (
+              <>
+                <SettingsBlock title="Os seus dados" description="O que está guardado nesta conta.">
+                  <dl className="flex flex-col text-sm font-body border-t border-hair">
+                    <SettingsRow label="Alunos" value={students.length} />
+                    <SettingsRow label="Aulas e avaliações" value={sessions.length} />
+                    <SettingsRow label="Lançamentos financeiros" value={finances.length} />
+                    <SettingsRow label="Fotos de progresso" value={photos.length} />
+                  </dl>
+                </SettingsBlock>
+
+                <SettingsBlock title="Privacidade" description="Como os seus dados são tratados.">
+                  <ul className="flex flex-col gap-2.5 text-sm font-body text-muted">
+                    {[
+                      'Os dados ficam associados apenas à sua conta — nenhum outro utilizador lhes acede.',
+                      'Os seus alunos não têm acesso ao sistema nem recebem convites.',
+                      'Os pagamentos são processados pela Stripe; o PTMANAGER nunca guarda dados do cartão.',
+                    ].map((t) => (
+                      <li key={t} className="flex items-start gap-2.5">
+                        <ShieldCheck size={15} className="text-brass flex-shrink-0" style={{ marginTop: 2 }} />
+                        <span>{t}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </SettingsBlock>
+
+                <SettingsBlock title="Cópia de segurança" description="Transfira um ficheiro com alunos, aulas, avaliações, finanças e fotos. Pode restaurá-lo aqui se precisar.">
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={() => downloadBackup(students, sessions, finances, photos, customCategories)} type="button" className="btn btn-primary" style={{ fontSize: 12 }}>
+                      <Download size={14} /> Exportar backup
+                    </button>
+                    <button onClick={() => fileRef.current?.click()} type="button" className="btn btn-ghost" style={{ fontSize: 12 }}>
+                      <Upload size={14} /> Restaurar backup
+                    </button>
+                    <input ref={fileRef} type="file" accept=".json,application/json" onChange={handleFile} style={{ display: 'none' }} />
+                  </div>
+                  {restoreError && <div className="text-2xs font-body text-rust">{restoreError}</div>}
+                </SettingsBlock>
+
+                <SettingsBlock title="Apagar todos os dados" description="Remove alunos, aulas, avaliações, finanças e fotos desta aplicação. Esta ação não pode ser desfeita.">
+                  <button onClick={() => setConfirmReset(true)} type="button" className="btn btn-danger self-start" style={{ fontSize: 12 }}>
+                    <Trash2 size={14} /> Apagar tudo
+                  </button>
+                </SettingsBlock>
+              </>
+            )}
+
+            {section === 'sobre' && (
+              <SettingsBlock title="Sobre o PTMANAGER" description="Gestão completa para personal trainers.">
+                <dl className="flex flex-col text-sm font-body border-t border-hair">
+                  <SettingsRow label="Aplicação" value="PTMANAGER" />
+                  <SettingsRow label="Idioma" value="Português (Portugal)" />
+                  <SettingsRow label="Moeda" value="Euro (€)" />
+                  <SettingsRow label="Pagamentos" value="Stripe" />
+                </dl>
+                {hasSupportEmail && (
+                  <a href={supportMailtoHref('Contacto de suporte do PTMANAGER')} className="btn btn-ghost self-start" style={{ fontSize: 12 }}>
+                    <Mail size={14} /> Contactar o suporte
+                  </a>
+                )}
+                <p className="text-2xs font-body text-faint">Developed by Marcelo Fonseca</p>
+              </SettingsBlock>
+            )}
           </div>
-        )}
+        </div>
       </div>
+
+      {confirmReset && (
+        <ConfirmDialog title="Apagar todos os dados" message="Tem a certeza? Todos os dados serão permanentemente removidos." onCancel={() => setConfirmReset(false)} onConfirm={onReset} />
+      )}
+      {pendingRestore && (
+        <ConfirmDialog
+          title="Restaurar backup"
+          message={`Isto vai SUBSTITUIR os dados atuais pelos ${plural(pendingRestore.alunos.length, 'aluno', 'alunos')}, ${plural(pendingRestore.agenda.length, 'aula', 'aulas')}, ${plural(pendingRestore.financas.length, 'lançamento', 'lançamentos')} e ${plural(pendingRestore.fotos.length, 'foto', 'fotos')} do ficheiro. Esta ação não pode ser desfeita.`}
+          onCancel={() => setPendingRestore(null)}
+          onConfirm={() => { onRestore(pendingRestore.alunos, pendingRestore.agenda, pendingRestore.financas, pendingRestore.fotos, pendingRestore.categorias); setPendingRestore(null); }}
+        />
+      )}
     </div>
   );
 }
+
 
 function StatCard({ label, value, icon: Icon, accent = 'brass', sub }) {
   const hex = ACCENT_HEX[accent];
@@ -2021,8 +2154,6 @@ const NAV_TABS = [
   { id: 'students', label: 'Alunos', icon: Users },
   { id: 'assessments', label: 'Avaliações', icon: Activity },
   { id: 'finances', label: 'Finanças', icon: Wallet },
-  // CircleUser (não Settings): a engrenagem já identifica as Definições no cabeçalho.
-  { id: 'profile', label: 'Perfil', icon: CircleUser },
 ];
 
 // Desktop/tablet: separadores no topo. Telemóvel: barra fixa no fundo, ao alcance
@@ -3521,84 +3652,6 @@ function FinancesView({ finances, students, monthCursor, setMonthCursor, onOpenT
 
 /* ============================== SETTINGS ============================== */
 
-function SettingsPanel({ students, sessions, finances, photos, customCategories, onReset, onRestore, studentCount, sessionCount, onSignOut }) {
-  const [confirm, setConfirm] = useState(false);
-  const [pendingRestore, setPendingRestore] = useState(null);
-  const [restoreError, setRestoreError] = useState('');
-  const fileRef = useRef(null);
-
-  function handleFile(e) {
-    const file = e.target.files[0];
-    e.target.value = '';
-    if (!file) return;
-    setRestoreError('');
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const data = JSON.parse(evt.target.result);
-        if (!Array.isArray(data.alunos) || !Array.isArray(data.agenda)) throw new Error('formato inválido');
-        if (!Array.isArray(data.financas)) data.financas = [];
-        if (!Array.isArray(data.fotos)) data.fotos = [];
-        if (!data.categorias) data.categorias = EMPTY_CUSTOM_CATEGORIES;
-        setPendingRestore(data);
-      } catch (err) {
-        setRestoreError('Não foi possível ler este ficheiro. Verifique se é uma cópia de segurança exportada por esta aplicação.');
-      }
-    };
-    reader.readAsText(file);
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="text-sm font-body text-muted">{plural(studentCount, 'aluno', 'alunos')} · {plural(sessionCount, 'aula/avaliação', 'aulas/avaliações')} · {plural(finances.length, 'lançamento', 'lançamentos')} · {plural(photos.length, 'foto', 'fotos')}.</div>
-
-      <div className="border border-hair rounded-lg p-4">
-        <div className="text-sm font-body font-medium text-primary mb-1">Backup dos dados</div>
-        <p className="text-xs font-body text-muted mb-3">Transfira um ficheiro com alunos, aulas, avaliações, finanças e fotos — guarde-o em algum lugar seguro. Pode restaurar este ficheiro aqui se precisar.</p>
-        <div className="flex gap-2 flex-wrap">
-          <button onClick={() => downloadBackup(students, sessions, finances, photos, customCategories)} type="button" className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
-            <Download size={14} /> Exportar backup
-          </button>
-          <button onClick={() => fileRef.current?.click()} type="button" className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-body border border-hair btn-surface">
-            <Upload size={14} /> Restaurar backup
-          </button>
-          <input ref={fileRef} type="file" accept=".json,application/json" onChange={handleFile} style={{ display: 'none' }} />
-        </div>
-        {restoreError && <div className="text-2xs font-body text-rust mt-2">{restoreError}</div>}
-      </div>
-
-      <div className="border rounded-lg p-4" style={{ borderColor: 'var(--rust)' }}>
-        <div className="text-sm font-body font-medium text-primary mb-1">Apagar todos os dados</div>
-        <p className="text-xs font-body text-muted mb-3">Remove todos os alunos, aulas, avaliações, finanças e fotos guardadas nesta aplicação. Esta ação não pode ser desfeita.</p>
-        <button onClick={() => setConfirm(true)} type="button" className="px-3.5 py-2 rounded-lg text-xs font-body" style={{ backgroundColor: 'var(--rust)', color: '#0A0A0A' }}>
-          Apagar tudo
-        </button>
-      </div>
-
-      {onSignOut && (
-        <div className="border border-hair rounded-lg p-4">
-          <div className="text-sm font-body font-medium text-primary mb-1">Conta</div>
-          <p className="text-xs font-body text-muted mb-3">Encerre a sessão neste dispositivo.</p>
-          <button onClick={onSignOut} type="button" className="px-3.5 py-2 rounded-lg text-xs font-body border border-hair btn-surface text-muted">
-            Sair da conta
-          </button>
-        </div>
-      )}
-
-      {confirm && (
-        <ConfirmDialog title="Apagar todos os dados" message="Tem certeza? Todos os dados serão permanentemente removidos." onCancel={() => setConfirm(false)} onConfirm={onReset} />
-      )}
-      {pendingRestore && (
-        <ConfirmDialog
-          title="Restaurar backup"
-          message={`Isso vai SUBSTITUIR os dados atuais pelos ${plural(pendingRestore.alunos.length, 'aluno', 'alunos')}, ${plural(pendingRestore.agenda.length, 'aula', 'aulas')}, ${plural(pendingRestore.financas.length, 'lançamento', 'lançamentos')} e ${plural(pendingRestore.fotos.length, 'foto', 'fotos')} do ficheiro. Esta ação não pode ser desfeita.`}
-          onCancel={() => setPendingRestore(null)}
-          onConfirm={() => { onRestore(pendingRestore.alunos, pendingRestore.agenda, pendingRestore.financas, pendingRestore.fotos, pendingRestore.categorias); setPendingRestore(null); }}
-        />
-      )}
-    </div>
-  );
-}
 
 /* ============================== APP ROOT ============================== */
 
@@ -3995,15 +4048,6 @@ function AppInner() {
             onNoStudents={() => showToast('Registe um aluno antes de fazer uma avaliação física.', 'error')} />
         )}
         {view === 'finances' && <FinancesView finances={finances} students={students} monthCursor={financeMonthCursor} setMonthCursor={setFinanceMonthCursor} onOpenTransaction={openEditTransaction} onNewTransaction={openNewTransaction} onQuickComplete={quickCompleteTransaction} customCategories={customCategories} />}
-        {view === 'profile' && (
-          <ProfileView
-            user={user}
-            subscription={subscription}
-            onSignOut={supabaseConfigured ? signOut : null}
-            onRefreshSubscription={refreshSubscription}
-            onChangePassword={supabaseConfigured && user?.email ? () => setShowChangePassword(true) : null}
-          />
-        )}
       </main>
       <DeveloperCredit />
 
@@ -4020,9 +4064,21 @@ function AppInner() {
         <DayDetailModal iso={dayDetailIso} sessions={sessions} students={students} onClose={() => setDayDetailIso(null)} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} customCategories={customCategories} />
       )}
       {settingsOpen && (
-        <Modal title="Definições" onClose={() => setSettingsOpen(false)}>
-          <SettingsPanel students={students} sessions={sessions} finances={finances} photos={photos} customCategories={customCategories} onReset={resetAllData} onRestore={restoreBackup} studentCount={students.length} sessionCount={sessions.length} onSignOut={supabaseConfigured ? signOut : null} />
-        </Modal>
+        <SettingsModal
+          user={user}
+          subscription={subscription}
+          students={students}
+          sessions={sessions}
+          finances={finances}
+          photos={photos}
+          customCategories={customCategories}
+          onClose={() => setSettingsOpen(false)}
+          onSignOut={supabaseConfigured ? signOut : null}
+          onRefreshSubscription={refreshSubscription}
+          onChangePassword={supabaseConfigured && user?.email ? () => setShowChangePassword(true) : null}
+          onReset={resetAllData}
+          onRestore={restoreBackup}
+        />
       )}
       {showChangePassword && user?.email && (
         <ChangePasswordModal

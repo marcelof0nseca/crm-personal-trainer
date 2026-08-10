@@ -370,6 +370,16 @@ function categoryFor(type, categoryId, customCategories) {
     : [...EXPENSE_CATEGORIES, ...((customCategories && customCategories.expense) || [])];
   return list.find((c) => c.id === categoryId) || list[list.length - 1];
 }
+// Um ícone é um componente React e NÃO sobrevive a JSON.stringify: as categorias
+// personalizadas eram gravadas com o componente e voltavam do armazenamento como
+// {}, fazendo o React rebentar ao renderizá-las (erro #130). Validar sempre antes
+// de usar, e cair no ícone genérico quando o valor não for renderizável.
+function iconOf(candidate, fallback = Tag) {
+  if (typeof candidate === 'function') return candidate;
+  if (candidate && typeof candidate === 'object' && candidate.$$typeof) return candidate;
+  return fallback;
+}
+
 function sessionTypeFor(typeId, customCategories) {
   const list = [...SESSION_TYPES, ...((customCategories && customCategories.sessionTypes) || [])];
   return list.find((t) => t.id === typeId) || SESSION_TYPES[0];
@@ -1880,7 +1890,7 @@ function PhotoPicker({ photoIds, onAdd, onRemove, photosById, busy }) {
 function SessionCard({ session, student, onOpen, onQuickStatus, customCategories, compact }) {
   const isEvento = session.kind === 'evento';
   const type = isEvento ? eventTypeFor(session.type, customCategories) : sessionTypeFor(session.type, customCategories);
-  const TypeIcon = type.icon || Tag;
+  const TypeIcon = iconOf(type.icon);
   const isFalta = session.status === 'falta';
   const isCancelado = session.status === 'cancelado';
   const isRealizado = session.status === 'realizado';
@@ -3021,7 +3031,7 @@ function SessionFormModal({ session, students, defaultDate, customCategories, on
             <FormField label="Categoria">
               <div className="grid grid-cols-2 gap-2">
                 {(isEvento ? [...EVENT_TYPES, ...customCategories.eventTypes] : [...SESSION_TYPES, ...customCategories.sessionTypes]).map((t) => {
-                  const Icon = t.icon || Tag;
+                  const Icon = iconOf(t.icon);
                   const active = form.type === t.id;
                   return (
                     <button key={t.id} type="button" onClick={() => set('type', t.id)} className="flex items-center gap-2 px-3 py-2 rounded-lg border text-left" style={{ borderColor: active ? t.color : 'var(--border-hair)', backgroundColor: active ? `${t.color}22` : 'var(--bg-base)' }}>
@@ -3034,9 +3044,9 @@ function SessionFormModal({ session, students, defaultDate, customCategories, on
               <AddCategoryInline placeholder={isEvento ? 'Ex: Estudo' : 'Ex: Aula em Grupo'} onAdd={(label) => {
                 const id = slugify(label);
                 if (isEvento) {
-                  onAddCategory('eventTypes', { id, label, color: CUSTOM_CATEGORY_COLORS[customCategories.eventTypes.length % CUSTOM_CATEGORY_COLORS.length], icon: Tag });
+                  onAddCategory('eventTypes', { id, label, color: CUSTOM_CATEGORY_COLORS[customCategories.eventTypes.length % CUSTOM_CATEGORY_COLORS.length] });
                 } else {
-                  onAddCategory('sessionTypes', { id, label, color: CUSTOM_CATEGORY_COLORS[customCategories.sessionTypes.length % CUSTOM_CATEGORY_COLORS.length], icon: Tag });
+                  onAddCategory('sessionTypes', { id, label, color: CUSTOM_CATEGORY_COLORS[customCategories.sessionTypes.length % CUSTOM_CATEGORY_COLORS.length] });
                 }
                 set('type', id);
               }} />

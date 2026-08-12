@@ -84,15 +84,15 @@ Deno.serve(async (req) => {
     if (!relevantEvents.has(event.type)) return json({ received: true, ignored: true });
 
     if (event.type === 'checkout.session.completed') {
-      await handleCheckoutSessionCompleted(event.data.object, stripeSecretKey, supabaseUrl, serviceRoleKey);
+      await handleCheckoutSessionCompleted(event.data.object, stripeSecretKey, supabaseUrl, serviceRoleKey, event.id);
     }
 
     if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
-      await syncSubscription(event.data.object, stripeSecretKey, supabaseUrl, serviceRoleKey);
+      await syncSubscription(event.data.object, stripeSecretKey, supabaseUrl, serviceRoleKey, { stripeEventId: event.id });
     }
 
     if (event.type === 'invoice.payment_succeeded' || event.type === 'invoice.payment_failed') {
-      await handleInvoice(event.data.object, event.type, stripeSecretKey, supabaseUrl, serviceRoleKey);
+      await handleInvoice(event.data.object, event.type, stripeSecretKey, supabaseUrl, serviceRoleKey, event.id);
     }
 
     return json({ received: true });
@@ -101,14 +101,14 @@ Deno.serve(async (req) => {
   }
 });
 
-async function handleCheckoutSessionCompleted(session, stripeSecretKey, supabaseUrl, serviceRoleKey) {
+async function handleCheckoutSessionCompleted(session, stripeSecretKey, supabaseUrl, serviceRoleKey, stripeEventId) {
   if (session.mode === 'payment' && session.metadata?.payment_type === 'mb_way') {
     await activateOneTimePlan(session, supabaseUrl, serviceRoleKey);
     return;
   }
   if (!session.subscription) return;
   const subscription = await stripeGet(`/v1/subscriptions/${session.subscription}`, stripeSecretKey);
-  await syncSubscription(subscription, stripeSecretKey, supabaseUrl, serviceRoleKey);
+  await syncSubscription(subscription, stripeSecretKey, supabaseUrl, serviceRoleKey, { stripeEventId });
 }
 
 async function activateOneTimePlan(session, supabaseUrl, serviceRoleKey) {
@@ -142,12 +142,65 @@ async function activateOneTimePlan(session, supabaseUrl, serviceRoleKey) {
   await supabaseUpsertSubscription(payload, supabaseUrl, serviceRoleKey);
 }
 
-async function handleInvoice(invoice, eventType, stripeSecretKey, supabaseUrl, serviceRoleKey) {
+async function handleInvoice(invoice, eventType, stripeSecretKey, supabaseUrl, serviceRoleKey, stripeEventId) {
   if (!invoice.subscription) return;
   const subscription = await stripeGet(`/v1/subscriptions/${invoice.subscription}`, stripeSecretKey);
   await syncSubscription(subscription, stripeSecretKey, supabaseUrl, serviceRoleKey, {
     lastPaymentStatus: eventType === 'invoice.payment_succeeded' ? 'paid' : 'failed',
+    stripeEventId,
   });
+}
+
+// Ordem dos planos, para distinguir upgrade de downgrade.
+const TIER_ORDER = ['mensal', 'trimestral', 'anual'];
+
+async function readSubscriptionRow(userId, supabaseUrl, serviceRoleKey) {
+  const res = await fetch(
+    `${supabaseUrl}/rest/v1/personal_subscriptions?user_id=eq.${encodeURIComponent(userId)}&select=plan_tier,plan_status,cancel_at_period_end&limit=1`,
+    { headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` } },
+  );
+  if (!res.ok) return null;
+  const rows = await res.json();
+  return rows[0] || null;
+}
+
+// Traduz a diferença entre o estado anterior e o novo num tipo de evento.
+// Devolve null quando nada de relevante mudou, para não encher a tabela de ruído.
+function derivarEvento(anterior, payload, overrides) {
+  if (!anterior) return 'created';
+  if (payload.plan_status === 'canceled' && anterior.plan_status !== 'canceled') return 'canceled';
+
+  if (payload.plan_tier && anterior.plan_tier && payload.plan_tier !== anterior.plan_tier) {
+    const de = TIER_ORDER.indexOf(anterior.plan_tier);
+    const para = TIER_ORDER.indexOf(payload.plan_tier);
+    if (de >= 0 && para >= 0) return para > de ? 'upgraded' : 'downgraded';
+    return 'plan_changed';
+  }
+
+  if (payload.cancel_at_period_end && !anterior.cancel_at_period_end) return 'cancel_scheduled';
+  if (!payload.cancel_at_period_end && anterior.cancel_at_period_end) return 'reactivated';
+
+  if (overrides.lastPaymentStatus === 'failed' || payload.plan_status === 'past_due') return 'payment_failed';
+  if (overrides.lastPaymentStatus === 'paid') return 'renewed';
+  return null;
+}
+
+// O registo do evento é secundário: se falhar, o webhook tem de continuar a
+// devolver 200, senão a Stripe reenvia e a subscrição fica por sincronizar.
+async function registarEvento(evento, supabaseUrl, serviceRoleKey) {
+  try {
+    await fetch(`${supabaseUrl}/rest/v1/subscription_events`, {
+      method: 'POST',
+      headers: {
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+        'Content-Type': 'application/json',
+        // Reenvio da Stripe com o mesmo stripe_event_id é ignorado em silêncio.
+        Prefer: 'resolution=ignore-duplicates',
+      },
+      body: JSON.stringify(evento),
+    });
+  } catch (_) { /* histórico é acessório: nunca derruba a sincronização */ }
 }
 
 async function syncSubscription(subscription, stripeSecretKey, supabaseUrl, serviceRoleKey, overrides = {}) {
@@ -193,7 +246,24 @@ async function syncSubscription(subscription, stripeSecretKey, supabaseUrl, serv
     updated_at: new Date().toISOString(),
   };
 
+  // Ler o estado anterior antes de o substituir, para saber o que mudou.
+  const anterior = await readSubscriptionRow(userId, supabaseUrl, serviceRoleKey);
+
   await supabaseUpsertSubscription(payload, supabaseUrl, serviceRoleKey);
+
+  const tipo = derivarEvento(anterior, payload, overrides);
+  if (tipo) {
+    await registarEvento({
+      user_id: userId,
+      event_type: tipo,
+      from_tier: anterior?.plan_tier || null,
+      to_tier: payload.plan_tier || null,
+      amount: planValue,
+      stripe_event_id: overrides.stripeEventId || null,
+      occurred_at: new Date().toISOString(),
+      raw: { status: payload.plan_status, interval: payload.billing_interval },
+    }, supabaseUrl, serviceRoleKey);
+  }
 }
 
 async function stripeGet(path, stripeSecretKey) {

@@ -6,6 +6,7 @@ import {
   Loader2, Settings, Check, Info, Activity, Ban, Download, Upload,
   Camera, ArrowLeft, LineChart as LineChartIcon, Tag,
   Coffee, Dumbbell, UtensilsCrossed, Stethoscope, Gift, CreditCard, Mail, CircleUser, KeyRound, ShieldCheck,
+  RefreshCcw,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
@@ -2330,12 +2331,15 @@ const NAV_TABS = [
 
 // Desktop/tablet: separadores no topo. Telemóvel: barra fixa no fundo, ao alcance
 // do polegar, com área de toque de 56px e respeito pela safe-area do iOS.
-function NavTabs({ view, setView }) {
+function NavTabs({ view, setView, isAdmin }) {
+  // O separador Admin é acrescentado só para administradores. Isto é apenas
+  // cosmético: quem autoriza é a Edge Function, que valida o e-mail no servidor.
+  const tabs = isAdmin ? [...NAV_TABS, { id: 'admin', label: 'Admin', icon: ShieldCheck }] : NAV_TABS;
   return (
     <>
       <nav className="border-b border-hair sticky top-0 hidden sm:block" style={{ zIndex: 30, backgroundColor: 'var(--bg-surface)' }} aria-label="Navegação principal">
         <div className="max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto">
-          {NAV_TABS.map((t) => {
+          {tabs.map((t) => {
             const Icon = t.icon;
             const active = view === t.id;
             return (
@@ -2364,7 +2368,7 @@ function NavTabs({ view, setView }) {
         aria-label="Navegação principal"
       >
         <div className="flex">
-          {NAV_TABS.map((t) => {
+          {tabs.map((t) => {
             const Icon = t.icon;
             const active = view === t.id;
             return (
@@ -4011,6 +4015,334 @@ function FaltasView({ students, sessions, onRegistarFalta, onOpenSession, onAgen
   );
 }
 
+/* ============================== ADMINISTRAÇÃO ============================== */
+
+const ADMIN_SECOES = [
+  { id: 'visao', label: 'Visão geral' },
+  { id: 'contas', label: 'Contas' },
+  { id: 'eventos', label: 'Eventos' },
+];
+
+const EVENTO_LABELS = {
+  created: { label: 'Nova subscrição', color: '#5FBFA0' },
+  renewed: { label: 'Renovação', color: '#5FC4D0' },
+  upgraded: { label: 'Upgrade', color: '#1EA6B4' },
+  downgraded: { label: 'Downgrade', color: '#F5B44C' },
+  plan_changed: { label: 'Mudança de plano', color: '#8C8C8C' },
+  cancel_scheduled: { label: 'Cancelamento agendado', color: '#F5B44C' },
+  canceled: { label: 'Cancelada', color: '#D6534A' },
+  reactivated: { label: 'Reativada', color: '#5FBFA0' },
+  payment_failed: { label: 'Pagamento falhado', color: '#D6534A' },
+};
+
+const ESTADO_CONTA = {
+  active: { label: 'Ativa', color: '#5FBFA0' },
+  past_due: { label: 'Em atraso', color: '#D6534A' },
+  canceled: { label: 'Cancelada', color: '#8C8C8C' },
+  sem_plano: { label: 'Sem plano', color: '#7C838F' },
+};
+
+function estadoConta(id) {
+  return ESTADO_CONTA[id] || { label: id || '—', color: '#8C8C8C' };
+}
+
+// O `plan_tier` chega em minúsculas da Stripe; aqui é texto para ler.
+function nomePlano(tier) {
+  if (!tier) return '—';
+  return String(tier).charAt(0).toUpperCase() + String(tier).slice(1);
+}
+
+function AdminView() {
+  const [secao, setSecao] = useState('visao');
+  const [dados, setDados] = useState(null);
+  const [erro, setErro] = useState('');
+  const [carregando, setCarregando] = useState(true);
+  const [filtroEstado, setFiltroEstado] = useState('todos');
+  const [procura, setProcura] = useState('');
+  const [filtroEvento, setFiltroEvento] = useState('todos');
+
+  async function carregar() {
+    setCarregando(true);
+    setErro('');
+    if (!supabaseConfigured || !supabase) {
+      setErro('Supabase não está configurado.');
+      setCarregando(false);
+      return;
+    }
+    const { data, error } = await supabase.functions.invoke('admin-overview', { body: {} });
+    setCarregando(false);
+    if (error || !data || data.error) {
+      setErro(await edgeFunctionErrorMessage(error, data?.error || 'Não foi possível carregar os dados de administração.'));
+      return;
+    }
+    setDados(data);
+  }
+
+  useEffect(() => { carregar(); }, []);
+
+  const contasFiltradas = useMemo(() => {
+    if (!dados) return [];
+    const termo = procura.trim().toLowerCase();
+    return dados.contas.filter((c) => {
+      if (filtroEstado === 'ativas' && !c.ativa) return false;
+      if (filtroEstado !== 'todos' && filtroEstado !== 'ativas' && c.estado !== filtroEstado) return false;
+      if (termo && !String(c.email || '').toLowerCase().includes(termo)) return false;
+      return true;
+    }).sort((a, b) => byNamePt(a.email, b.email));
+  }, [dados, filtroEstado, procura]);
+
+  const eventosFiltrados = useMemo(() => {
+    if (!dados) return [];
+    return dados.eventos.filter((e) => filtroEvento === 'todos' || e.event_type === filtroEvento);
+  }, [dados, filtroEvento]);
+
+  if (carregando) {
+    return (
+      <div className="px-4 py-10 max-w-6xl mx-auto flex flex-col items-center gap-3">
+        <Loader2 size={22} className="text-brass spin" />
+        <span className="text-sm font-body text-muted">A carregar dados de administração...</span>
+      </div>
+    );
+  }
+
+  if (erro) {
+    return (
+      <div className="px-4 py-4 max-w-6xl mx-auto">
+        <div className="card p-5 flex flex-col gap-3 items-start">
+          <div className="flex items-center gap-2 text-rust">
+            <AlertTriangle size={16} />
+            <span className="font-display font-semibold text-base">Administração indisponível</span>
+          </div>
+          <p className="text-sm font-body text-muted">{erro}</p>
+          <button type="button" onClick={carregar} className="btn btn-ghost">Tentar novamente</button>
+        </div>
+      </div>
+    );
+  }
+
+  const m = dados.metricas;
+
+  return (
+    <div className="px-4 py-4 max-w-6xl mx-auto flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <h1 className="font-display font-semibold text-2xl text-primary tracking-wide">Administração</h1>
+        <button type="button" onClick={carregar} className="btn btn-ghost flex-shrink-0" style={{ fontSize: 12 }}>
+          <RefreshCcw size={14} /> Atualizar
+        </button>
+      </div>
+
+      <div className="flex rounded-lg border border-hair overflow-hidden w-fit">
+        {ADMIN_SECOES.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => setSecao(s.id)}
+            aria-pressed={secao === s.id}
+            className="px-4 py-2 text-sm font-body nowrap"
+            style={{
+              backgroundColor: secao === s.id ? 'var(--bg-elevated)' : 'transparent',
+              color: secao === s.id ? 'var(--text-primary)' : 'var(--text-muted)',
+              fontWeight: secao === s.id ? 600 : 400,
+            }}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {secao === 'visao' && (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard label="Contas ativas" value={m.contasAtivas} sub={`${m.contasTotal} no total`} icon={Users} accent="brass" />
+            <StatCard label="MRR" value={currency(m.mrr)} sub="Receita mensal recorrente" icon={TrendingUp} accent="brass" />
+            <StatCard label="Em atraso" value={m.inadimplentes} icon={AlertTriangle} accent="rust" />
+            <StatCard label="Cancelam. agendados" value={m.cancelamentosAgendados} icon={UserX} accent="rust" />
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard label="Novos (30 dias)" value={m.novosUltimos30} icon={UserPlus} accent="sky" />
+            <StatCard label="Cancelamentos (30 dias)" value={m.cancelamentosUltimos30} icon={RotateCcw} accent="rust" />
+            <StatCard label="Churn (30 dias)" value={`${Number(m.churn || 0).toLocaleString('pt-PT', { maximumFractionDigits: 1 })}%`} icon={Activity} accent={m.churn > 10 ? 'rust' : 'sky'} />
+            <StatCard label="Sem plano" value={m.semPlano} icon={Ban} accent="slate" />
+          </div>
+
+          <div className="card p-4 min-w-0">
+            <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-2">Contas ativas por plano</div>
+            <ErrorBoundary compact>
+              {dados.porPlano.every((p) => p.contas === 0) ? (
+                <EmptyState icon={Users} message="Ainda não há subscrições ativas." />
+              ) : (
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={dados.porPlano} margin={{ left: 0, right: 8, top: 4, bottom: 4 }}>
+                    <CartesianGrid stroke={CHART.grid} strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="plano" tick={CHART.tick} axisLine={false} tickLine={false} tickFormatter={nomePlano} />
+                    <YAxis tick={CHART.tick} axisLine={false} tickLine={false} width={36} allowDecimals={false} />
+                    <Tooltip contentStyle={CHART.tooltip} labelStyle={CHART.tooltipLabel} itemStyle={CHART.tooltipItem} cursor={CHART.cursor} formatter={(v) => [v, 'Contas']} />
+                    <Bar dataKey="contas" fill="var(--brass)" radius={[3, 3, 0, 0]} maxBarSize={72} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </ErrorBoundary>
+          </div>
+
+          <div className="card p-4">
+            <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-2">Alertas</div>
+            {dados.alertas.length === 0 ? (
+              <div className="text-sm font-body text-muted py-2">Nada a assinalar.</div>
+            ) : (
+              <div className="flex flex-col">
+                {dados.alertas.map((a, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between gap-3 py-2.5 min-w-0"
+                    style={{ borderBottom: i === dados.alertas.length - 1 ? 'none' : '1px solid var(--border-hair)' }}
+                  >
+                    <span className="text-sm font-body text-primary truncate" title={a.email}>{a.email}</span>
+                    <span className="badge flex-shrink-0" style={{
+                      backgroundColor: a.tipo === 'inatividade' ? 'rgba(255,255,255,0.05)' : 'var(--rust-soft)',
+                      color: a.tipo === 'inatividade' ? 'var(--text-faint)' : 'var(--rust)',
+                    }}>{a.detalhe}{a.data ? ` · ${fmtDateLong(a.data)}` : ''}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {secao === 'contas' && (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="relative min-w-0">
+              <Search size={15} className="absolute text-faint" style={{ left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+              <input value={procura} onChange={(e) => setProcura(e.target.value)} placeholder="Procurar por e-mail..." aria-label="Procurar conta" className="input-field" style={{ paddingLeft: 34 }} />
+            </div>
+            <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} aria-label="Filtrar por estado" className="input-field">
+              <option value="todos">Todos os estados</option>
+              <option value="ativas">Ativas</option>
+              <option value="past_due">Em atraso</option>
+              <option value="canceled">Canceladas</option>
+              <option value="sem_plano">Sem plano</option>
+            </select>
+          </div>
+          <div className="text-2xs font-body text-faint">{plural(contasFiltradas.length, 'conta', 'contas')}</div>
+
+          {contasFiltradas.length === 0 ? (
+            <EmptyState icon={Users} message="Nenhuma conta neste filtro." />
+          ) : (
+            <>
+              <div className="sm:hidden flex flex-col gap-2">
+                {contasFiltradas.map((c) => {
+                  const est = estadoConta(c.estado);
+                  return (
+                    <div key={c.userId} className="card p-4 flex flex-col gap-2.5">
+                      <div className="flex items-center justify-between gap-2 min-w-0">
+                        <span className="font-body text-sm text-primary truncate" title={c.email}>{c.email}</span>
+                        <span className="badge flex-shrink-0" style={{ backgroundColor: `${est.color}1F`, color: est.color }}>{est.label}</span>
+                      </div>
+                      {/* Duas colunas com quatro campos: no telemóvel a regra global
+                          empurra grid-cols-3 para 2, o que deixaria uma linha órfã. */}
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                        {[
+                          ['Plano', nomePlano(c.plano)],
+                          ['Valor', c.valor != null ? currency(c.valor) : '—'],
+                          ['Alunos', c.alunos],
+                          ['Aulas', c.aulas],
+                        ].map(([l, v]) => (
+                          <div key={l} className="flex flex-col gap-0.5 min-w-0">
+                            <span className="text-2xs uppercase tracking-wide text-faint font-body truncate">{l}</span>
+                            <span className="font-mono text-xs text-primary truncate">{v}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="text-2xs font-body text-faint">
+                        Registo {fmtDateLong(c.registoEm)}{c.fimCiclo ? ` · ciclo até ${fmtDateLong(c.fimCiclo)}` : ''}
+                        {c.cartao ? ` · ${c.cartao}` : ''}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="hidden sm:block card overflow-x-auto">
+                <table className="w-full text-sm font-body" style={{ minWidth: 860 }}>
+                  <thead>
+                    <tr className="border-b border-hair text-left">
+                      {['Conta', 'Estado', 'Plano', 'Valor', 'Fim do ciclo', 'Cartão', 'Alunos', 'Aulas', 'Último acesso'].map((h) => (
+                        <th key={h} className="px-3 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {contasFiltradas.map((c) => {
+                      const est = estadoConta(c.estado);
+                      return (
+                        <tr key={c.userId} className="border-b border-hair">
+                          <td className="px-3 py-2.5">
+                            <span className="block truncate max-w-[220px] text-primary" title={c.email}>{c.email}</span>
+                          </td>
+                          <td className="px-3 py-2.5 whitespace-nowrap">
+                            <span className="badge" style={{ backgroundColor: `${est.color}1F`, color: est.color }}>{est.label}</span>
+                          </td>
+                          <td className="px-3 py-2.5 text-muted whitespace-nowrap">{nomePlano(c.plano)}</td>
+                          <td className="px-3 py-2.5 font-mono text-primary whitespace-nowrap">{c.valor != null ? currency(c.valor) : '—'}</td>
+                          <td className="px-3 py-2.5 text-muted whitespace-nowrap">{c.fimCiclo ? fmtDateLong(c.fimCiclo) : '—'}</td>
+                          <td className="px-3 py-2.5 text-faint font-mono text-xs whitespace-nowrap">{c.cartao || '—'}</td>
+                          <td className="px-3 py-2.5 text-right font-mono text-primary">{c.alunos}</td>
+                          <td className="px-3 py-2.5 text-right font-mono text-primary">{c.aulas}</td>
+                          <td className="px-3 py-2.5 text-muted whitespace-nowrap">{c.ultimoAcesso ? fmtDateLong(c.ultimoAcesso) : '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {secao === 'eventos' && (
+        <>
+          <select value={filtroEvento} onChange={(e) => setFiltroEvento(e.target.value)} aria-label="Filtrar por tipo de evento" className="input-field" style={{ maxWidth: 280 }}>
+            <option value="todos">Todos os eventos</option>
+            {Object.entries(EVENTO_LABELS).map(([id, v]) => <option key={id} value={id}>{v.label}</option>)}
+          </select>
+
+          {eventosFiltrados.length === 0 ? (
+            <EmptyState
+              icon={Activity}
+              message="Sem eventos registados."
+              hint="O histórico começa a acumular a partir da instalação desta funcionalidade. Eventos anteriores continuam disponíveis no painel da Stripe."
+            />
+          ) : (
+            <div className="flex flex-col gap-2">
+              {eventosFiltrados.map((e) => {
+                const tipo = EVENTO_LABELS[e.event_type] || { label: e.event_type, color: '#8C8C8C' };
+                const conta = dados.contas.find((c) => c.userId === e.user_id);
+                return (
+                  <div key={e.id} className="card p-3 flex items-center justify-between gap-3 flex-wrap min-w-0">
+                    <span className="flex items-center gap-2.5 min-w-0">
+                      <span className="font-mono text-2xs text-muted nowrap">{fmtDateLong(e.occurred_at)}</span>
+                      <span className="text-sm font-body text-primary truncate" title={conta?.email}>{conta?.email || 'Conta removida'}</span>
+                    </span>
+                    <span className="flex items-center gap-2 flex-shrink-0">
+                      {e.from_tier && e.to_tier && e.from_tier !== e.to_tier && (
+                        <span className="text-2xs font-mono text-faint nowrap">{nomePlano(e.from_tier)} → {nomePlano(e.to_tier)}</span>
+                      )}
+                      {e.amount != null && <span className="font-mono text-xs text-muted nowrap">{currency(e.amount)}</span>}
+                      <span className="badge" style={{ backgroundColor: `${tipo.color}1F`, color: tipo.color }}>{tipo.label}</span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ============================== PERSONAL FINANCES ============================== */
 
 function TransactionCard({ tx, onOpen, onQuickComplete, customCategories }) {
@@ -4266,6 +4598,7 @@ function AppInner() {
   const [view, setView] = useState('dashboard');
   const [agendaScale, setAgendaScale] = useState('weekly');
   const [showFaltaModal, setShowFaltaModal] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date()));
   const [monthCursor, setMonthCursor] = useState(new Date());
   const [financeMonthCursor, setFinanceMonthCursor] = useState(new Date());
@@ -4384,6 +4717,20 @@ function AppInner() {
     }
     loadAll();
   }, [authReady, subscriptionReady, subscriptionActive, user?.id]);
+
+  // Pergunta ao servidor se esta conta é de administrador. Serve apenas para
+  // mostrar o separador — a autorização real é feita na Edge Function.
+  useEffect(() => {
+    let cancelado = false;
+    if (!supabaseConfigured || !supabase || !user?.id) { setIsAdmin(false); return undefined; }
+    supabase.functions
+      .invoke('admin-overview', { body: { ping: true } })
+      .then(({ data, error }) => {
+        if (!cancelado) setIsAdmin(!error && Boolean(data) && !data.error);
+      })
+      .catch(() => { if (!cancelado) setIsAdmin(false); });
+    return () => { cancelado = true; };
+  }, [user?.id]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -4682,7 +5029,7 @@ function AppInner() {
   return (
     <div className="min-h-screen bg-base flex flex-col">
       <Header onOpenSettings={() => setSettingsOpen(true)} />
-      <NavTabs view={view} setView={setView} />
+      <NavTabs view={view} setView={setView} isAdmin={isAdmin} />
       <main className="flex-1 pb-10 pb-nav">
         {view === 'dashboard' && <Dashboard students={students} sessions={sessions} finances={finances} customCategories={customCategories} setView={setView} onAddSession={openNewSession} onOpenSession={openEditSession} onQuickStatus={quickStatus} />}
         {view === 'agenda' && (
@@ -4718,6 +5065,7 @@ function AppInner() {
             onAgendarReposicao={openReposicaoFor}
           />
         )}
+        {view === 'admin' && isAdmin && <AdminView />}
         {view === 'students' && <StudentsView students={students} sessions={sessions} onEdit={openEditStudent} onNew={openNewStudent} />}
         {view === 'assessments' && (
           <AssessmentsView students={students} sessions={sessions} photosById={photosById}

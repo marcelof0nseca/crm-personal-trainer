@@ -302,10 +302,127 @@ function byNamePt(a, b) {
   return PT_COLLATOR.compare(a || '', b || '');
 }
 
+/* ============================== FALTAS E REPOSIÇÕES ============================== */
+
+const FALTA_MOTIVOS = ['Doença', 'Lesão', 'Trabalho', 'Viagem', 'Compromisso pessoal', 'Sem aviso', 'Outro'];
+
+// Limiares de alerta (confirmados com o utilizador).
+const ALERTA_REPOSICOES_PENDENTES = 3;
+const ALERTA_FALTAS_DIAS = 30;
+const ALERTA_FALTAS_NO_PERIODO = 3;
+
+const REPOSICAO_ESTADOS = {
+  na: { id: 'na', label: 'Sem reposição', color: '#8C8C8C' },
+  pendente: { id: 'pendente', label: 'Pendente', color: '#D6534A' },
+  agendada: { id: 'agendada', label: 'Agendada', color: '#F5B44C' },
+  concluida: { id: 'concluida', label: 'Concluída', color: '#5FBFA0' },
+};
+
+function isFalta(session) {
+  return session.status === 'falta' && session.kind !== 'evento';
+}
+
+// Faltas anteriores a esta funcionalidade não têm o campo definido. Nessas,
+// assume-se que dão direito a reposição — que é o comportamento antigo.
+function faltaPrecisaReposicao(falta) {
+  return falta.faltaPrecisaReposicao === undefined ? true : Boolean(falta.faltaPrecisaReposicao);
+}
+
+// O estado NÃO é guardado: é derivado da aula de reposição ligada, para não
+// haver dois valores a dessincronizar.
+function reposicaoEstadoDe(falta, sessions) {
+  if (!faltaPrecisaReposicao(falta)) return REPOSICAO_ESTADOS.na;
+  if (!falta.reposicaoSessionId) return REPOSICAO_ESTADOS.pendente;
+  const rep = sessions.find((s) => s.id === falta.reposicaoSessionId);
+  if (!rep) return REPOSICAO_ESTADOS.pendente;
+  if (rep.status === 'realizado') return REPOSICAO_ESTADOS.concluida;
+  // Se a própria reposição falhou ou foi cancelada, a dívida continua por saldar.
+  if (rep.status === 'falta' || rep.status === 'cancelado') return REPOSICAO_ESTADOS.pendente;
+  return REPOSICAO_ESTADOS.agendada;
+}
+
+function faltasDoAluno(studentId, sessions) {
+  return sessions
+    .filter((s) => s.studentId === studentId && isFalta(s))
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
 function pendingFaltas(studentId, sessions) {
-  const faltas = sessions.filter((s) => s.studentId === studentId && s.status === 'falta').length;
-  const reposicoes = sessions.filter((s) => s.studentId === studentId && s.type === 'reposicao' && s.status !== 'falta' && s.status !== 'cancelado').length;
-  return Math.max(0, faltas - reposicoes);
+  return faltasDoAluno(studentId, sessions)
+    .filter((f) => reposicaoEstadoDe(f, sessions).id === 'pendente')
+    .length;
+}
+
+// Próxima reposição agendada (data futura mais próxima) de um aluno.
+function proximaReposicao(studentId, sessions) {
+  const hoje = fmtDateISO(new Date());
+  return sessions
+    .filter((s) => s.studentId === studentId && s.type === 'reposicao'
+      && s.status === 'agendado' && s.date >= hoje)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))[0] || null;
+}
+
+function alertaFaltas(studentId, sessions) {
+  const faltas = faltasDoAluno(studentId, sessions);
+  const pendentes = faltas.filter((f) => reposicaoEstadoDe(f, sessions).id === 'pendente').length;
+  const limite = new Date();
+  limite.setDate(limite.getDate() - ALERTA_FALTAS_DIAS);
+  const limiteIso = fmtDateISO(limite);
+  const recentes = faltas.filter((f) => f.date >= limiteIso).length;
+  if (pendentes >= ALERTA_REPOSICOES_PENDENTES) {
+    return { ativo: true, motivo: `${plural(pendentes, 'reposição pendente', 'reposições pendentes')}` };
+  }
+  if (recentes >= ALERTA_FALTAS_NO_PERIODO) {
+    return { ativo: true, motivo: `${plural(recentes, 'falta', 'faltas')} em ${ALERTA_FALTAS_DIAS} dias` };
+  }
+  return { ativo: false, motivo: '' };
+}
+
+// Emparelha faltas e reposições antigas, que não têm ligação entre si. Sem isto,
+// ao passar a contar por ligação os contadores saltavam e todos os alunos
+// pareciam dever mais aulas. Só toca em faltas legado (campo por definir).
+function migrarFaltasLegado(sessions) {
+  const legado = sessions.filter((s) => isFalta(s) && s.faltaPrecisaReposicao === undefined);
+  if (legado.length === 0) return { sessions, migradas: 0 };
+
+  const usadas = new Set(sessions.map((s) => s.reposicaoSessionId).filter(Boolean));
+  const porAluno = {};
+  legado.forEach((f) => {
+    (porAluno[f.studentId] = porAluno[f.studentId] || []).push(f);
+  });
+
+  const ligacoes = {};
+  Object.entries(porAluno).forEach(([studentId, faltas]) => {
+    const reposicoesLivres = sessions
+      .filter((s) => s.studentId === studentId && s.type === 'reposicao'
+        && s.status !== 'cancelado' && !s.reposicaoDeSessionId && !usadas.has(s.id))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    faltas
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .forEach((f) => {
+        const rep = reposicoesLivres.shift();
+        if (rep) { ligacoes[f.id] = rep.id; usadas.add(rep.id); }
+      });
+  });
+
+  const inverso = {};
+  Object.entries(ligacoes).forEach(([faltaId, repId]) => { inverso[repId] = faltaId; });
+
+  const next = sessions.map((s) => {
+    if (isFalta(s) && s.faltaPrecisaReposicao === undefined) {
+      return {
+        ...s,
+        faltaMotivo: s.faltaMotivo || '',
+        faltaObs: s.faltaObs || '',
+        faltaJustificada: false,
+        faltaPrecisaReposicao: true,
+        reposicaoSessionId: ligacoes[s.id] || null,
+      };
+    }
+    if (inverso[s.id]) return { ...s, reposicaoDeSessionId: inverso[s.id] };
+    return s;
+  });
+  return { sessions: next, migradas: legado.length };
 }
 
 function bmiOf(weightKg, heightCm) {
@@ -2200,10 +2317,12 @@ function Header({ onOpenSettings }) {
   );
 }
 
+// Semana e Mês são a mesma informação em escalas diferentes: partilham o
+// separador Agenda, com alternância interna. Mantém a barra em 6 itens.
 const NAV_TABS = [
   { id: 'dashboard', label: 'Painel', icon: LayoutDashboard },
-  { id: 'weekly', label: 'Semana', icon: CalendarDays },
-  { id: 'monthly', label: 'Mês', icon: CalendarRange },
+  { id: 'agenda', label: 'Agenda', icon: CalendarDays },
+  { id: 'faltas', label: 'Faltas', icon: UserX },
   { id: 'students', label: 'Alunos', icon: Users },
   { id: 'assessments', label: 'Avaliações', icon: Activity },
   { id: 'finances', label: 'Finanças', icon: Wallet },
@@ -2937,7 +3056,7 @@ function StudentsView({ students, sessions, onEdit, onNew }) {
   );
 }
 
-function StudentFormModal({ student, sessions, customCategories, onAddCategory, onSave, onClose, onDelete, onGoToAssessments }) {
+function StudentFormModal({ student, sessions, customCategories, onAddCategory, onSave, onClose, onDelete, onGoToAssessments, onGoToSession, onAgendarReposicao }) {
   const isEdit = !!student;
   const [form, setForm] = useState(() => (student ? { ...student, quinzenasPagas: student.quinzenasPagas || {} } : {
     id: uid(), name: '', color: STUDENT_COLORS[Math.floor(Math.random() * STUDENT_COLORS.length)],
@@ -3086,8 +3205,20 @@ function StudentFormModal({ student, sessions, customCategories, onAddCategory, 
         </FormField>
 
         {isEdit && pf > 0 && (
-          <div className="flex items-center gap-2 text-sm font-body px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(214,83,74,0.12)', color: 'var(--rust)' }}>
-            <UserX size={15} /> {pf} {pf > 1 ? 'faltas pendentes' : 'falta pendente'} (agende uma reposição para abater)
+          <div className="flex items-center gap-2 text-sm font-body px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--rust-soft)', color: 'var(--rust)' }}>
+            <UserX size={15} /> {plural(pf, 'reposição pendente', 'reposições pendentes')}
+          </div>
+        )}
+
+        {isEdit && (
+          <div className="flex flex-col gap-2">
+            <div className="text-2xs uppercase tracking-wide text-faint font-mono">Histórico de faltas</div>
+            <FaltasDoAluno
+              studentId={student.id}
+              sessions={sessions}
+              onOpenSession={(s) => { onClose(); onGoToSession(s); }}
+              onAgendarReposicao={(f) => { onClose(); onAgendarReposicao(f); }}
+            />
           </div>
         )}
 
@@ -3131,11 +3262,21 @@ function StudentFormModal({ student, sessions, customCategories, onAddCategory, 
 
 /* ============================== SESSION FORM MODAL ============================== */
 
-function SessionFormModal({ session, students, defaultDate, customCategories, onAddCategory, onSave, onClose, onDelete }) {
+function SessionFormModal({ session, students, defaultDate, reposicaoDe, customCategories, onAddCategory, onSave, onClose, onDelete }) {
   const isEdit = !!session;
   const [form, setForm] = useState(() => {
     if (session) return { kind: 'aula', ...session };
     const kind = students.length === 0 ? 'evento' : 'aula';
+    // Aberto a partir de uma falta: já nasce como reposição desse aluno, ligada.
+    if (reposicaoDe) {
+      return {
+        id: uid(), kind: 'aula', studentId: reposicaoDe.studentId,
+        date: defaultDate || fmtDateISO(new Date()), startTime: '08:00', endTime: '09:00',
+        type: 'reposicao', status: 'agendado', notes: '',
+        reposicaoDeSessionId: reposicaoDe.id,
+        ...EMPTY_ASSESS_FIELDS,
+      };
+    }
     return {
       id: uid(), kind, studentId: kind === 'aula' ? (students[0]?.id || '') : null,
       date: defaultDate || fmtDateISO(new Date()), startTime: '08:00', endTime: '09:00',
@@ -3255,6 +3396,44 @@ function SessionFormModal({ session, students, defaultDate, customCategories, on
                 })}
               </div>
             </FormField>
+
+            {/* Detalhes da falta: só aparecem quando a aula está marcada como falta. */}
+            {!isEvento && form.status === 'falta' && (
+              <div className="bg-elevated rounded-lg p-3 border border-hair flex flex-col gap-3">
+                <div className="text-2xs uppercase tracking-wide text-faint font-mono">Detalhes da falta</div>
+                <FormField label="Motivo">
+                  <select value={form.faltaMotivo || ''} onChange={(e) => set('faltaMotivo', e.target.value)} className="input-field">
+                    <option value="">Não indicado</option>
+                    {FALTA_MOTIVOS.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </FormField>
+                <label className="flex items-center gap-2 text-sm font-body text-primary">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(form.faltaJustificada)}
+                    onChange={(e) => {
+                      // Justificada sugere não dever reposição, mas fica alterável.
+                      const just = e.target.checked;
+                      setForm((f) => ({ ...f, faltaJustificada: just, faltaPrecisaReposicao: !just }));
+                    }}
+                    style={{ accentColor: 'var(--brass)' }}
+                  />
+                  Falta justificada
+                </label>
+                <label className="flex items-center gap-2 text-sm font-body text-primary">
+                  <input
+                    type="checkbox"
+                    checked={faltaPrecisaReposicao(form)}
+                    onChange={(e) => set('faltaPrecisaReposicao', e.target.checked)}
+                    style={{ accentColor: 'var(--brass)' }}
+                  />
+                  Dá direito a reposição
+                </label>
+                <FormField label="Observações da falta (opcional)">
+                  <textarea value={form.faltaObs || ''} onChange={(e) => set('faltaObs', e.target.value)} className="input-field" rows={2} placeholder="Ex: avisou na véspera" />
+                </FormField>
+              </div>
+            )}
 
             {!isEdit && (isEvento || form.type === 'fixo') && (
               <div className="bg-elevated rounded-lg p-3 border border-hair flex flex-col gap-2">
@@ -3468,6 +3647,365 @@ function AssessmentsView({ students, sessions, photosById, onSaveAssessment, onU
             );
           })}
         </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================== FALTAS E REPOSIÇÕES ============================== */
+
+function RegistarFaltaModal({ students, sessions, onSave, onClose }) {
+  const sortedStudents = useMemo(() => [...students].sort((a, b) => byNamePt(a.name, b.name)), [students]);
+  const [form, setForm] = useState({
+    studentId: sortedStudents[0]?.id || '',
+    date: fmtDateISO(new Date()),
+    motivo: '',
+    observacoes: '',
+    justificada: false,
+    precisaReposicao: true,
+  });
+  const [error, setError] = useState('');
+  function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
+
+  // Avisa se já existe aula nesse dia — em vez de criar outra, marca essa.
+  const aulaExistente = sessions.find((s) => s.studentId === form.studentId && s.date === form.date
+    && s.kind !== 'evento' && s.type !== 'reposicao');
+
+  function submit() {
+    if (!form.studentId) { setError('Selecione um aluno.'); return; }
+    if (!form.date) { setError('Selecione a data da falta.'); return; }
+    onSave(form);
+  }
+
+  if (students.length === 0) {
+    return (
+      <Modal title="Registar falta" onClose={onClose}>
+        <EmptyState icon={Users} message="Registe um aluno antes de lançar faltas." />
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal title="Registar falta" onClose={onClose}>
+      <div className="flex flex-col gap-4">
+        <FormField label="Aluno">
+          <select value={form.studentId} onChange={(e) => set('studentId', e.target.value)} className="input-field">
+            {sortedStudents.map((s) => <option key={s.id} value={s.id}>{s.name}{!s.active ? ' (inativo)' : ''}</option>)}
+          </select>
+        </FormField>
+
+        <FormField label="Data da falta">
+          <input type="date" value={form.date} onChange={(e) => set('date', e.target.value)} className="input-field" />
+        </FormField>
+
+        <div className="text-2xs font-body text-faint">
+          {aulaExistente
+            ? `Existe uma aula neste dia (${aulaExistente.startTime}) — será marcada como falta.`
+            : 'Não há aula neste dia. Será criado um registo de falta na agenda.'}
+        </div>
+
+        <FormField label="Motivo">
+          <select value={form.motivo} onChange={(e) => set('motivo', e.target.value)} className="input-field">
+            <option value="">Não indicado</option>
+            {FALTA_MOTIVOS.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </FormField>
+
+        <div className="bg-elevated rounded-lg p-3 border border-hair flex flex-col gap-2.5">
+          <label className="flex items-center gap-2 text-sm font-body text-primary">
+            <input
+              type="checkbox"
+              checked={form.justificada}
+              onChange={(e) => {
+                // Justificada sugere não dever reposição — mas fica alterável.
+                const just = e.target.checked;
+                setForm((f) => ({ ...f, justificada: just, precisaReposicao: !just }));
+              }}
+              style={{ accentColor: 'var(--brass)' }}
+            />
+            Falta justificada
+          </label>
+          <label className="flex items-center gap-2 text-sm font-body text-primary">
+            <input type="checkbox" checked={form.precisaReposicao} onChange={(e) => set('precisaReposicao', e.target.checked)} style={{ accentColor: 'var(--brass)' }} />
+            Dá direito a reposição
+          </label>
+        </div>
+
+        <FormField label="Observações (opcional)">
+          <textarea value={form.observacoes} onChange={(e) => set('observacoes', e.target.value)} className="input-field" rows={2} placeholder="Ex: avisou na véspera" />
+        </FormField>
+
+        {error && <div className="text-sm font-body text-rust">{error}</div>}
+
+        <div className="flex gap-2 pt-1 mobile-stack">
+          <button type="button" onClick={onClose} className="btn btn-ghost">Cancelar</button>
+          <button type="button" onClick={submit} className="btn btn-primary flex-1">Registar falta</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// Histórico de faltas de um aluno, reutilizado na ficha do aluno e no ecrã de Faltas.
+function FaltasDoAluno({ studentId, sessions, onOpenSession, onAgendarReposicao }) {
+  const faltas = faltasDoAluno(studentId, sessions);
+  if (faltas.length === 0) {
+    return <div className="text-xs font-body text-faint py-2">Sem faltas registadas.</div>;
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      {faltas.map((f) => {
+        const estado = reposicaoEstadoDe(f, sessions);
+        const rep = f.reposicaoSessionId ? sessions.find((s) => s.id === f.reposicaoSessionId) : null;
+        return (
+          <div key={f.id} className="rounded-lg border border-hair p-3 flex flex-col gap-2 min-w-0" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="flex items-center gap-2 min-w-0">
+                <span className="font-mono text-xs text-primary nowrap">{fmtDateBR(new Date(`${f.date}T00:00:00`))}</span>
+                <span className="text-xs font-body text-muted truncate">{f.faltaMotivo || 'Motivo não indicado'}</span>
+              </span>
+              <span className="flex items-center gap-1.5 flex-shrink-0">
+                {f.faltaJustificada && (
+                  <span className="badge" style={{ backgroundColor: 'var(--brass-soft)', color: 'var(--brass)' }}>Justificada</span>
+                )}
+                <span className="badge" style={{ backgroundColor: `${estado.color}1F`, color: estado.color }}>{estado.label}</span>
+              </span>
+            </div>
+            {f.faltaObs && <div className="text-2xs font-body text-faint">{f.faltaObs}</div>}
+            <div className="flex items-center gap-2 flex-wrap">
+              {rep && (
+                <button type="button" onClick={() => onOpenSession(rep)} className="text-2xs font-body link-sky">
+                  Reposição em {fmtDateBR(new Date(`${rep.date}T00:00:00`))} às {rep.startTime}
+                </button>
+              )}
+              {estado.id === 'pendente' && (
+                <button type="button" onClick={() => onAgendarReposicao(f)} className="btn btn-ghost" style={{ padding: '5px 10px', fontSize: 11 }}>
+                  Agendar reposição
+                </button>
+              )}
+              <button type="button" onClick={() => onOpenSession(f)} className="text-2xs font-body link-sky">Ver aula</button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const FALTA_PERIODOS = [
+  { id: '30', label: 'Últimos 30 dias', dias: 30 },
+  { id: '90', label: 'Últimos 90 dias', dias: 90 },
+  { id: 'todos', label: 'Todo o histórico', dias: null },
+];
+
+function FaltasView({ students, sessions, onRegistarFalta, onOpenSession, onAgendarReposicao }) {
+  const [alunoFiltro, setAlunoFiltro] = useState('todos');
+  const [periodo, setPeriodo] = useState('30');
+  const [estadoFiltro, setEstadoFiltro] = useState('todos');
+  const [justFiltro, setJustFiltro] = useState('todas');
+  const [expandido, setExpandido] = useState(null);
+
+  const desdeIso = useMemo(() => {
+    const p = FALTA_PERIODOS.find((x) => x.id === periodo);
+    if (!p || p.dias == null) return '';
+    const d = new Date();
+    d.setDate(d.getDate() - p.dias);
+    return fmtDateISO(d);
+  }, [periodo]);
+
+  // Faltas que passam nos filtros; a contagem por aluno deriva daqui.
+  const faltasFiltradas = useMemo(() => sessions.filter((s) => {
+    if (!isFalta(s)) return false;
+    if (alunoFiltro !== 'todos' && s.studentId !== alunoFiltro) return false;
+    if (desdeIso && s.date < desdeIso) return false;
+    if (justFiltro === 'sim' && !s.faltaJustificada) return false;
+    if (justFiltro === 'nao' && s.faltaJustificada) return false;
+    if (estadoFiltro !== 'todos' && reposicaoEstadoDe(s, sessions).id !== estadoFiltro) return false;
+    return true;
+  }), [sessions, alunoFiltro, desdeIso, justFiltro, estadoFiltro]);
+
+  const linhas = useMemo(() => {
+    const porAluno = {};
+    faltasFiltradas.forEach((f) => {
+      (porAluno[f.studentId] = porAluno[f.studentId] || []).push(f);
+    });
+    return Object.entries(porAluno).map(([studentId, faltas]) => {
+      const aluno = students.find((s) => s.id === studentId);
+      const justificadas = faltas.filter((f) => f.faltaJustificada).length;
+      const pendentes = faltas.filter((f) => reposicaoEstadoDe(f, sessions).id === 'pendente').length;
+      return {
+        studentId,
+        nome: aluno?.name || 'Aluno removido',
+        cor: aluno?.color || '#54565D',
+        total: faltas.length,
+        justificadas,
+        semJustificacao: faltas.length - justificadas,
+        pendentes,
+        proxima: proximaReposicao(studentId, sessions),
+        alerta: alertaFaltas(studentId, sessions),
+      };
+    }).sort((a, b) => b.pendentes - a.pendentes || byNamePt(a.nome, b.nome));
+  }, [faltasFiltradas, students, sessions]);
+
+  const totais = useMemo(() => ({
+    faltas: faltasFiltradas.length,
+    semJustificacao: faltasFiltradas.filter((f) => !f.faltaJustificada).length,
+    pendentes: faltasFiltradas.filter((f) => reposicaoEstadoDe(f, sessions).id === 'pendente').length,
+  }), [faltasFiltradas, sessions]);
+
+  const proximaGeral = useMemo(() => {
+    const todas = students
+      .map((s) => proximaReposicao(s.id, sessions))
+      .filter(Boolean)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
+    return todas[0] || null;
+  }, [students, sessions]);
+
+  return (
+    <div className="px-4 py-4 max-w-6xl mx-auto flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="font-display font-semibold text-2xl text-primary tracking-wide">Faltas e Reposições</h1>
+        <button onClick={onRegistarFalta} type="button" className="btn btn-primary flex-shrink-0">
+          <UserX size={15} /> Registar falta
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard label="Faltas no período" value={totais.faltas} icon={UserX} accent="rust" />
+        <StatCard label="Sem justificação" value={totais.semJustificacao} icon={AlertTriangle} accent="rust" />
+        <StatCard label="Reposições pendentes" value={totais.pendentes} icon={RotateCcw} accent="brass" />
+        <StatCard
+          label="Próxima reposição"
+          value={proximaGeral ? fmtDateBR(new Date(`${proximaGeral.date}T00:00:00`)) : '—'}
+          sub={proximaGeral ? `às ${proximaGeral.startTime}` : undefined}
+          icon={CalendarDays}
+          accent="sky"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+        <select value={alunoFiltro} onChange={(e) => setAlunoFiltro(e.target.value)} aria-label="Filtrar por aluno" className="input-field">
+          <option value="todos">Todos os alunos</option>
+          {[...students].sort((a, b) => byNamePt(a.name, b.name)).map((s) => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
+        </select>
+        <select value={periodo} onChange={(e) => setPeriodo(e.target.value)} aria-label="Filtrar por período" className="input-field">
+          {FALTA_PERIODOS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+        </select>
+        <select value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)} aria-label="Filtrar por estado da reposição" className="input-field">
+          <option value="todos">Qualquer reposição</option>
+          <option value="pendente">Pendentes</option>
+          <option value="agendada">Agendadas</option>
+          <option value="concluida">Concluídas</option>
+          <option value="na">Sem direito a reposição</option>
+        </select>
+        <select value={justFiltro} onChange={(e) => setJustFiltro(e.target.value)} aria-label="Filtrar por justificação" className="input-field">
+          <option value="todas">Justificadas e não justificadas</option>
+          <option value="sim">Só justificadas</option>
+          <option value="nao">Só sem justificação</option>
+        </select>
+      </div>
+
+      {linhas.length === 0 ? (
+        <EmptyState
+          icon={UserX}
+          message="Nenhuma falta neste filtro."
+          hint="Ajuste o período ou os filtros, ou registe uma falta para começar a acompanhar as reposições."
+          cta="Registar falta"
+          onCta={onRegistarFalta}
+        />
+      ) : (
+        <>
+          {/* Telemóvel: cartões. Desktop: tabela. */}
+          <div className="sm:hidden flex flex-col gap-2">
+            {linhas.map((l) => (
+              <div key={l.studentId} className="card p-4 flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: l.cor }} />
+                    <span className="font-body text-sm font-semibold text-primary truncate" title={l.nome}>{l.nome}</span>
+                  </span>
+                  {l.alerta.ativo && (
+                    <span className="badge flex-shrink-0" style={{ backgroundColor: 'var(--rust-soft)', color: 'var(--rust)' }}>
+                      <AlertTriangle size={10} /> Atenção
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  {[['Faltas', l.total], ['Just.', l.justificadas], ['S/ just.', l.semJustificacao], ['Pend.', l.pendentes]].map(([lbl, val]) => (
+                    <div key={lbl} className="flex flex-col gap-0.5 min-w-0">
+                      <span className="text-2xs uppercase tracking-wide text-faint font-body truncate">{lbl}</span>
+                      <span className="font-mono text-sm text-primary">{val}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-hair">
+                  <span className="text-2xs font-body text-faint">
+                    {l.proxima ? `Próxima: ${fmtDateBR(new Date(`${l.proxima.date}T00:00:00`))} às ${l.proxima.startTime}` : 'Sem reposição marcada'}
+                  </span>
+                  <button type="button" onClick={() => setExpandido(expandido === l.studentId ? null : l.studentId)} className="text-2xs font-body link-sky flex-shrink-0">
+                    {expandido === l.studentId ? 'Fechar' : 'Histórico'}
+                  </button>
+                </div>
+                {expandido === l.studentId && (
+                  <FaltasDoAluno studentId={l.studentId} sessions={sessions} onOpenSession={onOpenSession} onAgendarReposicao={onAgendarReposicao} />
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden sm:block card overflow-x-auto">
+            <table className="w-full text-sm font-body" style={{ minWidth: 640 }}>
+              <thead>
+                <tr className="border-b border-hair text-left">
+                  <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium whitespace-nowrap">Aluno</th>
+                  <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium text-right whitespace-nowrap">Faltas</th>
+                  <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium text-right whitespace-nowrap">Justificadas</th>
+                  <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium text-right whitespace-nowrap">Sem justif.</th>
+                  <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium text-right whitespace-nowrap">Pendentes</th>
+                  <th className="px-4 py-2.5 text-2xs uppercase tracking-wide text-faint font-body font-medium whitespace-nowrap">Próxima reposição</th>
+                </tr>
+              </thead>
+              <tbody>
+                {linhas.map((l) => (
+                  <React.Fragment key={l.studentId}>
+                    <tr
+                      className="border-b border-hair cursor-pointer card-hover"
+                      onClick={() => setExpandido(expandido === l.studentId ? null : l.studentId)}
+                    >
+                      <td className="px-4 py-2.5">
+                        <span className="flex items-center gap-2 max-w-[220px]">
+                          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: l.cor }} />
+                          <span className="text-primary truncate" title={l.nome}>{l.nome}</span>
+                          {l.alerta.ativo && (
+                            <span className="badge flex-shrink-0" style={{ backgroundColor: 'var(--rust-soft)', color: 'var(--rust)' }} title={l.alerta.motivo}>
+                              <AlertTriangle size={10} />
+                            </span>
+                          )}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono text-primary whitespace-nowrap">{l.total}</td>
+                      <td className="px-4 py-2.5 text-right font-mono text-muted whitespace-nowrap">{l.justificadas}</td>
+                      <td className="px-4 py-2.5 text-right font-mono text-rust whitespace-nowrap">{l.semJustificacao}</td>
+                      <td className="px-4 py-2.5 text-right font-mono font-semibold whitespace-nowrap" style={{ color: l.pendentes > 0 ? 'var(--rust)' : 'var(--text-faint)' }}>{l.pendentes}</td>
+                      <td className="px-4 py-2.5 text-muted whitespace-nowrap">
+                        {l.proxima ? `${fmtDateBR(new Date(`${l.proxima.date}T00:00:00`))} às ${l.proxima.startTime}` : '—'}
+                      </td>
+                    </tr>
+                    {expandido === l.studentId && (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-3" style={{ backgroundColor: 'var(--bg-base)' }}>
+                          <FaltasDoAluno studentId={l.studentId} sessions={sessions} onOpenSession={onOpenSession} onAgendarReposicao={onAgendarReposicao} />
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
@@ -3726,6 +4264,8 @@ function AppInner() {
   const [photos, setPhotos] = useState([]);
   const [customCategories, setCustomCategories] = useState(EMPTY_CUSTOM_CATEGORIES);
   const [view, setView] = useState('dashboard');
+  const [agendaScale, setAgendaScale] = useState('weekly');
+  const [showFaltaModal, setShowFaltaModal] = useState(false);
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date()));
   const [monthCursor, setMonthCursor] = useState(new Date());
   const [financeMonthCursor, setFinanceMonthCursor] = useState(new Date());
@@ -3862,7 +4402,16 @@ function AppInner() {
       try { const r = await readStoredValue('categorias'); if (r && r.value) cc = JSON.parse(r.value); } catch (e) { /* sem dados */ }
     }
     setStudents(Array.isArray(st) ? st : []);
-    setSessions(Array.isArray(se) ? se : []);
+
+    // Faltas antigas não têm ligação a reposições. Emparelha-as uma única vez,
+    // para os contadores não saltarem ao mudar para a contagem por ligação.
+    const agenda = Array.isArray(se) ? se : [];
+    const { sessions: agendaMigrada, migradas } = migrarFaltasLegado(agenda);
+    setSessions(agendaMigrada);
+    if (migradas > 0 && storageOk) {
+      try { await writeStoredValue('agenda', JSON.stringify(agendaMigrada)); } catch (e) { /* fica para a próxima gravação */ }
+    }
+
     setFinances(Array.isArray(fi) ? fi : []);
     setPhotos(Array.isArray(ph) ? ph : []);
     setCustomCategories({ ...EMPTY_CUSTOM_CATEGORIES, ...(cc || {}) });
@@ -3985,15 +4534,26 @@ function AppInner() {
       showToast(isEvento ? `${plural(repeatWeeks, 'evento agendado', 'eventos agendados')}.` : `${plural(repeatWeeks, 'aula agendada', 'aulas agendadas')}.`);
     } else {
       const exists = sessions.some((s) => s.id === session.id);
-      const next = exists ? sessions.map((s) => (s.id === session.id ? session : s)) : [...sessions, session];
+      let next = exists ? sessions.map((s) => (s.id === session.id ? session : s)) : [...sessions, session];
+      // Reposição ligada a uma falta: gravar também o sentido inverso na falta.
+      if (session.reposicaoDeSessionId) {
+        next = next.map((s) => (s.id === session.reposicaoDeSessionId
+          ? { ...s, reposicaoSessionId: session.id }
+          : s));
+      }
       persistSessions(next);
       showToast(exists ? (isEvento ? 'Evento atualizado.' : 'Aula atualizada.') : (isEvento ? 'Evento agendado.' : 'Aula agendada.'));
     }
     setShowSessionModal(false);
   }
   function deleteSession(id) {
-    const isEvento = sessions.find((s) => s.id === id)?.kind === 'evento';
-    persistSessions(sessions.filter((s) => s.id !== id));
+    const removida = sessions.find((s) => s.id === id);
+    const isEvento = removida?.kind === 'evento';
+    // Apagar a reposição devolve a falta ao estado pendente.
+    const next = sessions
+      .filter((s) => s.id !== id)
+      .map((s) => (s.reposicaoSessionId === id ? { ...s, reposicaoSessionId: null } : s));
+    persistSessions(next);
     setShowSessionModal(false);
     showToast(isEvento ? 'Evento removido.' : 'Aula removida.');
   }
@@ -4022,6 +4582,40 @@ function AppInner() {
 
   function openNewSession(dateIso) { setSessionModal({ session: null, defaultDate: dateIso }); setShowSessionModal(true); }
   function openEditSession(session) { setSessionModal({ session, defaultDate: null }); setShowSessionModal(true); }
+
+  // Abre o modal de aula já preparado como reposição de uma falta concreta,
+  // para o utilizador não ter de criar a ligação à mão.
+  function openReposicaoFor(falta) {
+    setSessionModal({ session: null, defaultDate: fmtDateISO(new Date()), reposicaoDe: falta });
+    setShowSessionModal(true);
+  }
+
+  // Regista uma falta: se já existe aula do aluno nesse dia, marca-a; caso
+  // contrário cria uma aula com estado falta, para o histórico ficar coerente.
+  function registarFalta(dados) {
+    const existente = sessions.find((s) => s.studentId === dados.studentId && s.date === dados.date
+      && s.kind !== 'evento' && s.type !== 'reposicao');
+    const camposFalta = {
+      status: 'falta',
+      faltaMotivo: dados.motivo,
+      faltaObs: dados.observacoes,
+      faltaJustificada: dados.justificada,
+      faltaPrecisaReposicao: dados.precisaReposicao,
+      reposicaoSessionId: null,
+    };
+    if (existente) {
+      persistSessions(sessions.map((s) => (s.id === existente.id ? { ...s, ...camposFalta } : s)));
+    } else {
+      const nova = {
+        id: uid(), kind: 'aula', studentId: dados.studentId, date: dados.date,
+        startTime: '08:00', endTime: '09:00', type: 'fixo', notes: '',
+        ...EMPTY_ASSESS_FIELDS, ...camposFalta,
+      };
+      persistSessions([...sessions, nova]);
+    }
+    setShowFaltaModal(false);
+    showToast('Falta registada.');
+  }
   function openNewStudent() { setStudentModal(null); setShowStudentModal(true); }
   function openEditStudent(student) { setStudentModal(student); setShowStudentModal(true); }
 
@@ -4091,8 +4685,39 @@ function AppInner() {
       <NavTabs view={view} setView={setView} />
       <main className="flex-1 pb-10 pb-nav">
         {view === 'dashboard' && <Dashboard students={students} sessions={sessions} finances={finances} customCategories={customCategories} setView={setView} onAddSession={openNewSession} onOpenSession={openEditSession} onQuickStatus={quickStatus} />}
-        {view === 'weekly' && <WeeklyView sessions={sessions} students={students} weekStart={weekStart} setWeekStart={setWeekStart} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} customCategories={customCategories} />}
-        {view === 'monthly' && <MonthlyView sessions={sessions} students={students} monthCursor={monthCursor} setMonthCursor={setMonthCursor} onOpenDay={setDayDetailIso} customCategories={customCategories} />}
+        {view === 'agenda' && (
+          <div className="px-4 pt-4 max-w-6xl mx-auto">
+            <div className="flex rounded-lg border border-hair overflow-hidden w-fit">
+              {[['weekly', 'Semana'], ['monthly', 'Mês']].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setAgendaScale(id)}
+                  aria-pressed={agendaScale === id}
+                  className="px-4 py-2 text-sm font-body nowrap"
+                  style={{
+                    backgroundColor: agendaScale === id ? 'var(--bg-elevated)' : 'transparent',
+                    color: agendaScale === id ? 'var(--text-primary)' : 'var(--text-muted)',
+                    fontWeight: agendaScale === id ? 600 : 400,
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {view === 'agenda' && agendaScale === 'weekly' && <WeeklyView sessions={sessions} students={students} weekStart={weekStart} setWeekStart={setWeekStart} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} customCategories={customCategories} />}
+        {view === 'agenda' && agendaScale === 'monthly' && <MonthlyView sessions={sessions} students={students} monthCursor={monthCursor} setMonthCursor={setMonthCursor} onOpenDay={setDayDetailIso} customCategories={customCategories} />}
+        {view === 'faltas' && (
+          <FaltasView
+            students={students}
+            sessions={sessions}
+            onRegistarFalta={() => setShowFaltaModal(true)}
+            onOpenSession={openEditSession}
+            onAgendarReposicao={openReposicaoFor}
+          />
+        )}
         {view === 'students' && <StudentsView students={students} sessions={sessions} onEdit={openEditStudent} onNew={openNewStudent} />}
         {view === 'assessments' && (
           <AssessmentsView students={students} sessions={sessions} photosById={photosById}
@@ -4105,10 +4730,13 @@ function AppInner() {
       <DeveloperCredit />
 
       {showSessionModal && (
-        <SessionFormModal session={sessionModal?.session} students={students} defaultDate={sessionModal?.defaultDate} customCategories={customCategories} onAddCategory={addCategory} onSave={saveSession} onClose={() => setShowSessionModal(false)} onDelete={deleteSession} />
+        <SessionFormModal session={sessionModal?.session} students={students} defaultDate={sessionModal?.defaultDate} reposicaoDe={sessionModal?.reposicaoDe} customCategories={customCategories} onAddCategory={addCategory} onSave={saveSession} onClose={() => setShowSessionModal(false)} onDelete={deleteSession} />
+      )}
+      {showFaltaModal && (
+        <RegistarFaltaModal students={students} sessions={sessions} onSave={registarFalta} onClose={() => setShowFaltaModal(false)} />
       )}
       {showStudentModal && (
-        <StudentFormModal student={studentModal} sessions={sessions} customCategories={customCategories} onAddCategory={addCategory} onSave={saveStudent} onClose={() => setShowStudentModal(false)} onDelete={deleteStudent} onGoToAssessments={goToAssessments} />
+        <StudentFormModal student={studentModal} sessions={sessions} customCategories={customCategories} onAddCategory={addCategory} onSave={saveStudent} onClose={() => setShowStudentModal(false)} onDelete={deleteStudent} onGoToAssessments={goToAssessments} onGoToSession={openEditSession} onAgendarReposicao={openReposicaoFor} />
       )}
       {showTransactionModal && (
         <TransactionFormModal tx={transactionModal?.tx} defaultType={transactionModal?.defaultType} customCategories={customCategories} onAddCategory={addCategory} onSave={saveTransaction} onClose={() => setShowTransactionModal(false)} onDelete={deleteTransaction} />

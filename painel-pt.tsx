@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   LayoutDashboard, CalendarDays, CalendarRange, Users, Plus, UserPlus, X, Trash2,
   TrendingUp, AlertTriangle, CheckCircle2, RotateCcw, Shuffle, Repeat, ClipboardCheck,
@@ -6,7 +7,7 @@ import {
   Loader2, Settings, Check, Info, Activity, Ban, Download, Upload,
   Camera, ArrowLeft, LineChart as LineChartIcon, Tag,
   Coffee, Dumbbell, UtensilsCrossed, Stethoscope, Gift, CreditCard, Mail, CircleUser, KeyRound, ShieldCheck,
-  RefreshCcw,
+  RefreshCcw, Printer, Pencil,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
@@ -876,6 +877,78 @@ function GlobalStyles() {
       @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
       }
+
+      /* ===================== IMPRESSAO / EXPORTACAO PDF =====================
+         A folha vive fora do ecra ate a impressao comecar. Ao imprimir, tudo o
+         que e aplicacao desaparece e so a folha ocupa a pagina, a preto sobre
+         branco -- o tema escuro gastaria tinta e sairia ilegivel. */
+      .print-sheet { position: absolute; left: -10000px; top: 0; width: 190mm; }
+
+      @media print {
+        @page { size: A4; margin: 14mm 14mm 16mm; }
+
+        html, body, #root {
+          background: #fff !important;
+          height: auto !important;
+          overflow: visible !important;
+        }
+        /* Esconde a aplicacao inteira; a folha volta a aparecer logo abaixo. */
+        body > *:not(.print-root), .app-chrome { display: none !important; }
+        .print-root { display: block !important; }
+
+        .print-sheet {
+          position: static !important;
+          left: auto !important;
+          width: auto !important;
+          color: #111 !important;
+          background: #fff !important;
+          font-family: ui-sans-serif, system-ui, sans-serif;
+        }
+        .print-sheet * { color: inherit; background: transparent; }
+
+        .print-head {
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 16px; padding-bottom: 10px; margin-bottom: 18px;
+          border-bottom: 2px solid #111;
+        }
+        .print-brand { font-size: 19pt; font-weight: 700; letter-spacing: -0.02em; }
+        .print-brand span { font-weight: 400; color: #555 !important; }
+        .print-by { text-align: right; font-size: 9pt; line-height: 1.45; color: #444 !important; }
+        .print-by strong { font-size: 10.5pt; color: #111 !important; }
+
+        .print-title { font-size: 15pt; font-weight: 700; margin: 0 0 2px; }
+        .print-sub { font-size: 9.5pt; color: #555 !important; margin-bottom: 16px; }
+
+        .print-section { margin-bottom: 15px; break-inside: avoid; }
+        .print-section h3 {
+          font-size: 8pt; text-transform: uppercase; letter-spacing: 0.09em;
+          color: #666 !important; margin: 0 0 6px; padding-bottom: 3px;
+          border-bottom: 1px solid #ccc;
+        }
+
+        .print-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px 18px; }
+        .print-field { display: flex; justify-content: space-between; gap: 8px; font-size: 9.5pt; padding: 2.5px 0; border-bottom: 1px dotted #ddd; }
+        .print-field dt { color: #555 !important; }
+        .print-field dd { margin: 0; font-weight: 600; white-space: nowrap; }
+
+        .print-highlight { display: flex; gap: 10px; margin-bottom: 15px; break-inside: avoid; }
+        .print-kpi { flex: 1; border: 1px solid #bbb; border-radius: 5px; padding: 8px 11px; }
+        .print-kpi dt { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.08em; color: #666 !important; }
+        .print-kpi dd { margin: 2px 0 0; font-size: 16pt; font-weight: 700; }
+
+        .print-photos { display: flex; gap: 8px; flex-wrap: wrap; }
+        .print-photos img { width: 42mm; height: auto; border: 1px solid #ccc; border-radius: 3px; }
+
+        .print-notes { font-size: 9.5pt; line-height: 1.5; white-space: pre-wrap; }
+
+        .print-foot {
+          margin-top: 20px; padding-top: 8px; border-top: 1px solid #ccc;
+          font-size: 8pt; color: #666 !important;
+          display: flex; justify-content: space-between; gap: 12px;
+        }
+        .print-page-break { break-before: page; }
+        .recharts-surface { overflow: visible; }
+      }
     `}</style>
   );
 }
@@ -1558,8 +1631,11 @@ function SettingsBlock({ title, description, children }) {
 function SettingsModal({
   user, subscription, students, sessions, finances, photos, customCategories,
   onClose, onSignOut, onRefreshSubscription, onChangePassword, onReset, onRestore,
+  trainerName, onSaveTrainerName,
 }) {
   const [section, setSection] = useState('conta');
+  const [nome, setNome] = useState(trainerName || '');
+  const [nomeEstado, setNomeEstado] = useState('');
   const [portalBusy, setPortalBusy] = useState(false);
   const [portalError, setPortalError] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
@@ -1697,6 +1773,46 @@ function SettingsModal({
                       <span className="font-mono text-primary tracking-widest" aria-label="Palavra-passe oculta">••••••••</span>
                     </div>
                   </dl>
+                </SettingsBlock>
+
+                <SettingsBlock
+                  title="Nome profissional"
+                  description="Aparece no timbre das avaliações e dos planos de treino que exportar."
+                >
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      value={nome}
+                      onChange={(e) => { setNome(e.target.value); setNomeEstado(''); }}
+                      className="input-field flex-1"
+                      placeholder="Ex.: Bruno Fonseca"
+                      aria-label="Nome profissional"
+                      maxLength={80}
+                    />
+                    <button
+                      type="button"
+                      disabled={nomeEstado === 'a-guardar' || nome.trim() === (trainerName || '').trim()}
+                      onClick={async () => {
+                        setNomeEstado('a-guardar');
+                        const erro = await onSaveTrainerName(nome.trim());
+                        setNomeEstado(erro || 'guardado');
+                      }}
+                      className="btn btn-primary flex-shrink-0"
+                      style={{ fontSize: 12 }}
+                    >
+                      {nomeEstado === 'a-guardar' ? <Loader2 size={14} className="spin" /> : <Check size={14} />} Guardar
+                    </button>
+                  </div>
+                  {nomeEstado === 'guardado' && (
+                    <div className="text-2xs font-body" style={{ color: 'var(--brass)' }}>Nome guardado.</div>
+                  )}
+                  {nomeEstado && nomeEstado !== 'guardado' && nomeEstado !== 'a-guardar' && (
+                    <div className="text-2xs font-body text-rust">{nomeEstado}</div>
+                  )}
+                  {!trainerName && (
+                    <div className="text-2xs font-body text-faint">
+                      Sem nome definido, os documentos exportados usam o e-mail de acesso.
+                    </div>
+                  )}
                 </SettingsBlock>
 
                 <div className="flex flex-col sm:flex-row gap-2">
@@ -3486,8 +3602,17 @@ function SessionFormModal({ session, students, defaultDate, reposicaoDe, customC
 
 /* ============================== AVALIAÇÕES FÍSICAS (nova aba) ============================== */
 
-function NewAssessmentForm({ student, onSave, onCancel, photosById, onUploadPhotos, onRemovePhoto, uploadingPhotos }) {
-  const [form, setForm] = useState({ date: fmtDateISO(new Date()), ...EMPTY_ASSESS_FIELDS });
+// `assessment` presente = edição. Semear com os campos vazios primeiro garante
+// que uma avaliação antiga, gravada antes de um campo existir, não fica com o
+// valor `undefined` a passar por um input controlado.
+function AssessmentForm({ student, assessment, onSave, onCancel, photosById, onUploadPhotos, onRemovePhoto, uploadingPhotos }) {
+  const isEdit = Boolean(assessment);
+  const [form, setForm] = useState(() => ({
+    date: fmtDateISO(new Date()),
+    ...EMPTY_ASSESS_FIELDS,
+    ...(assessment || {}),
+    photoIds: (assessment && assessment.photoIds) || [],
+  }));
   function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
 
   return (
@@ -3501,9 +3626,232 @@ function NewAssessmentForm({ student, onSave, onCancel, photosById, onUploadPhot
         onRemove={(id) => { onRemovePhoto(id); set('photoIds', form.photoIds.filter((x) => x !== id)); }} />
       <div className="flex gap-2 pt-1">
         <button type="button" onClick={onCancel} className="px-4 py-2.5 rounded-lg text-sm font-body border border-hair btn-surface text-muted">Cancelar</button>
-        <button type="button" onClick={() => onSave(form)} className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>Guardar Avaliação</button>
+        <button type="button" onClick={() => onSave(form)} className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>{isEdit ? 'Guardar Alterações' : 'Guardar Avaliação'}</button>
       </div>
     </div>
+  );
+}
+
+/* ===================== IMPRESSAO / EXPORTACAO PDF ===================== */
+
+// Numero formatado com unidade, ou nada. Devolver null deixa o chamador decidir
+// se a linha aparece: uma ficha com metade dos campos vazios nao ajuda ninguem.
+function printValue(raw, unit) {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const n = Number(raw);
+  if (Number.isNaN(n)) return String(raw);
+  return `${n.toLocaleString('pt-PT', { maximumFractionDigits: 2 })}${unit ? ` ${unit}` : ''}`;
+}
+
+// Separador decimal portugues. O toFixed devolve sempre ponto, que num documento
+// entregue ao aluno esta errado.
+function nPT(n, casas = 1) {
+  if (typeof n !== 'number' || Number.isNaN(n)) return null;
+  return n.toLocaleString('pt-PT', { minimumFractionDigits: casas, maximumFractionDigits: casas });
+}
+
+function PrintField({ label, value }) {
+  if (value === null || value === undefined || value === '') return null;
+  return (
+    <div className="print-field">
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
+}
+
+function PrintSection({ title, children }) {
+  return (
+    <section className="print-section">
+      <h3>{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+// Timbre partilhado pela avaliacao e pelo plano de treino.
+function PrintHeader({ trainerName, userEmail, titulo, subtitulo }) {
+  return (
+    <>
+      <header className="print-head">
+        <div className="print-brand">PT<span>MANAGER</span></div>
+        <div className="print-by">
+          <strong>{trainerName || userEmail || 'Personal Trainer'}</strong>
+          {trainerName && userEmail ? <><br />{userEmail}</> : null}
+          <br />Emitido a {fmtDateLong(new Date().toISOString())}
+        </div>
+      </header>
+      <h1 className="print-title">{titulo}</h1>
+      {subtitulo ? <div className="print-sub">{subtitulo}</div> : null}
+    </>
+  );
+}
+
+function PrintFooter({ nota }) {
+  return (
+    <footer className="print-foot">
+      <span>{nota}</span>
+      <span>Gerado pelo PTMANAGER</span>
+    </footer>
+  );
+}
+
+// Grafico de evolucao proprio da impressao: dimensoes fixas (o ResponsiveContainer
+// mede 0 numa folha fora do ecra) e cores escuras para papel branco.
+function PrintEvolutionChart({ assessments, sex }) {
+  const data = [...assessments]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((a) => {
+      const gordura = a.assessMethod === 'dobras' ? calcFoldBodyFat(a, sex) : parseFloat(a.assessBodyFat);
+      return {
+        // Com ano: o historico pode atravessar anos e dd/mm seria ambiguo.
+        data: fmtDateLong(`${a.date}T00:00:00`),
+        peso: parseFloat(a.assessWeight) || null,
+        gordura: typeof gordura === 'number' && !Number.isNaN(gordura) ? Number(gordura.toFixed(1)) : null,
+      };
+    });
+  if (data.length < 2) return null;
+  return (
+    <PrintSection title="Evolução">
+      <LineChart width={640} height={200} data={data} margin={{ top: 6, right: 12, bottom: 4, left: 0 }}>
+        <CartesianGrid stroke="#ddd" strokeDasharray="3 3" />
+        <XAxis dataKey="data" tick={{ fill: '#444', fontSize: 9 }} axisLine={{ stroke: '#999' }} tickLine={false} interval="preserveStartEnd" minTickGap={24} />
+        <YAxis tick={{ fill: '#444', fontSize: 10 }} axisLine={{ stroke: '#999' }} tickLine={false} width={34} />
+        <Legend wrapperStyle={{ fontSize: 10, color: '#444' }} />
+        <Line type="monotone" dataKey="peso" name="Peso (kg)" stroke="#166874" strokeWidth={2} dot={{ r: 2.5 }} isAnimationActive={false} connectNulls />
+        <Line type="monotone" dataKey="gordura" name="% Gordura" stroke="#A63A32" strokeWidth={2} dot={{ r: 2.5 }} isAnimationActive={false} connectNulls />
+      </LineChart>
+    </PrintSection>
+  );
+}
+
+// A folha e montada num portal para o body, e nao dentro de #root: assim o CSS
+// de impressao pode esconder a aplicacao inteira com um seletor de filho direto,
+// sem depender da arvore de componentes.
+function PrintHost({ job, onDone, children }) {
+  useEffect(() => {
+    if (!job) return undefined;
+    let terminado = false;
+    function fechar() {
+      if (terminado) return;
+      terminado = true;
+      onDone(null);
+    }
+    window.addEventListener('afterprint', fechar);
+    // Rede de seguranca longa, e nao curta de proposito: em alguns browsers o
+    // window.print() nao bloqueia, e desmontar a folha cedo demais imprimiria
+    // uma pagina em branco. A folha esta fora do ecra, nao custa nada esperar.
+    const rede = setTimeout(fechar, 60000);
+    // Dois frames antes de abrir a caixa: o primeiro aplica o estado, o segundo
+    // garante que a folha ja foi pintada. Sem isto sai uma pagina em branco.
+    const id = requestAnimationFrame(() => requestAnimationFrame(() => {
+      try { window.print(); } catch (e) { fechar(); }
+    }));
+    return () => {
+      terminado = true;
+      cancelAnimationFrame(id);
+      clearTimeout(rede);
+      window.removeEventListener('afterprint', fechar);
+    };
+  }, [job, onDone]);
+
+  if (!job) return null;
+  return createPortal(
+    <div className="print-root">
+      <div className="print-sheet">{children}</div>
+    </div>,
+    document.body,
+  );
+}
+
+function AssessmentPrintDoc({ student, assessment, historico, photosById, trainerName, userEmail }) {
+  // O aluno ou a avaliacao podem ter desaparecido entre o clique e a impressao.
+  if (!student || !assessment) return null;
+  const a = assessment;
+  const isDobras = a.assessMethod === 'dobras';
+  const protocolo = FOLD_PROTOCOLS.find((p) => p.id === a.assessProtocol);
+  const gordura = isDobras ? calcFoldBodyFat(a, student.sex) : (parseFloat(a.assessBodyFat) || null);
+  const peso = parseFloat(a.assessWeight) || null;
+  const bmi = bmiOf(a.assessWeight, student.height);
+  const massaGordaKg = peso && gordura != null ? (peso * gordura) / 100 : null;
+  const massaMagraKg = peso && massaGordaKg != null ? peso - massaGordaKg : null;
+  const sexKey = student.sex === 'F' ? 'F' : 'M';
+  const sitesUsados = isDobras && protocolo ? protocolo.sites[sexKey] : [];
+  const somaDobras = sitesUsados.reduce((soma, id) => soma + (parseFloat(a[id]) || 0), 0);
+  const fotos = (a.photoIds || []).map((id) => photosById[id]).filter(Boolean);
+
+  return (
+    <>
+      <PrintHeader
+        trainerName={trainerName}
+        userEmail={userEmail}
+        titulo="Avaliação Física"
+        subtitulo={`${student.name} · ${fmtDateLong(`${a.date}T00:00:00`)}`}
+      />
+
+      <div className="print-highlight">
+        <div className="print-kpi"><dt>Peso</dt><dd>{printValue(peso, 'kg') || '—'}</dd></div>
+        <div className="print-kpi"><dt>Massa gorda</dt><dd>{gordura != null ? `${nPT(gordura)} %` : '—'}</dd></div>
+        <div className="print-kpi"><dt>Massa magra</dt><dd>{massaMagraKg != null ? `${nPT(massaMagraKg)} kg` : '—'}</dd></div>
+        <div className="print-kpi"><dt>IMC</dt><dd>{bmi != null ? nPT(bmi) : '—'}</dd></div>
+      </div>
+
+      <PrintSection title="Aluno">
+        <dl className="print-grid">
+          <PrintField label="Nome" value={student.name} />
+          <PrintField label="Sexo" value={student.sex === 'F' ? 'Feminino' : student.sex === 'M' ? 'Masculino' : null} />
+          <PrintField label="Altura" value={printValue(student.height, 'cm')} />
+          <PrintField label="Idade" value={printValue(a.assessAge, 'anos')} />
+          <PrintField label="Nº de sócio" value={student.memberNumber || null} />
+          <PrintField label="Método" value={isDobras ? (protocolo?.label || 'Dobras cutâneas') : 'Bioimpedância'} />
+        </dl>
+      </PrintSection>
+
+      {isDobras ? (
+        <PrintSection title={`Dobras cutâneas${protocolo ? ` — ${protocolo.label}` : ''}`}>
+          <dl className="print-grid">
+            {sitesUsados.map((id) => <PrintField key={id} label={foldLabel(id)} value={printValue(a[id], 'mm')} />)}
+            <PrintField label="Somatório" value={somaDobras > 0 ? `${somaDobras.toLocaleString('pt-PT', { maximumFractionDigits: 1 })} mm` : null} />
+          </dl>
+        </PrintSection>
+      ) : (
+        <PrintSection title="Bioimpedância">
+          <dl className="print-grid">
+            <PrintField label="% Gordura" value={printValue(a.assessBodyFat, '%')} />
+            {BIA_FIELDS.map((f) => <PrintField key={f.id} label={f.label} value={printValue(a[f.id])} />)}
+          </dl>
+        </PrintSection>
+      )}
+
+      {massaGordaKg != null && (
+        <PrintSection title="Composição corporal">
+          <dl className="print-grid">
+            <PrintField label="Massa gorda" value={`${nPT(massaGordaKg)} kg`} />
+            <PrintField label="Massa magra" value={massaMagraKg != null ? `${nPT(massaMagraKg)} kg` : null} />
+            <PrintField label="IMC" value={bmi != null ? nPT(bmi) : null} />
+          </dl>
+        </PrintSection>
+      )}
+
+      <PrintEvolutionChart assessments={historico} sex={student.sex} />
+
+      {fotos.length > 0 && (
+        <PrintSection title="Registo fotográfico">
+          <div className="print-photos">
+            {fotos.map((f, i) => <img key={f.id || i} src={f.dataUri} alt="" />)}
+          </div>
+        </PrintSection>
+      )}
+
+      {a.assessNotes ? (
+        <PrintSection title="Observações">
+          <div className="print-notes">{a.assessNotes}</div>
+        </PrintSection>
+      ) : null}
+
+      {/* fmtDateBR e dd/mm, sem ano: serve na agenda, nao num documento que o aluno guarda. */}
+      <PrintFooter nota={`${student.name} · Avaliação de ${fmtDateLong(`${a.date}T00:00:00`)}`} />
+    </>
   );
 }
 
@@ -3533,8 +3881,9 @@ function AssessmentComparisonChart({ assessments }) {
   );
 }
 
-function AssessmentDetail({ student, sessions, photosById, onBack, onSaveAssessment, onUploadPhotos, onRemovePhoto, onDeleteAssessment }) {
-  const [showNew, setShowNew] = useState(false);
+function AssessmentDetail({ student, sessions, photosById, onBack, onSaveAssessment, onUploadPhotos, onRemovePhoto, onDeleteAssessment, onPrintAssessment }) {
+  // null = fechado, 'nova' = criar, objeto = editar essa avaliação.
+  const [editando, setEditando] = useState(null);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const assessments = sessions.filter((s) => s.studentId === student.id && s.type === 'avaliacao' && (s.assessWeight || s.assessBodyFat)).sort((a, b) => b.date.localeCompare(a.date));
@@ -3556,17 +3905,29 @@ function AssessmentDetail({ student, sessions, photosById, onBack, onSaveAssessm
         </div>
       </div>
 
-      {!showNew && (
-        <button onClick={() => setShowNew(true)} type="button" className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
+      {!editando && (
+        <button onClick={() => setEditando('nova')} type="button" className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
           <Plus size={15} /> Nova Avaliação Física
         </button>
       )}
 
-      {showNew && (
+      {editando && (
         <div className="bg-surface border border-hair rounded-xl p-4">
-          <NewAssessmentForm student={student} onCancel={() => setShowNew(false)} photosById={photosById} uploadingPhotos={uploadingPhotos}
-            onUploadPhotos={handleUpload} onRemovePhoto={onRemovePhoto}
-            onSave={(form) => { onSaveAssessment(student.id, form); setShowNew(false); }} />
+          <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-3">
+            {editando === 'nova' ? 'Nova avaliação' : `A editar a avaliação de ${fmtDateBR(new Date(`${editando.date}T00:00:00`))}`}
+          </div>
+          {/* key força o formulário a reiniciar ao trocar de avaliação */}
+          <AssessmentForm
+            key={editando === 'nova' ? 'nova' : editando.id}
+            student={student}
+            assessment={editando === 'nova' ? null : editando}
+            onCancel={() => setEditando(null)}
+            photosById={photosById}
+            uploadingPhotos={uploadingPhotos}
+            onUploadPhotos={handleUpload}
+            onRemovePhoto={onRemovePhoto}
+            onSave={(form) => { onSaveAssessment(student.id, form); setEditando(null); }}
+          />
         </div>
       )}
 
@@ -3589,12 +3950,17 @@ function AssessmentDetail({ student, sessions, photosById, onBack, onSaveAssessm
                       <div className="font-mono text-xs text-muted">{fmtDateBR(new Date(`${a.date}T00:00:00`))}</div>
                       <div className="text-2xs text-faint font-body">{methodLabel}</div>
                     </div>
-                    <button onClick={() => setConfirmDeleteId(a.id)} type="button" className="p-1 rounded btn-surface" aria-label="Eliminar avaliação"><Trash2 size={13} className="text-rust" /></button>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button onClick={() => onPrintAssessment(a)} type="button" className="p-1.5 rounded btn-surface" aria-label="Exportar avaliação em PDF" title="Exportar PDF"><Printer size={13} className="text-muted" /></button>
+                      <button onClick={() => setEditando(a)} type="button" className="p-1.5 rounded btn-surface" aria-label="Editar avaliação" title="Editar"><Pencil size={13} className="text-muted" /></button>
+                      <button onClick={() => setConfirmDeleteId(a.id)} type="button" className="p-1.5 rounded btn-surface" aria-label="Eliminar avaliação" title="Eliminar"><Trash2 size={13} className="text-rust" /></button>
+                    </div>
                   </div>
+                  {/* Numeros em pt-PT: o input guarda com ponto, mas a leitura e com virgula. */}
                   <div className="text-sm font-body text-primary">
-                    {a.assessWeight ? `${a.assessWeight} kg` : '—'}
-                    {a.assessMethod === 'dobras' && foldResult != null ? ` · ${foldResult.toFixed(1)}% gordura` : ''}
-                    {a.assessMethod === 'bioimpedancia' && a.assessBodyFat ? ` · ${a.assessBodyFat}% gordura` : ''}
+                    {a.assessWeight ? `${nPT(parseFloat(a.assessWeight), 1)} kg` : '—'}
+                    {a.assessMethod === 'dobras' && foldResult != null ? ` · ${nPT(foldResult)}% gordura` : ''}
+                    {a.assessMethod === 'bioimpedancia' && a.assessBodyFat ? ` · ${nPT(parseFloat(a.assessBodyFat), 1)}% gordura` : ''}
                   </div>
                   {a.photoIds && a.photoIds.length > 0 && (
                     <div className="flex gap-1.5 mt-2">
@@ -3615,12 +3981,13 @@ function AssessmentDetail({ student, sessions, photosById, onBack, onSaveAssessm
   );
 }
 
-function AssessmentsView({ students, sessions, photosById, onSaveAssessment, onUploadPhotos, onRemovePhoto, onDeleteAssessment, onNoStudents, selectedStudentId, setSelectedStudentId }) {
+function AssessmentsView({ students, sessions, photosById, onSaveAssessment, onUploadPhotos, onRemovePhoto, onDeleteAssessment, onPrintAssessment, onNoStudents, selectedStudentId, setSelectedStudentId }) {
   const selected = students.find((s) => s.id === selectedStudentId);
 
   if (selected) {
     return <AssessmentDetail student={selected} sessions={sessions} photosById={photosById} onBack={() => setSelectedStudentId(null)}
-      onSaveAssessment={onSaveAssessment} onUploadPhotos={onUploadPhotos} onRemovePhoto={onRemovePhoto} onDeleteAssessment={onDeleteAssessment} />;
+      onSaveAssessment={onSaveAssessment} onUploadPhotos={onUploadPhotos} onRemovePhoto={onRemovePhoto} onDeleteAssessment={onDeleteAssessment}
+      onPrintAssessment={onPrintAssessment} />;
   }
 
   return (
@@ -4603,6 +4970,7 @@ function AppInner() {
   const [monthCursor, setMonthCursor] = useState(new Date());
   const [financeMonthCursor, setFinanceMonthCursor] = useState(new Date());
   const [assessmentsStudentId, setAssessmentsStudentId] = useState(null);
+  const [printJob, setPrintJob] = useState(null);
   const [sessionModal, setSessionModal] = useState(null);
   const [studentModal, setStudentModal] = useState(null);
   const [transactionModal, setTransactionModal] = useState(null);
@@ -4832,6 +5200,18 @@ function AppInner() {
     persistCustomCategories({ ...customCategories, [kind]: [...list, item] });
   }
 
+  // Nome profissional do treinador. Vive no user_metadata do Supabase: viaja com
+  // a sessão e não obriga a tabela nem a migração de schema.
+  const trainerName = (user && user.user_metadata && user.user_metadata.nome) || '';
+
+  async function saveTrainerName(nome) {
+    if (!supabaseConfigured || !supabase) return 'Supabase não está configurado.';
+    const { data, error } = await supabase.auth.updateUser({ data: { nome } });
+    if (error) return error.message || 'Não foi possível guardar o nome.';
+    if (data?.user) setUser(data.user);
+    return '';
+  }
+
   async function signOut() {
     if (!supabase) return;
     await supabase.auth.signOut();
@@ -4909,10 +5289,27 @@ function AppInner() {
     showToast(status === 'falta' ? 'Falta registada.' : 'Aula marcada como realizada.');
   }
 
-  function saveNewAssessment(studentId, form) {
+  // Trabalho de impressao pendente. Guarda ids, nao o objeto: assim a folha
+  // reflete sempre o estado atual das sessoes, mesmo se algo mudar entretanto.
+  function printAssessment(assessment) {
+    const aluno = students.find((s) => s.id === assessment.studentId);
+    if (!aluno) { showToast('Aluno não encontrado.', 'error'); return; }
+    setPrintJob({ tipo: 'avaliacao', assessmentId: assessment.id, studentId: aluno.id });
+  }
+
+  function saveAssessment(studentId, form) {
+    // A avaliação é uma sessão da agenda. Ao editar, só os campos da avaliação
+    // mudam: hora, estado, tipo e aluno da sessão ficam como estavam, para não
+    // desalinhar a agenda nem os contadores de faltas.
+    if (form.id && sessions.some((s) => s.id === form.id)) {
+      persistSessions(sessions.map((s) => (s.id === form.id ? { ...s, ...form } : s)));
+      showToast('Avaliação atualizada.');
+      return;
+    }
     const session = {
+      ...form,
       id: uid(), studentId, date: form.date, startTime: '08:00', endTime: '08:30',
-      type: 'avaliacao', status: 'realizado', notes: '', ...form,
+      type: 'avaliacao', status: 'realizado', notes: '',
     };
     persistSessions([...sessions, session]);
     showToast('Avaliação registada.');
@@ -5070,12 +5467,26 @@ function AppInner() {
         {view === 'assessments' && (
           <AssessmentsView students={students} sessions={sessions} photosById={photosById}
             selectedStudentId={assessmentsStudentId} setSelectedStudentId={setAssessmentsStudentId}
-            onSaveAssessment={saveNewAssessment} onUploadPhotos={uploadPhotos} onRemovePhoto={removePhoto} onDeleteAssessment={deleteAssessment}
+            onSaveAssessment={saveAssessment} onUploadPhotos={uploadPhotos} onRemovePhoto={removePhoto} onDeleteAssessment={deleteAssessment}
+            onPrintAssessment={printAssessment}
             onNoStudents={() => showToast('Registe um aluno antes de fazer uma avaliação física.', 'error')} />
         )}
         {view === 'finances' && <FinancesView finances={finances} students={students} monthCursor={financeMonthCursor} setMonthCursor={setFinanceMonthCursor} onOpenTransaction={openEditTransaction} onNewTransaction={openNewTransaction} onQuickComplete={quickCompleteTransaction} customCategories={customCategories} />}
       </main>
       <DeveloperCredit />
+
+      <PrintHost job={printJob} onDone={setPrintJob}>
+        {printJob?.tipo === 'avaliacao' && (
+          <AssessmentPrintDoc
+            student={students.find((s) => s.id === printJob.studentId)}
+            assessment={sessions.find((s) => s.id === printJob.assessmentId)}
+            historico={sessions.filter((s) => s.studentId === printJob.studentId && s.type === 'avaliacao' && (s.assessWeight || s.assessBodyFat))}
+            photosById={photosById}
+            trainerName={trainerName}
+            userEmail={user?.email}
+          />
+        )}
+      </PrintHost>
 
       {showSessionModal && (
         <SessionFormModal session={sessionModal?.session} students={students} defaultDate={sessionModal?.defaultDate} reposicaoDe={sessionModal?.reposicaoDe} customCategories={customCategories} onAddCategory={addCategory} onSave={saveSession} onClose={() => setShowSessionModal(false)} onDelete={deleteSession} />
@@ -5107,6 +5518,8 @@ function AppInner() {
           onChangePassword={supabaseConfigured && user?.email ? () => setShowChangePassword(true) : null}
           onReset={resetAllData}
           onRestore={restoreBackup}
+          trainerName={trainerName}
+          onSaveTrainerName={saveTrainerName}
         />
       )}
       {showChangePassword && user?.email && (

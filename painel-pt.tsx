@@ -1499,12 +1499,12 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
       <main className="flex-1 px-4 py-8 max-w-5xl mx-auto w-full flex flex-col gap-7">
         <section className="flex flex-col gap-3">
           <div className="text-2xs uppercase tracking-wide text-faint font-mono">Planos para personal trainers</div>
-          <h1 className="font-display text-3xl sm:text-4xl font-semibold text-primary">Escolha seu plano para liberar o painel</h1>
+          <h1 className="font-display text-3xl sm:text-4xl font-semibold text-primary">Escolha o seu plano para desbloquear o painel</h1>
           <p className="text-sm sm:text-base text-muted font-body max-w-2xl">
-            Organize alunos, agenda, avaliações físicas, reposições e finanças em um só lugar. O pagamento é processado com segurança pela Stripe.
+            Faça a gestão de alunos, agenda, avaliações físicas, reposições e finanças num só sítio. O pagamento é processado em segurança pela Stripe.
           </p>
           <div className="text-xs text-muted font-body max-w-2xl">
-            Cartão mantém renovação automática. MB WAY libera o período escolhido como pagamento único, com renovação manual no vencimento.
+            O cartão mantém a renovação automática. O MB WAY liberta o período escolhido como pagamento único, com renovação manual no fim do prazo.
           </div>
         </section>
 
@@ -1568,7 +1568,10 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
                   onClick={() => startMbwayCheckout(plan.id)}
                   disabled={checkoutPlan === `mbway:${plan.id}`}
                   className="px-4 py-2.5 rounded-lg text-sm font-body font-medium border disabled:opacity-60"
-                  style={{ backgroundColor: 'rgba(214,83,74,0.14)', borderColor: 'var(--rust)', color: 'var(--rust)' }}
+                  // Contornado em vez de preenchido: hierarquia honesta -- o cartão
+                  // renova sozinho e é o caminho principal, o MB WAY é a alternativa.
+                  // Vermelho estava a dizer "perigo" num botão de pagar.
+                  style={{ backgroundColor: 'var(--brass-soft)', borderColor: 'var(--brass)', color: 'var(--brass)' }}
                 >
                   {checkoutPlan === `mbway:${plan.id}` ? 'A abrir MB WAY...' : 'Pagar com MB WAY'}
                 </button>
@@ -1585,8 +1588,8 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-hair rounded-xl p-4 bg-surface">
           <div>
-            <div className="text-sm font-body font-medium text-primary">Já contrataram seu plano?</div>
-            <div className="text-xs text-muted font-body">Atualize após a ativação no Supabase para entrar no painel.</div>
+            <div className="text-sm font-body font-medium text-primary">Já pagou e o painel não abriu?</div>
+            <div className="text-xs text-muted font-body">Se o pagamento acabou de ser confirmado, atualize os dados da subscrição.</div>
           </div>
           <button onClick={onRefresh} type="button" className="px-3.5 py-2 rounded-lg text-xs font-body border border-hair btn-surface text-muted">Verificar subscrição</button>
         </div>

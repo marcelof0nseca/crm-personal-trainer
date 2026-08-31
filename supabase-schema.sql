@@ -1,13 +1,13 @@
 create table if not exists public.app_data (
   user_id uuid not null references auth.users(id) on delete cascade,
-  data_key text not null check (data_key in ('alunos', 'agenda', 'financas', 'fotos', 'categorias')),
+  data_key text not null check (data_key in ('alunos', 'agenda', 'financas', 'fotos', 'categorias', 'definicoes', 'treinos')),
   value jsonb not null default '[]'::jsonb,
   updated_at timestamptz not null default now(),
   primary key (user_id, data_key)
 );
 
 alter table public.app_data drop constraint if exists app_data_data_key_check;
-alter table public.app_data add constraint app_data_data_key_check check (data_key in ('alunos', 'agenda', 'financas', 'fotos', 'categorias'));
+alter table public.app_data add constraint app_data_data_key_check check (data_key in ('alunos', 'agenda', 'financas', 'fotos', 'categorias', 'definicoes', 'treinos'));
 
 alter table public.app_data enable row level security;
 

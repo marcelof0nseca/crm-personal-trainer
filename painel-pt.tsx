@@ -7,7 +7,7 @@ import {
   Loader2, Settings, Check, Info, Activity, Ban, Download, Upload,
   Camera, ArrowLeft, LineChart as LineChartIcon, Tag,
   Coffee, Dumbbell, UtensilsCrossed, Stethoscope, Gift, CreditCard, Mail, CircleUser, KeyRound, ShieldCheck,
-  RefreshCcw, Printer, Pencil,
+  RefreshCcw, Printer, Pencil, Copy, ClipboardPaste, GripVertical, Bell,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
@@ -106,6 +106,72 @@ function slugify(label) {
   return `custom_${label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').slice(0, 24)}_${uid().slice(0, 4)}`;
 }
 const EMPTY_CUSTOM_CATEGORIES = { expense: [], income: [], planTypes: [], sessionTypes: [], eventTypes: [] };
+
+/* ===================== DEFINICOES DA AGENDA ===================== */
+
+// Horario de funcionamento por dia da semana (0 = domingo, como Date.getDay()).
+// `aberto: false` fecha o dia inteiro. As excecoes por data sobrepoem-se ao dia
+// da semana, para feriados e folgas pontuais.
+const EMPTY_DEFINICOES = {
+  horarios: {
+    0: { aberto: false, inicio: '09:00', fim: '13:00' },
+    1: { aberto: true, inicio: '07:00', fim: '21:00' },
+    2: { aberto: true, inicio: '07:00', fim: '21:00' },
+    3: { aberto: true, inicio: '07:00', fim: '21:00' },
+    4: { aberto: true, inicio: '07:00', fim: '21:00' },
+    5: { aberto: true, inicio: '07:00', fim: '21:00' },
+    6: { aberto: true, inicio: '09:00', fim: '13:00' },
+  },
+  excecoes: {},          // { '2026-12-25': { aberto: false } }
+  lembretes: { ativos: false, minutosAntes: 15 },
+};
+
+function normalizarDefinicoes(raw) {
+  const d = raw && typeof raw === 'object' ? raw : {};
+  const horarios = {};
+  for (let i = 0; i < 7; i += 1) {
+    horarios[i] = { ...EMPTY_DEFINICOES.horarios[i], ...((d.horarios || {})[i] || {}) };
+  }
+  return {
+    horarios,
+    excecoes: d.excecoes && typeof d.excecoes === 'object' ? d.excecoes : {},
+    lembretes: { ...EMPTY_DEFINICOES.lembretes, ...(d.lembretes || {}) },
+  };
+}
+
+// Horario efetivo de um dia: a excecao da data ganha ao dia da semana.
+function horarioDoDia(definicoes, iso) {
+  const base = definicoes.horarios[new Date(`${iso}T00:00:00`).getDay()] || EMPTY_DEFINICOES.horarios[1];
+  const excecao = definicoes.excecoes[iso];
+  return excecao ? { ...base, ...excecao } : base;
+}
+
+function dentroDoHorario(definicoes, iso, startTime, endTime) {
+  const h = horarioDoDia(definicoes, iso);
+  if (!h.aberto) return false;
+  return startTime >= h.inicio && (endTime || startTime) <= h.fim;
+}
+
+const DIAS_SEMANA = [
+  { id: 1, curto: 'S', label: 'Segunda' },
+  { id: 2, curto: 'T', label: 'Terça' },
+  { id: 3, curto: 'Q', label: 'Quarta' },
+  { id: 4, curto: 'Q', label: 'Quinta' },
+  { id: 5, curto: 'S', label: 'Sexta' },
+  { id: 6, curto: 'S', label: 'Sábado' },
+  { id: 0, curto: 'D', label: 'Domingo' },
+];
+
+// Minutos desde a meia-noite. Serve para comparar e somar horas sem Date.
+function minutosDe(hhmm) {
+  const [h, m] = String(hhmm || '0:0').split(':').map((n) => parseInt(n, 10) || 0);
+  return h * 60 + m;
+}
+function horaDe(minutos) {
+  const m = Math.max(0, Math.min(24 * 60 - 1, minutos));
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+}
+
 
 // Suporte é feito por e-mail. Enquanto VITE_SUPPORT_EMAIL não estiver definido,
 // os links de contacto simplesmente não aparecem (nada fica quebrado).
@@ -453,6 +519,61 @@ function calcFoldBodyFat(form, sex) {
   if (protocol.needsAge && !age) return null;
   const result = protocol.calc(sum, age, sexKey);
   return typeof result === 'number' && !Number.isNaN(result) ? result : null;
+}
+
+// Gera as ocorrencias de uma serie. Devolve null quando nao ha repeticao, para
+// o chamador seguir o caminho de sessao unica.
+//   plano = { semanas }                    -> repete semanalmente na mesma hora
+//   plano = { semanas, dias, horas }       -> produto de dias da semana x horas
+function gerarSerie(base, plano) {
+  if (!plano || !plano.semanas || plano.semanas < 1) return null;
+  const semanas = Math.min(52, Math.max(1, plano.semanas));
+  const dias = Array.isArray(plano.dias) && plano.dias.length ? plano.dias : null;
+  const horas = Array.isArray(plano.horas) && plano.horas.length
+    ? plano.horas
+    : [{ inicio: base.startTime, fim: base.endTime }];
+
+  // Sem dias escolhidos e com uma so hora, e a repeticao semanal simples.
+  if (!dias && horas.length === 1 && semanas < 2) return null;
+
+  const seriesId = uid();
+  const inicioIso = base.date;
+  const semanaBase = startOfWeek(new Date(`${inicioIso}T00:00:00`));
+  const saida = [];
+
+  for (let w = 0; w < semanas; w += 1) {
+    const offsetsDia = dias
+      // startOfWeek devolve segunda-feira; getDay() tem domingo a 0.
+      ? dias.map((d) => (d === 0 ? 6 : d - 1))
+      : [Math.round((new Date(`${inicioIso}T00:00:00`) - semanaBase) / 86400000)];
+    for (const off of offsetsDia) {
+      const iso = fmtDateISO(addDays(semanaBase, w * 7 + off));
+      // Nao criar no passado relativo a data escolhida: se o utilizador marcou
+      // quarta e pediu tambem segunda, a segunda dessa semana ja passou.
+      if (iso < inicioIso) continue;
+      for (const h of horas) {
+        saida.push({
+          ...base,
+          id: uid(),
+          date: iso,
+          startTime: h.inicio,
+          endTime: h.fim,
+          seriesId,
+        });
+      }
+    }
+  }
+  if (saida.length === 0) return null;
+  // A primeira ocorrencia herda o id que o formulario ja tinha, para nao perder
+  // ligacoes (por exemplo, a reposicao apontada por uma falta).
+  saida[0].id = base.id;
+  return saida;
+}
+
+// Duas sessoes chocam quando sao no mesmo dia e os intervalos se cruzam.
+function sessoesChocam(a, b) {
+  if (a.date !== b.date) return false;
+  return minutosDe(a.startTime) < minutosDe(b.endTime) && minutosDe(b.startTime) < minutosDe(a.endTime);
 }
 
 function startOfWeek(date) {
@@ -874,6 +995,16 @@ function GlobalStyles() {
         }
       }
 
+      /* Arrastar: o cursor muda em toda a pagina e o texto deixa de selecionar,
+         senao o arrasto pinta seleccao pelo caminho. */
+      body.a-arrastar { cursor: grabbing !important; user-select: none; }
+      body.a-arrastar * { cursor: grabbing !important; }
+      .dia-alvo {
+        outline: 2px dashed var(--brass);
+        outline-offset: 2px;
+        background-color: var(--brass-soft) !important;
+      }
+
       @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
       }
@@ -1032,7 +1163,10 @@ function Modal({ title, onClose, children, onBack }) {
   );
 }
 
-function ConfirmDialog({ title, message, onConfirm, onCancel }) {
+// `confirmLabel` e `tone` sao opcionais e mantem o comportamento antigo por
+// omissao: a caixa nasceu para eliminar, mas tambem confirma acoes que criam --
+// e ai um botao vermelho a dizer "Eliminar" seria mentira.
+function ConfirmDialog({ title, message, onConfirm, onCancel, confirmLabel = 'Eliminar', tone = 'rust' }) {
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onCancel(); }
     window.addEventListener('keydown', onKey);
@@ -1046,7 +1180,7 @@ function ConfirmDialog({ title, message, onConfirm, onCancel }) {
         <p className="text-sm text-muted font-body mb-5">{message}</p>
         <div className="flex gap-2 justify-end mobile-stack">
           <button onClick={onCancel} type="button" className="btn btn-ghost">Cancelar</button>
-          <button onClick={onConfirm} type="button" className="btn" style={{ backgroundColor: 'var(--rust)', color: 'var(--on-accent)', fontWeight: 600 }}>Eliminar</button>
+          <button onClick={onConfirm} type="button" className="btn" style={{ backgroundColor: `var(--${tone})`, color: 'var(--on-accent)', fontWeight: 600 }}>{confirmLabel}</button>
         </div>
       </div>
     </div>
@@ -1593,6 +1727,7 @@ function ChangePasswordModal({ email, onClose, onDone }) {
 
 const SETTINGS_SECTIONS = [
   { id: 'conta', label: 'Conta', icon: CircleUser },
+  { id: 'agenda', label: 'Agenda', icon: CalendarDays },
   { id: 'subscricao', label: 'Subscrição', icon: CreditCard },
   { id: 'dados', label: 'Dados e privacidade', icon: ShieldCheck },
   { id: 'sobre', label: 'Sobre', icon: Info },
@@ -1631,7 +1766,7 @@ function SettingsBlock({ title, description, children }) {
 function SettingsModal({
   user, subscription, students, sessions, finances, photos, customCategories,
   onClose, onSignOut, onRefreshSubscription, onChangePassword, onReset, onRestore,
-  trainerName, onSaveTrainerName,
+  trainerName, onSaveTrainerName, definicoes, onSaveHorario, onSaveLembretes, permissaoNotificacoes,
 }) {
   const [section, setSection] = useState('conta');
   const [nome, setNome] = useState(trainerName || '');
@@ -1827,6 +1962,77 @@ function SettingsModal({
                     </button>
                   )}
                 </div>
+              </>
+            )}
+
+            {section === 'agenda' && (
+              <>
+                <SettingsBlock
+                  title="Horário de funcionamento"
+                  description="Os dias fechados aparecem esbatidos na agenda e avisam antes de marcar. Nunca bloqueiam — há sempre a exceção."
+                >
+                  <div className="flex flex-col">
+                    {DIAS_SEMANA.map((d) => {
+                      const h = definicoes.horarios[d.id];
+                      return (
+                        <div key={d.id} className="flex items-center gap-2 py-2 border-b border-hair flex-wrap">
+                          <label className="flex items-center gap-2 text-sm font-body text-primary" style={{ minWidth: 116 }}>
+                            <input
+                              type="checkbox"
+                              checked={h.aberto}
+                              onChange={(e) => onSaveHorario(d.id, { aberto: e.target.checked })}
+                              style={{ accentColor: 'var(--brass)' }}
+                            />
+                            {d.label}
+                          </label>
+                          <div className="flex items-center gap-1.5 flex-1" style={{ minWidth: 190, opacity: h.aberto ? 1 : 0.45 }}>
+                            <input type="time" value={h.inicio} disabled={!h.aberto} aria-label={`Abertura de ${d.label}`}
+                              onChange={(e) => onSaveHorario(d.id, { inicio: e.target.value })}
+                              className="input-field" style={{ flex: 1 }} />
+                            <span className="text-faint text-xs font-body flex-shrink-0">até</span>
+                            <input type="time" value={h.fim} disabled={!h.aberto} aria-label={`Fecho de ${d.label}`}
+                              onChange={(e) => onSaveHorario(d.id, { fim: e.target.value })}
+                              className="input-field" style={{ flex: 1 }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </SettingsBlock>
+
+                <SettingsBlock
+                  title="Lembretes antes da aula"
+                  description="Aviso no ecrã e notificação do sistema, à antecedência que escolher."
+                >
+                  <label className="flex items-center gap-2 text-sm font-body text-primary">
+                    <input
+                      type="checkbox"
+                      checked={definicoes.lembretes.ativos}
+                      onChange={(e) => onSaveLembretes({ ativos: e.target.checked })}
+                      style={{ accentColor: 'var(--brass)' }}
+                    />
+                    Avisar-me antes de cada aula
+                  </label>
+                  {definicoes.lembretes.ativos && (
+                    <FormField label="Com que antecedência (minutos)">
+                      <input
+                        type="number" min="1" max="240"
+                        value={definicoes.lembretes.minutosAntes}
+                        onChange={(e) => onSaveLembretes({ minutosAntes: Math.max(1, Math.min(240, parseInt(e.target.value, 10) || 1)) })}
+                        className="input-field"
+                      />
+                    </FormField>
+                  )}
+                  {/* Dizer a verdade: sem service worker isto nao sobrevive ao fecho da app. */}
+                  <div className="text-2xs font-body px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)' }}>
+                    Os lembretes só funcionam com o PTMANAGER aberto numa aba. Se fechar o browser, não recebe o aviso.
+                  </div>
+                  {permissaoNotificacoes === 'denied' && (
+                    <div className="text-2xs font-body text-rust">
+                      As notificações estão bloqueadas para este site. Só continua a ver o aviso dentro da aplicação.
+                    </div>
+                  )}
+                </SettingsBlock>
               </>
             )}
 
@@ -2307,7 +2513,86 @@ function PhotoPicker({ photoIds, onAdd, onRemove, photosById, busy }) {
 // compact = coluna estreita da semana no desktop. Aí o rótulo do tipo é
 // omitido (o ícone colorido já o identifica) e as ações ficam lado a lado,
 // para o nome do aluno ter a largura toda.
-function SessionCard({ session, student, onOpen, onQuickStatus, customCategories, compact }) {
+/* ===================== ARRASTAR PARA REMARCAR ===================== */
+
+// Arrasto com Pointer Events, e nao com HTML5 drag-and-drop: o HTML5 DnD nao
+// funciona em toque, que e onde a agenda mais se usa.
+//
+// A pega e propria (nao o cartao inteiro) por causa do touch-action: para o
+// browser nos entregar o movimento em vez de deslizar a pagina, a zona tem de
+// ter touch-action: none -- e isso, aplicado ao cartao todo, impediria o
+// utilizador de fazer scroll comecando em cima de uma aula.
+function useArrastarSessao(onLargar) {
+  const [arrasto, setArrasto] = useState(null);   // { dx, dy }
+  const [alvo, setAlvo] = useState(null);         // ISO do dia sob o dedo
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!arrasto) return undefined;
+    const st = ref.current;
+    if (!st) return undefined;
+
+    function diaSob(x, y) {
+      const el = document.elementFromPoint(x, y);
+      const col = el && el.closest ? el.closest('[data-day-iso]') : null;
+      return col ? col.getAttribute('data-day-iso') : null;
+    }
+    function mover(e) {
+      st.dx = e.clientX - st.x0;
+      st.dy = e.clientY - st.y0;
+      setArrasto({ dx: st.dx, dy: st.dy });
+      const iso = diaSob(e.clientX, e.clientY);
+      setAlvo(iso);
+      realcar(iso);
+      e.preventDefault();
+    }
+    function largar(e) {
+      const destino = diaSob(e.clientX, e.clientY);
+      limpar();
+      if (destino) onLargar(destino);
+    }
+    // Realce imperativo da coluna sob o dedo. Passar isto por props obrigaria a
+    // levantar o estado do arrasto ate a vista da semana e a descê-lo de novo.
+    function realcar(iso) {
+      const anterior = document.querySelector('.dia-alvo');
+      if (anterior) anterior.classList.remove('dia-alvo');
+      if (!iso) return;
+      const col = document.querySelector(`[data-day-iso="${iso}"]`);
+      if (col) col.classList.add('dia-alvo');
+    }
+    function limpar() {
+      ref.current = null;
+      realcar(null);
+      document.body.classList.remove('a-arrastar');
+      setArrasto(null);
+      setAlvo(null);
+    }
+    document.body.classList.add('a-arrastar');
+    window.addEventListener('pointermove', mover, { passive: false });
+    window.addEventListener('pointerup', largar);
+    window.addEventListener('pointercancel', limpar);
+    return () => {
+      window.removeEventListener('pointermove', mover);
+      window.removeEventListener('pointerup', largar);
+      window.removeEventListener('pointercancel', limpar);
+    };
+  }, [Boolean(arrasto), onLargar]);
+
+  function comecar(e) {
+    if (e.button !== undefined && e.button !== 0) return;   // so o botao principal
+    e.stopPropagation();
+    e.preventDefault();
+    ref.current = { x0: e.clientX, y0: e.clientY, dx: 0, dy: 0 };
+    setArrasto({ dx: 0, dy: 0 });
+  }
+
+  return { arrasto, alvo, comecar };
+}
+
+function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, customCategories, compact }) {
+  const largar = React.useCallback((iso) => { if (onMoveTo) onMoveTo(session, iso); }, [onMoveTo, session]);
+  const { arrasto, alvo, comecar } = useArrastarSessao(largar);
+  const aArrastar = Boolean(arrasto);
   const isEvento = session.kind === 'evento';
   const type = isEvento ? eventTypeFor(session.type, customCategories) : sessionTypeFor(session.type, customCategories);
   const TypeIcon = iconOf(type.icon);
@@ -2318,18 +2603,53 @@ function SessionCard({ session, student, onOpen, onQuickStatus, customCategories
   const statusInfo = STATUS_OPTIONS.find((o) => o.id === session.status);
 
   return (
+    // A pega e irma do cartao, e nao filha: um <button> dentro de um elemento com
+    // role="button" e ARIA invalido, e o rotulo da pega passaria a fazer parte do
+    // nome acessivel do cartao.
+    <div
+      className="relative min-w-0"
+      style={{
+        // Segue o dedo 1:1, passa a frente e deixa de ser alvo do hit test, para
+        // o elementFromPoint encontrar a coluna por baixo.
+        transform: aArrastar ? `translate3d(${arrasto.dx}px, ${arrasto.dy}px, 0)` : 'none',
+        zIndex: aArrastar ? 40 : 'auto',
+        opacity: aArrastar ? 0.92 : 1,
+        pointerEvents: aArrastar ? 'none' : 'auto',
+        filter: aArrastar ? 'drop-shadow(0 10px 18px rgba(0,0,0,0.45))' : 'none',
+      }}
+    >
+      {onMoveTo && (
+        <button
+          type="button"
+          onPointerDown={comecar}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Arrastar para outro dia: ${isEvento ? type.label : (student?.name || 'aula')}`}
+          title="Arrastar para outro dia"
+          className="absolute rounded btn-surface"
+          // Alvo de toque generoso com icone pequeno: 17x21 era demasiado
+          // apertado para um dedo. O padding cresce, o desenho fica igual.
+          style={{
+            right: 0, bottom: 0, zIndex: 2,
+            padding: '10px 9px', touchAction: 'none', cursor: 'grab', lineHeight: 0,
+          }}
+        >
+          <GripVertical size={13} className="text-faint" style={{ display: 'block' }} />
+        </button>
+      )}
     <div
       onClick={onOpen}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => { if (e.key === 'Enter') onOpen(); }}
       className={`rounded-lg border border-hair pl-3 pr-1.5 py-2.5 cursor-pointer card-hover animate-in ${isCancelado ? 'opacity-50' : ''}`}
+      // Sem borderColor: a abreviada entra em conflito com borderLeftColor e o
+      // React avisa. O retorno do arrasto vem do realce da coluna e da sombra,
+      // que ja chegam.
       style={{
         backgroundColor: 'var(--bg-elevated)',
+        borderStyle: isEvento ? 'dashed solid solid dashed' : 'solid',
         borderLeftWidth: '3px',
         borderLeftColor: color,
-        // Evento pessoal usa fundo tracejado subtil para se distinguir de uma aula.
-        borderStyle: isEvento ? 'dashed solid solid dashed' : 'solid',
       }}
     >
       {/* Compacto: hora + ações na 1.ª linha, nome na 2.ª, estado com a linha
@@ -2407,6 +2727,7 @@ function SessionCard({ session, student, onOpen, onQuickStatus, customCategories
           </span>
         </>
       )}
+    </div>
     </div>
   );
 }
@@ -2874,35 +3195,53 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
 
 /* ============================== WEEKLY VIEW ============================== */
 
-function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSession, students, compact, customCategories }) {
+function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSession, onPasteSession, onMoveSession, temCopia, horario, students, compact, customCategories }) {
   const iso = fmtDateISO(date);
   const isToday = iso === fmtDateISO(new Date());
+  const fechado = horario && !horario.aberto;
   return (
     <div
+      // data-day-iso e o alvo que o arrasto procura com elementFromPoint.
+      data-day-iso={iso}
       className="bg-surface border border-hair rounded-xl p-3 flex flex-col min-w-0"
-      style={{ minHeight: '140px', borderColor: isToday ? 'var(--brass)' : 'var(--border-hair)' }}
+      style={{
+        minHeight: '140px',
+        borderColor: isToday ? 'var(--brass)' : 'var(--border-hair)',
+        // Dia fechado continua a aceitar marcacoes: esbate-se para avisar, nao para bloquear.
+        opacity: fechado ? 0.55 : 1,
+      }}
     >
       <div className="flex items-center justify-between gap-1 mb-2 min-w-0">
         <div className="min-w-0">
           <div className="text-2xs uppercase tracking-wide text-muted font-body nowrap">{compact ? DAY_SHORT[date.getDay()] : DAY_NAMES[date.getDay()]}</div>
           <div className={`font-display font-medium text-lg nowrap ${isToday ? 'text-brass' : 'text-primary'}`}>{fmtDateBR(date)}</div>
+          {horario && (
+            <div className="text-2xs font-mono text-faint nowrap">{fechado ? 'Fechado' : `${horario.inicio}–${horario.fim}`}</div>
+          )}
         </div>
-        <button onClick={() => onAddSession(iso)} type="button" className="p-1.5 rounded-lg btn-surface flex-shrink-0" aria-label="Adicionar">
-          <Plus size={16} className="text-muted" style={{ display: 'block' }} />
-        </button>
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          {temCopia && onPasteSession && (
+            <button onClick={() => onPasteSession(iso)} type="button" className="p-1.5 rounded-lg btn-surface" aria-label="Colar aqui" title="Colar aqui">
+              <ClipboardPaste size={16} className="text-brass" style={{ display: 'block' }} />
+            </button>
+          )}
+          <button onClick={() => onAddSession(iso)} type="button" className="p-1.5 rounded-lg btn-surface" aria-label="Adicionar">
+            <Plus size={16} className="text-muted" style={{ display: 'block' }} />
+          </button>
+        </div>
       </div>
       <div className="flex flex-col gap-2 min-w-0">
         {sessionsList.length === 0 && <div className="text-xs text-faint font-body py-3 text-center">Nada agendado</div>}
         {sessionsList.map((s) => {
           const student = students.find((st) => st.id === s.studentId);
-          return <SessionCard key={s.id} session={s} student={student} onOpen={() => onOpenSession(s)} onQuickStatus={onQuickStatus} customCategories={customCategories} compact={compact} />;
+          return <SessionCard key={s.id} session={s} student={student} onOpen={() => onOpenSession(s)} onQuickStatus={onQuickStatus} onMoveTo={onMoveSession} customCategories={customCategories} compact={compact} />;
         })}
       </div>
     </div>
   );
 }
 
-function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession, onQuickStatus, onAddSession, customCategories }) {
+function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession, onQuickStatus, onAddSession, onPasteSession, onMoveSession, onLibertarSemana, temCopia, definicoes, customCategories }) {
   const [selectedDay, setSelectedDay] = useState(fmtDateISO(new Date()));
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
@@ -2918,6 +3257,28 @@ function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession
 
   const weekLabel = `${fmtDateBR(days[0])} – ${fmtDateBR(days[6])}`;
 
+  // Horários livres a criar nesta semana: uma faixa por hora cheia dentro do
+  // horário de funcionamento, saltando o que já está ocupado. Só conta o futuro
+  // — libertar ontem não serve para nada.
+  const livresACriar = useMemo(() => {
+    if (!definicoes) return [];
+    const agoraIso = fmtDateISO(new Date());
+    const novos = [];
+    for (const d of days) {
+      const iso = fmtDateISO(d);
+      if (iso < agoraIso) continue;
+      const h = horarioDoDia(definicoes, iso);
+      if (!h.aberto) continue;
+      const doDia = sessions.filter((x) => x.date === iso);
+      for (let m = minutosDe(h.inicio); m + 60 <= minutosDe(h.fim); m += 60) {
+        const faixa = { date: iso, startTime: horaDe(m), endTime: horaDe(m + 60) };
+        if (doDia.some((x) => sessoesChocam(x, faixa))) continue;
+        novos.push(faixa);
+      }
+    }
+    return novos;
+  }, [days, sessions, definicoes]);
+
   return (
     <div className="px-4 py-4 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-4">
@@ -2932,6 +3293,25 @@ function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession
           <ChevronRight size={18} className="text-muted" />
         </button>
       </div>
+
+      {onLibertarSemana && (
+        <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
+          <span className="text-2xs font-body text-faint">
+            {livresACriar.length === 0
+              ? 'Sem espaços livres por preencher nesta semana.'
+              : `${plural(livresACriar.length, 'hora livre', 'horas livres')} por preencher dentro do horário.`}
+          </span>
+          <button
+            type="button"
+            disabled={livresACriar.length === 0}
+            onClick={() => onLibertarSemana(livresACriar)}
+            className="btn btn-ghost flex-shrink-0"
+            style={{ fontSize: 12, opacity: livresACriar.length === 0 ? 0.45 : 1 }}
+          >
+            <Coffee size={14} /> Libertar horários da semana
+          </button>
+        </div>
+      )}
 
       <div className="flex gap-2 overflow-x-auto pb-2 mb-4 md:hidden">
         {days.map((d) => {
@@ -2957,7 +3337,7 @@ function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession
       </div>
 
       <div className="md:hidden">
-        <DayColumn date={days.find((d) => fmtDateISO(d) === selectedDay) || days[0]} sessionsList={sessionsForDay(selectedDay)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} customCategories={customCategories} />
+        <DayColumn date={days.find((d) => fmtDateISO(d) === selectedDay) || days[0]} sessionsList={sessionsForDay(selectedDay)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} onPasteSession={onPasteSession} onMoveSession={onMoveSession} temCopia={temCopia} horario={horarioDoDia(definicoes, selectedDay)} customCategories={customCategories} />
       </div>
 
       {/* Largura mínima por coluna: abaixo disso os nomes ficavam ilegíveis.
@@ -2966,7 +3346,7 @@ function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession
         <div className="grid grid-cols-7 gap-3" style={{ minWidth: 980 }}>
           {days.map((d) => {
             const iso = fmtDateISO(d);
-            return <DayColumn key={iso} date={d} sessionsList={sessionsForDay(iso)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} compact customCategories={customCategories} />;
+            return <DayColumn key={iso} date={d} sessionsList={sessionsForDay(iso)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} onPasteSession={onPasteSession} onMoveSession={onMoveSession} temCopia={temCopia} horario={horarioDoDia(definicoes, iso)} compact customCategories={customCategories} />;
           })}
         </div>
       </div>
@@ -3382,8 +3762,10 @@ function StudentFormModal({ student, sessions, customCategories, onAddCategory, 
 
 /* ============================== SESSION FORM MODAL ============================== */
 
-function SessionFormModal({ session, students, defaultDate, reposicaoDe, customCategories, onAddCategory, onSave, onClose, onDelete }) {
-  const isEdit = !!session;
+function SessionFormModal({ session, students, defaultDate, reposicaoDe, customCategories, definicoes, serieCount = 0, novaCopia = false, onAddCategory, onSave, onClose, onDelete, onCopy }) {
+  // Uma colagem chega com sessao preenchida mas ainda nao existe na agenda: nao
+  // e edicao, senao o modal oferecia eliminar algo que nunca foi gravado.
+  const isEdit = !!session && !novaCopia;
   const [form, setForm] = useState(() => {
     if (session) return { kind: 'aula', ...session };
     const kind = students.length === 0 ? 'evento' : 'aula';
@@ -3406,8 +3788,12 @@ function SessionFormModal({ session, students, defaultDate, reposicaoDe, customC
   });
   const [repeat, setRepeat] = useState(false);
   const [repeatWeeks, setRepeatWeeks] = useState(8);
+  const [dias, setDias] = useState([]);
+  const [horas, setHoras] = useState([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState('');
+  // Ao editar uma ocorrência de uma série: 'uma' ou 'serie'.
+  const [escopo, setEscopo] = useState('uma');
 
   function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
   const selectedStudent = students.find((s) => s.id === form.studentId);
@@ -3426,12 +3812,33 @@ function SessionFormModal({ session, students, defaultDate, reposicaoDe, customC
     setError('');
   }
 
+  // O plano de repetição, tal como o saveSession o espera.
+  const plano = useMemo(() => (repeat && !isEdit
+    ? { semanas: repeatWeeks, dias, horas: horas.filter((h) => h.inicio && h.fim && h.fim > h.inicio) }
+    : null), [repeat, isEdit, repeatWeeks, dias, horas]);
+
+  // Previsão honesta: conta o que vai mesmo ser criado, já sem as ocorrências
+  // saltadas por caírem antes da data escolhida.
+  const previsaoSerie = useMemo(() => (plano ? (gerarSerie(form, plano) || [form]).length : 0), [plano, form]);
+
+  const numaSerie = isEdit && form.seriesId && serieCount > 1;
+
+  // Avisa, não bloqueia: marcar fora de horas é legítimo, só não deve ser
+  // silencioso.
+  const foraDeHoras = definicoes && form.date && form.startTime
+    && !dentroDoHorario(definicoes, form.date, form.startTime, form.endTime);
+  const horarioDoDiaEscolhido = definicoes && form.date ? horarioDoDia(definicoes, form.date) : null;
+
   function handleSubmit() {
     if (!isEvento && !form.studentId) { setError('Selecione um aluno.'); return; }
     if (!form.date) { setError('Selecione uma data.'); return; }
     if (form.endTime <= form.startTime) { setError('O horário final deve ser após o início.'); return; }
+    if (repeat && horas.some((h) => !h.inicio || !h.fim || h.fim <= h.inicio)) {
+      setError('Há um horário extra com o fim antes do início.');
+      return;
+    }
     setError('');
-    onSave(form, repeat && !isEdit ? repeatWeeks : null);
+    onSave(form, plano, escopo);
   }
 
   return (
@@ -3555,16 +3962,133 @@ function SessionFormModal({ session, students, defaultDate, reposicaoDe, customC
               </div>
             )}
 
-            {!isEdit && (isEvento || form.type === 'fixo') && (
+            {numaSerie && (
               <div className="bg-elevated rounded-lg p-3 border border-hair flex flex-col gap-2">
+                <div className="text-xs font-body text-muted">
+                  Faz parte de uma série de {plural(serieCount, 'ocorrência', 'ocorrências')}. Aplicar a:
+                </div>
+                <div className="flex rounded-lg border border-hair overflow-hidden" role="group" aria-label="Âmbito da alteração">
+                  {[['uma', 'Só esta'], ['serie', 'Toda a série']].map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setEscopo(id)}
+                      aria-pressed={escopo === id}
+                      className="flex-1 px-3 py-2 text-sm font-body nowrap"
+                      style={{
+                        backgroundColor: escopo === id ? 'var(--bg-surface)' : 'transparent',
+                        color: escopo === id ? 'var(--text-primary)' : 'var(--text-muted)',
+                        fontWeight: escopo === id ? 600 : 400,
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {escopo === 'serie' && (
+                  <div className="text-2xs font-body text-faint">
+                    A data e o estado de cada ocorrência ficam como estão. Só mudam aluno, tipo, horário e observações.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!isEdit && (isEvento || form.type === 'fixo') && (
+              <div className="bg-elevated rounded-lg p-3 border border-hair flex flex-col gap-2.5">
                 <label className="flex items-center gap-2 text-sm font-body text-primary">
-                  <input type="checkbox" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} style={{ accentColor: 'var(--brass)' }} />
-                  Repetir semanalmente
+                  <input
+                    type="checkbox"
+                    checked={repeat}
+                    onChange={(e) => {
+                      setRepeat(e.target.checked);
+                      // Semear a lista com o horário do formulário: se ficasse
+                      // vazia, haveria uma linha implícita invisível e o primeiro
+                      // "Acrescentar" pareceria substituí-la em vez de somar.
+                      if (e.target.checked && horas.length === 0) {
+                        setHoras([{ inicio: form.startTime, fim: form.endTime }]);
+                      }
+                    }}
+                    style={{ accentColor: 'var(--brass)' }}
+                  />
+                  Repetir
                 </label>
+
                 {repeat && (
-                  <FormField label="Por quantas semanas">
-                    <input type="number" min="1" max="52" value={repeatWeeks} onChange={(e) => setRepeatWeeks(Math.max(1, parseInt(e.target.value, 10) || 1))} className="input-field" />
-                  </FormField>
+                  <>
+                    <FormField label="Por quantas semanas">
+                      <input type="number" min="1" max="52" value={repeatWeeks} onChange={(e) => setRepeatWeeks(Math.max(1, parseInt(e.target.value, 10) || 1))} className="input-field" />
+                    </FormField>
+
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-xs font-body text-muted">Em que dias</span>
+                      <div className="flex gap-1.5 flex-wrap" role="group" aria-label="Dias da semana">
+                        {DIAS_SEMANA.map((d) => {
+                          const on = dias.includes(d.id);
+                          return (
+                            <button
+                              key={d.id}
+                              type="button"
+                              onClick={() => setDias((atual) => (on ? atual.filter((x) => x !== d.id) : [...atual, d.id]))}
+                              aria-pressed={on}
+                              aria-label={d.label}
+                              title={d.label}
+                              className="rounded-full text-xs font-body flex items-center justify-center flex-shrink-0"
+                              style={{
+                                width: 34, height: 34,
+                                border: `1px solid ${on ? 'var(--brass)' : 'var(--border-hair)'}`,
+                                backgroundColor: on ? 'var(--brass-soft)' : 'transparent',
+                                color: on ? 'var(--brass)' : 'var(--text-muted)',
+                                fontWeight: on ? 600 : 400,
+                              }}
+                            >
+                              {d.curto}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <span className="text-2xs font-body text-faint">Sem nenhum dia escolhido, repete no dia da data acima.</span>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-xs font-body text-muted">Em que horas</span>
+                      <div className="flex flex-col gap-1.5">
+                        {horas.map((h, i) => (
+                          <div key={i} className="flex items-center gap-1.5">
+                            <input type="time" value={h.inicio} aria-label={`Início do horário ${i + 1}`}
+                              onChange={(e) => setHoras((a) => a.map((x, j) => (j === i ? { ...x, inicio: e.target.value } : x)))}
+                              className="input-field" style={{ flex: 1 }} />
+                            <span className="text-faint text-xs font-body flex-shrink-0">até</span>
+                            <input type="time" value={h.fim} aria-label={`Fim do horário ${i + 1}`}
+                              onChange={(e) => setHoras((a) => a.map((x, j) => (j === i ? { ...x, fim: e.target.value } : x)))}
+                              className="input-field" style={{ flex: 1 }} />
+                            <button type="button" onClick={() => setHoras((a) => a.filter((_, j) => j !== i))}
+                              className="p-2 rounded-lg btn-surface flex-shrink-0" aria-label={`Remover o horário ${i + 1}`}>
+                              <X size={14} className="text-muted" />
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setHoras((a) => {
+                            const ultimo = a[a.length - 1] || { inicio: form.startTime, fim: form.endTime };
+                            const duracao = minutosDe(ultimo.fim) - minutosDe(ultimo.inicio);
+                            return [...a, { inicio: ultimo.fim, fim: horaDe(minutosDe(ultimo.fim) + Math.max(30, duracao)) }];
+                          })}
+                          className="btn btn-ghost self-start"
+                          style={{ fontSize: 12 }}
+                        >
+                          <Plus size={14} /> Acrescentar horário
+                        </button>
+                      </div>
+                      <span className="text-2xs font-body text-faint">Cada hora desta lista é criada em todos os dias escolhidos.</span>
+                    </div>
+
+                    <div className="text-2xs font-body text-faint">
+                      {previsaoSerie === 0
+                        ? 'Nada a criar com esta combinação.'
+                        : `Vai criar ${plural(previsaoSerie, 'ocorrência', 'ocorrências')}.`}
+                    </div>
+                  </>
                 )}
               </div>
             )}
@@ -3577,12 +4101,29 @@ function SessionFormModal({ session, students, defaultDate, reposicaoDe, customC
           </>
         )}
 
+        {foraDeHoras && (
+          <div className="text-xs font-body px-3 py-2 rounded-lg flex items-start gap-2" style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)' }}>
+            <AlertTriangle size={14} className="flex-shrink-0" style={{ marginTop: 1 }} />
+            <span>
+              {horarioDoDiaEscolhido && !horarioDoDiaEscolhido.aberto
+                ? 'Este dia está marcado como fechado no seu horário de funcionamento.'
+                : `Fora do horário de funcionamento deste dia (${horarioDoDiaEscolhido?.inicio}–${horarioDoDiaEscolhido?.fim}).`}
+              {' '}Pode guardar à mesma.
+            </span>
+          </div>
+        )}
+
         {error && <div className="text-sm font-body text-rust">{error}</div>}
 
         <div className="flex gap-2 pt-2 mobile-stack">
           {isEdit && (
             <button onClick={() => setConfirmDelete(true)} type="button" className="px-4 py-2.5 rounded-lg text-sm font-body border border-hair text-rust btn-surface">
               <Trash2 size={15} className="inline mr-1.5" style={{ marginTop: '-2px' }} />Eliminar
+            </button>
+          )}
+          {isEdit && onCopy && (
+            <button onClick={() => onCopy(form)} type="button" className="px-4 py-2.5 rounded-lg text-sm font-body border border-hair text-muted btn-surface" title="Copiar para colar noutro dia">
+              <Copy size={15} className="inline mr-1.5" style={{ marginTop: '-2px' }} />Copiar
             </button>
           )}
           {(isEvento || students.length > 0) && (
@@ -3594,7 +4135,14 @@ function SessionFormModal({ session, students, defaultDate, reposicaoDe, customC
       </div>
 
       {confirmDelete && (
-        <ConfirmDialog title={isEvento ? 'Eliminar evento' : 'Eliminar aula'} message={`Tem a certeza de que pretende eliminar ${isEvento ? 'este evento' : 'esta aula'} da agenda?`} onCancel={() => setConfirmDelete(false)} onConfirm={() => { onDelete(form.id); setConfirmDelete(false); }} />
+        <ConfirmDialog
+          title={escopo === 'serie' ? 'Eliminar a série' : (isEvento ? 'Eliminar evento' : 'Eliminar aula')}
+          message={escopo === 'serie'
+            ? `Isto elimina as ${serieCount} ocorrências desta série, incluindo as já realizadas. Esta ação não pode ser desfeita.`
+            : `Tem a certeza de que pretende eliminar ${isEvento ? 'este evento' : 'esta aula'} da agenda?`}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() => { onDelete(form.id, escopo); setConfirmDelete(false); }}
+        />
       )}
     </Modal>
   );
@@ -4971,6 +5519,13 @@ function AppInner() {
   const [financeMonthCursor, setFinanceMonthCursor] = useState(new Date());
   const [assessmentsStudentId, setAssessmentsStudentId] = useState(null);
   const [printJob, setPrintJob] = useState(null);
+  const [definicoes, setDefinicoes] = useState(() => normalizarDefinicoes(null));
+  const [clipboardSession, setClipboardSession] = useState(null);
+  const [permissaoNotificacoes, setPermissaoNotificacoes] = useState(
+    () => (typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'),
+  );
+  const [lembreteAtivo, setLembreteAtivo] = useState(null);
+  const [confirmLibertar, setConfirmLibertar] = useState(null);
   const [sessionModal, setSessionModal] = useState(null);
   const [studentModal, setStudentModal] = useState(null);
   const [transactionModal, setTransactionModal] = useState(null);
@@ -5106,15 +5661,52 @@ function AppInner() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // Lembretes: verificacao periodica em vez de um setTimeout longo. Um
+  // temporizador para daqui a dois dias e adiado ou perdido quando o browser
+  // suspende a aba; um intervalo curto recupera assim que a aba acorda.
+  const jaAvisadasRef = useRef(new Set());
+  useEffect(() => {
+    if (!definicoes.lembretes.ativos) { setLembreteAtivo(null); return undefined; }
+    const janela = (definicoes.lembretes.minutosAntes || 15) * 60000;
+    const avisadas = jaAvisadasRef.current;
+
+    function verificar() {
+      const agora = Date.now();
+      for (const sessao of sessions) {
+        if (sessao.status !== 'agendado' || avisadas.has(sessao.id)) continue;
+        const inicio = new Date(`${sessao.date}T${sessao.startTime || '00:00'}:00`).getTime();
+        if (!Number.isFinite(inicio)) continue;
+        const faltam = inicio - agora;
+        if (faltam <= 0 || faltam > janela) continue;
+        avisadas.add(sessao.id);
+        const aluno = students.find((st) => st.id === sessao.studentId);
+        const titulo = sessao.kind === 'evento'
+          ? eventTypeFor(sessao.type, customCategories).label
+          : (aluno?.name || 'Aula');
+        const minutos = Math.max(1, Math.round(faltam / 60000));
+        const corpo = `${titulo} às ${sessao.startTime} — daqui a ${plural(minutos, 'minuto', 'minutos')}.`;
+        setLembreteAtivo({ id: sessao.id, titulo, corpo });
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          try { new Notification('PTMANAGER', { body: corpo, tag: sessao.id }); } catch (e) { /* o aviso no ecra basta */ }
+        }
+      }
+    }
+
+    verificar();
+    const id = setInterval(verificar, 30000);
+    return () => clearInterval(id);
+  }, [sessions, students, customCategories, definicoes.lembretes.ativos, definicoes.lembretes.minutosAntes]);
+
   async function loadAll() {
     setLoading(true);
-    let st = []; let se = []; let fi = []; let ph = []; let cc = EMPTY_CUSTOM_CATEGORIES;
+    let st = []; let se = []; let fi = []; let ph = []; let cc = EMPTY_CUSTOM_CATEGORIES; let df = null;
     if (storageOk) {
       try { const r = await readStoredValue('alunos'); if (r && r.value) st = JSON.parse(r.value); } catch (e) { /* sem dados */ }
       try { const r = await readStoredValue('agenda'); if (r && r.value) se = JSON.parse(r.value); } catch (e) { /* sem dados */ }
       try { const r = await readStoredValue('financas'); if (r && r.value) fi = JSON.parse(r.value); } catch (e) { /* sem dados */ }
       try { const r = await readStoredValue('fotos'); if (r && r.value) ph = JSON.parse(r.value); } catch (e) { /* sem dados */ }
       try { const r = await readStoredValue('categorias'); if (r && r.value) cc = JSON.parse(r.value); } catch (e) { /* sem dados */ }
+      try { const r = await readStoredValue('definicoes'); if (r && r.value) df = JSON.parse(r.value); } catch (e) { /* sem dados */ }
     }
     setStudents(Array.isArray(st) ? st : []);
 
@@ -5130,6 +5722,7 @@ function AppInner() {
     setFinances(Array.isArray(fi) ? fi : []);
     setPhotos(Array.isArray(ph) ? ph : []);
     setCustomCategories({ ...EMPTY_CUSTOM_CATEGORIES, ...(cc || {}) });
+    setDefinicoes(normalizarDefinicoes(df));
     setLoading(false);
   }
 
@@ -5139,6 +5732,7 @@ function AppInner() {
     setFinances([]);
     setPhotos([]);
     setCustomCategories(EMPTY_CUSTOM_CATEGORIES);
+    setDefinicoes(normalizarDefinicoes(null));
   }
 
   async function refreshSubscription() {
@@ -5180,6 +5774,13 @@ function AppInner() {
     setPhotos(next);
     if (!storageOk) return;
     try { await writeStoredValue('fotos', JSON.stringify(next)); } catch (e) { showToast('Erro ao guardar fotos — experimente imagens mais pequenas.', 'error'); }
+  }
+
+  async function persistDefinicoes(next) {
+    const normalizado = normalizarDefinicoes(next);
+    setDefinicoes(normalizado);
+    if (!storageOk) return;
+    try { await writeStoredValue('definicoes', JSON.stringify(normalizado)); } catch (e) { showToast('Erro ao guardar as definições da agenda.', 'error'); }
   }
 
   async function persistCustomCategories(next) {
@@ -5249,40 +5850,72 @@ function AppInner() {
     showToast('Aluno excluído.');
   }
 
-  function saveSession(session, repeatWeeks) {
+  // `plano` descreve a repetição a criar: ou { semanas } (o formato antigo), ou
+  // { semanas, dias, horas } para gerar vários dias e horas de uma vez.
+  // `escopo` só conta ao editar: 'serie' propaga às irmãs, 'uma' fica por aqui.
+  function saveSession(session, plano, escopo) {
     const isEvento = session.kind === 'evento';
-    if (repeatWeeks && repeatWeeks > 1) {
-      const seriesId = uid();
-      const base = new Date(`${session.date}T00:00:00`);
-      const newOnes = Array.from({ length: repeatWeeks }, (_, i) => ({
-        ...session, id: i === 0 ? session.id : uid(), date: fmtDateISO(addDays(base, i * 7)), seriesId,
-      }));
-      persistSessions([...sessions, ...newOnes]);
-      showToast(isEvento ? `${plural(repeatWeeks, 'evento agendado', 'eventos agendados')}.` : `${plural(repeatWeeks, 'aula agendada', 'aulas agendadas')}.`);
+    const novas = gerarSerie(session, plano);
+    if (novas) {
+      persistSessions([...sessions, ...novas]);
+      showToast(isEvento
+        ? `${plural(novas.length, 'evento agendado', 'eventos agendados')}.`
+        : `${plural(novas.length, 'aula agendada', 'aulas agendadas')}.`);
+      setShowSessionModal(false);
+      return;
+    }
+
+    const exists = sessions.some((s) => s.id === session.id);
+    let next;
+    if (exists && escopo === 'serie' && session.seriesId) {
+      // Propaga só o que é comum à série. A data e o estado ficam de fora: cada
+      // ocorrência tem o seu dia e o seu histórico de presença.
+      const comum = {
+        kind: session.kind, type: session.type, studentId: session.studentId,
+        startTime: session.startTime, endTime: session.endTime, notes: session.notes,
+      };
+      next = sessions.map((s) => (s.id === session.id
+        ? session
+        : (s.seriesId === session.seriesId ? { ...s, ...comum } : s)));
     } else {
-      const exists = sessions.some((s) => s.id === session.id);
-      let next = exists ? sessions.map((s) => (s.id === session.id ? session : s)) : [...sessions, session];
-      // Reposição ligada a uma falta: gravar também o sentido inverso na falta.
-      if (session.reposicaoDeSessionId) {
-        next = next.map((s) => (s.id === session.reposicaoDeSessionId
-          ? { ...s, reposicaoSessionId: session.id }
-          : s));
-      }
-      persistSessions(next);
-      showToast(exists ? (isEvento ? 'Evento atualizado.' : 'Aula atualizada.') : (isEvento ? 'Evento agendado.' : 'Aula agendada.'));
+      next = exists ? sessions.map((s) => (s.id === session.id ? session : s)) : [...sessions, session];
+    }
+    // Reposição ligada a uma falta: gravar também o sentido inverso na falta.
+    if (session.reposicaoDeSessionId) {
+      next = next.map((s) => (s.id === session.reposicaoDeSessionId
+        ? { ...s, reposicaoSessionId: session.id }
+        : s));
+    }
+    persistSessions(next);
+    if (!exists) {
+      showToast(isEvento ? 'Evento agendado.' : 'Aula agendada.');
+    } else if (escopo === 'serie' && session.seriesId) {
+      const total = sessions.filter((s) => s.seriesId === session.seriesId).length;
+      showToast(`${plural(total, 'ocorrência atualizada', 'ocorrências atualizadas')}.`);
+    } else {
+      showToast(isEvento ? 'Evento atualizado.' : 'Aula atualizada.');
     }
     setShowSessionModal(false);
   }
-  function deleteSession(id) {
+
+  function deleteSession(id, escopo) {
     const removida = sessions.find((s) => s.id === id);
     const isEvento = removida?.kind === 'evento';
+    const serie = escopo === 'serie' && removida?.seriesId ? removida.seriesId : null;
+    const remover = new Set(serie
+      ? sessions.filter((s) => s.seriesId === serie).map((s) => s.id)
+      : [id]);
     // Apagar a reposição devolve a falta ao estado pendente.
     const next = sessions
-      .filter((s) => s.id !== id)
-      .map((s) => (s.reposicaoSessionId === id ? { ...s, reposicaoSessionId: null } : s));
+      .filter((s) => !remover.has(s.id))
+      .map((s) => (remover.has(s.reposicaoSessionId) ? { ...s, reposicaoSessionId: null } : s));
     persistSessions(next);
     setShowSessionModal(false);
-    showToast(isEvento ? 'Evento removido.' : 'Aula removida.');
+    if (remover.size > 1) {
+      showToast(`${plural(remover.size, 'ocorrência removida', 'ocorrências removidas')}.`);
+    } else {
+      showToast(isEvento ? 'Evento removido.' : 'Aula removida.');
+    }
   }
   function quickStatus(session, status) {
     persistSessions(sessions.map((s) => (s.id === session.id ? { ...s, status } : s)));
@@ -5326,6 +5959,71 @@ function AppInner() {
 
   function openNewSession(dateIso) { setSessionModal({ session: null, defaultDate: dateIso }); setShowSessionModal(true); }
   function openEditSession(session) { setSessionModal({ session, defaultDate: null }); setShowSessionModal(true); }
+
+  function saveHorario(diaId, mudanca) {
+    persistDefinicoes({
+      ...definicoes,
+      horarios: { ...definicoes.horarios, [diaId]: { ...definicoes.horarios[diaId], ...mudanca } },
+    });
+  }
+
+  async function saveLembretes(mudanca) {
+    const proximo = { ...definicoes.lembretes, ...mudanca };
+    // Pedir a permissao no momento em que se liga a opcao, e nao ao arrancar:
+    // um pedido sem contexto e quase sempre recusado.
+    if (mudanca.ativos && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      try {
+        const r = await Notification.requestPermission();
+        setPermissaoNotificacoes(r);
+      } catch (e) { /* o aviso dentro da app continua a funcionar */ }
+    }
+    persistDefinicoes({ ...definicoes, lembretes: proximo });
+  }
+
+  // Confirma antes de criar: um lote de 40 eventos e dificil de desfazer a mao.
+  function libertarSemana(faixas) {
+    if (!faixas || faixas.length === 0) return;
+    setConfirmLibertar(faixas);
+  }
+
+  function confirmarLibertar() {
+    const faixas = confirmLibertar || [];
+    const novos = faixas.map((f) => ({
+      id: uid(), kind: 'evento', studentId: null,
+      date: f.date, startTime: f.startTime, endTime: f.endTime,
+      type: 'horario_livre', status: 'agendado', notes: '',
+    }));
+    persistSessions([...sessions, ...novos]);
+    setConfirmLibertar(null);
+    showToast(`${plural(novos.length, 'horário livre criado', 'horários livres criados')}.`);
+  }
+
+  function copySession(session) {
+    // Guarda uma copia limpa: sem id, sem serie e sem as ligacoes de reposicao,
+    // que pertencem a ocorrencia original e nao devem ser duplicadas.
+    const { id, seriesId, reposicaoDeSessionId, reposicaoSessionId, ...limpa } = session;
+    setClipboardSession(limpa);
+    setShowSessionModal(false);
+    showToast(session.kind === 'evento' ? 'Evento copiado. Escolha o dia para colar.' : 'Aula copiada. Escolha o dia para colar.');
+  }
+
+  // Colar e arrastar abrem sempre o modal em vez de gravar em silencio: e a
+  // caixa de confirmacao onde se pode mudar tudo antes de assumir.
+  function pasteSession(dateIso) {
+    if (!clipboardSession) return;
+    setSessionModal({
+      session: { ...clipboardSession, id: uid(), date: dateIso, status: 'agendado' },
+      defaultDate: dateIso,
+      novaCopia: true,
+    });
+    setShowSessionModal(true);
+  }
+
+  function moveSessionTo(session, dateIso) {
+    if (!session || session.date === dateIso) return;
+    setSessionModal({ session: { ...session, date: dateIso }, defaultDate: dateIso });
+    setShowSessionModal(true);
+  }
 
   // Abre o modal de aula já preparado como reposição de uma falta concreta,
   // para o utilizador não ter de criar a ligação à mão.
@@ -5451,7 +6149,7 @@ function AppInner() {
             </div>
           </div>
         )}
-        {view === 'agenda' && agendaScale === 'weekly' && <WeeklyView sessions={sessions} students={students} weekStart={weekStart} setWeekStart={setWeekStart} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} customCategories={customCategories} />}
+        {view === 'agenda' && agendaScale === 'weekly' && <WeeklyView sessions={sessions} students={students} weekStart={weekStart} setWeekStart={setWeekStart} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} onPasteSession={pasteSession} onMoveSession={moveSessionTo} onLibertarSemana={libertarSemana} temCopia={Boolean(clipboardSession)} definicoes={definicoes} customCategories={customCategories} />}
         {view === 'agenda' && agendaScale === 'monthly' && <MonthlyView sessions={sessions} students={students} monthCursor={monthCursor} setMonthCursor={setMonthCursor} onOpenDay={setDayDetailIso} customCategories={customCategories} />}
         {view === 'faltas' && (
           <FaltasView
@@ -5475,6 +6173,34 @@ function AppInner() {
       </main>
       <DeveloperCredit />
 
+      {confirmLibertar && (
+        <ConfirmDialog
+          title="Libertar horários da semana"
+          message={`Isto cria ${plural(confirmLibertar.length, 'horário livre', 'horários livres')} de uma hora, nos espaços vagos dentro do seu horário de funcionamento. Os horários já ocupados não são tocados.`}
+          confirmLabel={`Criar ${confirmLibertar.length}`}
+          tone="brass"
+          onCancel={() => setConfirmLibertar(null)}
+          onConfirm={confirmarLibertar}
+        />
+      )}
+
+      {lembreteAtivo && (
+        <div
+          className="fixed bottom-5 toast-pos left-1/2 -translate-x-1/2 px-4 py-3 rounded-lg border font-body flex items-start gap-3 animate-in"
+          role="alert"
+          style={{ backgroundColor: 'var(--bg-elevated)', borderColor: 'var(--gold)', color: 'var(--text-primary)', zIndex: 61, maxWidth: '90vw', boxShadow: 'var(--shadow-lg)' }}
+        >
+          <Bell size={16} className="flex-shrink-0" style={{ color: 'var(--gold)', marginTop: 1 }} />
+          <div className="min-w-0">
+            <div className="text-sm" style={{ fontWeight: 600 }}>A começar em breve</div>
+            <div className="text-xs text-muted">{lembreteAtivo.corpo}</div>
+          </div>
+          <button onClick={() => setLembreteAtivo(null)} type="button" className="p-1 rounded btn-surface flex-shrink-0" aria-label="Dispensar lembrete">
+            <X size={14} className="text-muted" style={{ display: 'block' }} />
+          </button>
+        </div>
+      )}
+
       <PrintHost job={printJob} onDone={setPrintJob}>
         {printJob?.tipo === 'avaliacao' && (
           <AssessmentPrintDoc
@@ -5489,7 +6215,23 @@ function AppInner() {
       </PrintHost>
 
       {showSessionModal && (
-        <SessionFormModal session={sessionModal?.session} students={students} defaultDate={sessionModal?.defaultDate} reposicaoDe={sessionModal?.reposicaoDe} customCategories={customCategories} onAddCategory={addCategory} onSave={saveSession} onClose={() => setShowSessionModal(false)} onDelete={deleteSession} />
+        <SessionFormModal
+          session={sessionModal?.session}
+          students={students}
+          defaultDate={sessionModal?.defaultDate}
+          reposicaoDe={sessionModal?.reposicaoDe}
+          customCategories={customCategories}
+          definicoes={definicoes}
+          novaCopia={Boolean(sessionModal?.novaCopia)}
+          serieCount={sessionModal?.session?.seriesId
+            ? sessions.filter((s) => s.seriesId === sessionModal.session.seriesId).length
+            : 0}
+          onAddCategory={addCategory}
+          onSave={saveSession}
+          onClose={() => setShowSessionModal(false)}
+          onDelete={deleteSession}
+          onCopy={copySession}
+        />
       )}
       {showFaltaModal && (
         <RegistarFaltaModal students={students} sessions={sessions} onSave={registarFalta} onClose={() => setShowFaltaModal(false)} />
@@ -5520,6 +6262,10 @@ function AppInner() {
           onRestore={restoreBackup}
           trainerName={trainerName}
           onSaveTrainerName={saveTrainerName}
+          definicoes={definicoes}
+          onSaveHorario={saveHorario}
+          onSaveLembretes={saveLembretes}
+          permissaoNotificacoes={permissaoNotificacoes}
         />
       )}
       {showChangePassword && user?.email && (

@@ -7,8 +7,7 @@ import { X } from 'lucide-react';
    realmente faz, mas NÃO substituem revisão jurídica. Antes de aceitar
    pagamentos de clientes, é preciso:
      1. Preencher LEGAL_ENTITY com a identificação real do responsável.
-     2. Confirmar a região do projeto Supabase (UE ou fora) e ajustar a
-        secção "Onde ficam os dados".
+     2. [FEITO em 2026-09-01] Região confirmada: eu-west-3, Paris, França.
      3. Submeter ambos os documentos a revisão por advogado.
    =========================================================================== */
 
@@ -21,9 +20,11 @@ const LEGAL_ENTITY = {
 
 const LAST_UPDATED = '10 de agosto de 2026';
 
-// Região onde o projeto Supabase está alojado. Confirmar no painel do Supabase
-// (Settings → General → Region) e corrigir se não for na União Europeia.
-const HOSTING_REGION = 'União Europeia';
+// Região onde o projeto Supabase está alojado. Verificado a 2026-09-01:
+// projeto `veqeecnwtwunntojicko`, região eu-west-3 (Paris, França).
+// Se algum dia o projeto mudar, esta linha tem de mudar com ele -- é uma
+// declaração legal, não um comentário.
+const HOSTING_REGION = 'França (Paris), União Europeia';
 
 function docs(supportEmail) {
   const contact = supportEmail || '[E-MAIL DE SUPORTE]';

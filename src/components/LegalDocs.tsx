@@ -6,19 +6,23 @@ import { X } from 'lucide-react';
    Estes textos foram redigidos à medida do PTMANAGER e do que a aplicação
    realmente faz, mas NÃO substituem revisão jurídica. Antes de aceitar
    pagamentos de clientes, é preciso:
-     1. Preencher LEGAL_ENTITY com a identificação real do responsável.
+     1. [FEITO em 2026-09-02] LEGAL_ENTITY preenchido; NIF validado.
      2. [FEITO em 2026-09-01] Região confirmada: eu-west-3, Paris, França.
      3. Submeter ambos os documentos a revisão por advogado.
    =========================================================================== */
 
+// Identificação do responsável pelo tratamento, tal como registada nas Finanças
+// e na Stripe. O nome tem de coincidir exatamente com o associado ao NIF.
 const LEGAL_ENTITY = {
-  name: '[NOME COMPLETO OU EMPRESA]',
-  nif: '[NIF]',
-  address: '[MORADA COMPLETA]',
+  name: 'Bruno Fonseca Gomes de Souza',
+  nif: '319977218',
+  address: 'Rua dos Fiéis de Deus, 103, 2.º esquerdo, 4820-251 Fafe',
   country: 'Portugal',
 };
 
-const LAST_UPDATED = '10 de agosto de 2026';
+// Atualizar sempre que o conteúdo mudar de forma material: é a data que o
+// utilizador vê e que prova quando as condições passaram a ser estas.
+const LAST_UPDATED = '2 de setembro de 2026';
 
 // Região onde o projeto Supabase está alojado. Verificado a 2026-09-01:
 // projeto `veqeecnwtwunntojicko`, região eu-west-3 (Paris, França).

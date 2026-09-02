@@ -292,6 +292,128 @@ const EMPTY_ASSESS_FIELDS = {
   assessNotes: '', photoIds: [],
 };
 
+/* ===================== PRESCRICAO DE TREINO ===================== */
+
+const GRUPOS_MUSCULARES = [
+  'Peito', 'Costas', 'Ombros', 'Bíceps', 'Tríceps',
+  'Pernas', 'Glúteos', 'Abdominais', 'Corpo inteiro', 'Cardio', 'Mobilidade',
+];
+
+// Biblioteca inicial, escrita de raiz em pt-PT. Serve para o treinador nao
+// comecar com um ecra vazio; tudo aqui pode ser editado ou apagado.
+const EXERCICIOS_BASE = [
+  ['Supino com barra', 'Peito', 'Barra'],
+  ['Supino com halteres', 'Peito', 'Halteres'],
+  ['Supino inclinado', 'Peito', 'Barra'],
+  ['Aberturas com halteres', 'Peito', 'Halteres'],
+  ['Flexões de braços', 'Peito', 'Peso corporal'],
+  ['Cruzamento na polia', 'Peito', 'Polia'],
+  ['Elevações na barra fixa', 'Costas', 'Peso corporal'],
+  ['Puxada na polia alta', 'Costas', 'Polia'],
+  ['Remada curvada com barra', 'Costas', 'Barra'],
+  ['Remada unilateral com haltere', 'Costas', 'Halteres'],
+  ['Remada baixa na polia', 'Costas', 'Polia'],
+  ['Levantamento terra', 'Costas', 'Barra'],
+  ['Desenvolvimento militar', 'Ombros', 'Barra'],
+  ['Desenvolvimento com halteres', 'Ombros', 'Halteres'],
+  ['Elevações laterais', 'Ombros', 'Halteres'],
+  ['Elevações frontais', 'Ombros', 'Halteres'],
+  ['Crucifixo invertido', 'Ombros', 'Halteres'],
+  ['Encolhimentos', 'Ombros', 'Halteres'],
+  ['Rosca direta com barra', 'Bíceps', 'Barra'],
+  ['Rosca alternada', 'Bíceps', 'Halteres'],
+  ['Rosca martelo', 'Bíceps', 'Halteres'],
+  ['Rosca concentrada', 'Bíceps', 'Halteres'],
+  ['Rosca na polia', 'Bíceps', 'Polia'],
+  ['Tríceps na polia', 'Tríceps', 'Polia'],
+  ['Tríceps testa', 'Tríceps', 'Barra'],
+  ['Tríceps francês', 'Tríceps', 'Halteres'],
+  ['Fundos em paralelas', 'Tríceps', 'Peso corporal'],
+  ['Extensão de tríceps acima da cabeça', 'Tríceps', 'Halteres'],
+  ['Agachamento livre', 'Pernas', 'Barra'],
+  ['Agachamento frontal', 'Pernas', 'Barra'],
+  ['Agachamento búlgaro', 'Pernas', 'Halteres'],
+  ['Prensa de pernas', 'Pernas', 'Máquina'],
+  ['Extensão de pernas', 'Pernas', 'Máquina'],
+  ['Flexão de pernas deitado', 'Pernas', 'Máquina'],
+  ['Afundos', 'Pernas', 'Halteres'],
+  ['Levantamento terra romeno', 'Pernas', 'Barra'],
+  ['Gémeos em pé', 'Pernas', 'Máquina'],
+  ['Gémeos sentado', 'Pernas', 'Máquina'],
+  ['Elevação pélvica', 'Glúteos', 'Barra'],
+  ['Ponte de glúteos', 'Glúteos', 'Peso corporal'],
+  ['Abdução de anca na máquina', 'Glúteos', 'Máquina'],
+  ['Coice na polia', 'Glúteos', 'Polia'],
+  ['Prancha frontal', 'Abdominais', 'Peso corporal'],
+  ['Prancha lateral', 'Abdominais', 'Peso corporal'],
+  ['Abdominais no solo', 'Abdominais', 'Peso corporal'],
+  ['Elevação de pernas suspenso', 'Abdominais', 'Peso corporal'],
+  ['Rotação russa', 'Abdominais', 'Peso corporal'],
+  ['Roda abdominal', 'Abdominais', 'Roda'],
+  ['Burpees', 'Corpo inteiro', 'Peso corporal'],
+  ['Kettlebell swing', 'Corpo inteiro', 'Kettlebell'],
+  ['Thruster', 'Corpo inteiro', 'Barra'],
+  ['Farmer walk', 'Corpo inteiro', 'Halteres'],
+  ['Passadeira', 'Cardio', 'Máquina'],
+  ['Bicicleta estática', 'Cardio', 'Máquina'],
+  ['Elíptica', 'Cardio', 'Máquina'],
+  ['Remo ergómetro', 'Cardio', 'Máquina'],
+  ['Corda de saltar', 'Cardio', 'Corda'],
+  ['Alongamento de isquiotibiais', 'Mobilidade', 'Peso corporal'],
+  ['Mobilidade de anca', 'Mobilidade', 'Peso corporal'],
+  ['Mobilidade torácica', 'Mobilidade', 'Peso corporal'],
+];
+
+const EMPTY_TREINOS = { biblioteca: [], prescricoes: [] };
+
+// A biblioteca base so e semeada uma vez. O `base: true` marca a origem, para
+// distinguir do que o treinador criou -- e para nao voltar a semear se ele
+// apagar tudo de proposito.
+function normalizarTreinos(raw) {
+  const d = raw && typeof raw === 'object' ? raw : {};
+  const biblioteca = Array.isArray(d.biblioteca) ? d.biblioteca : null;
+  return {
+    biblioteca: biblioteca || EXERCICIOS_BASE.map(([nome, grupo, equipamento]) => ({
+      id: uid(), nome, grupo, equipamento, instrucoes: '', base: true,
+    })),
+    prescricoes: Array.isArray(d.prescricoes) ? d.prescricoes : [],
+  };
+}
+
+function novoExercicioTreino(exercicio) {
+  return {
+    id: uid(),
+    exercicioId: exercicio ? exercicio.id : null,
+    nome: exercicio ? exercicio.nome : '',
+    series: '3', reps: '10', carga: '', descanso: '90', metodo: '', notas: '',
+  };
+}
+
+function novoTreino(indice) {
+  const letra = String.fromCharCode(65 + Math.min(25, indice));
+  return { id: uid(), nome: `Treino ${letra}`, notas: '', exercicios: [] };
+}
+
+function novaPrescricao(studentId) {
+  return {
+    id: uid(), studentId, nome: 'Novo programa', objetivo: '',
+    inicio: fmtDateISO(new Date()), fim: '', ativo: true,
+    treinos: [novoTreino(0)],
+    criadoEm: new Date().toISOString(),
+  };
+}
+
+function prescricoesDoAluno(treinos, studentId) {
+  return treinos.prescricoes
+    .filter((p) => p.studentId === studentId)
+    .sort((a, b) => String(b.criadoEm || '').localeCompare(String(a.criadoEm || '')));
+}
+
+// Quantos exercicios tem o programa todo. Serve de resumo na ficha do aluno.
+function contarExercicios(prescricao) {
+  return (prescricao.treinos || []).reduce((s, t) => s + (t.exercicios || []).length, 0);
+}
+
 /* ============================== HELPERS ============================== */
 
 function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
@@ -1071,6 +1193,19 @@ function GlobalStyles() {
         .print-photos img { width: 42mm; height: auto; border: 1px solid #ccc; border-radius: 3px; }
 
         .print-notes { font-size: 9.5pt; line-height: 1.5; white-space: pre-wrap; }
+
+        .print-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+        .print-table th {
+          text-align: left; font-size: 7.5pt; text-transform: uppercase;
+          letter-spacing: 0.07em; color: #666 !important; font-weight: 600;
+          border-bottom: 1px solid #999; padding: 4px 6px;
+        }
+        .print-table td { padding: 5px 6px; border-bottom: 1px solid #e2e2e2; vertical-align: top; }
+        .print-table .num { text-align: right; white-space: nowrap; }
+        .print-ex-nota { font-size: 8.5pt; color: #555 !important; margin-top: 2px; line-height: 1.4; }
+        .print-assinatura {
+          border-bottom: 1px solid #111; width: 70mm; height: 14mm; margin-bottom: 4px;
+        }
 
         .print-foot {
           margin-top: 20px; padding-top: 8px; border-top: 1px solid #ccc;
@@ -3559,7 +3694,7 @@ function StudentsView({ students, sessions, onEdit, onNew }) {
   );
 }
 
-function StudentFormModal({ student, sessions, customCategories, onAddCategory, onSave, onClose, onDelete, onGoToAssessments, onGoToSession, onAgendarReposicao }) {
+function StudentFormModal({ student, sessions, customCategories, treinoCount = 0, onAddCategory, onSave, onClose, onDelete, onGoToAssessments, onGoToTreinos, onGoToSession, onAgendarReposicao }) {
   const isEdit = !!student;
   const [form, setForm] = useState(() => (student ? { ...student, quinzenasPagas: student.quinzenasPagas || {} } : {
     id: uid(), name: '', color: STUDENT_COLORS[Math.floor(Math.random() * STUDENT_COLORS.length)],
@@ -3734,6 +3869,13 @@ function StudentFormModal({ student, sessions, customCategories, onAddCategory, 
           <button type="button" onClick={() => onGoToAssessments(student)} className="flex items-center justify-between text-sm font-body px-3 py-2.5 rounded-lg border border-hair btn-surface">
             <span className="flex items-center gap-2 text-primary"><Activity size={15} className="text-brass" /> Avaliações Físicas</span>
             <span className="text-2xs text-faint font-mono">{plural(assessmentCount, 'registada', 'registadas')} →</span>
+          </button>
+        )}
+
+        {isEdit && onGoToTreinos && (
+          <button type="button" onClick={() => onGoToTreinos(student)} className="flex items-center justify-between text-sm font-body px-3 py-2.5 rounded-lg border border-hair btn-surface">
+            <span className="flex items-center gap-2 text-primary"><Dumbbell size={15} className="text-brass" /> Treinos</span>
+            <span className="text-2xs text-faint font-mono">{plural(treinoCount, 'programa', 'programas')} →</span>
           </button>
         )}
 
@@ -4151,6 +4293,355 @@ function SessionFormModal({ session, students, defaultDate, reposicaoDe, customC
   );
 }
 
+/* ===================== ECRAS DE TREINO ===================== */
+
+// Escolher um exercicio da biblioteca, ou criar um novo sem sair do sitio.
+function BibliotecaPicker({ biblioteca, onEscolher, onCriar, onFechar }) {
+  const [procura, setProcura] = useState('');
+  const [grupo, setGrupo] = useState('todos');
+  const [aCriar, setACriar] = useState(false);
+  const [novo, setNovo] = useState({ nome: '', grupo: GRUPOS_MUSCULARES[0], equipamento: '', instrucoes: '' });
+
+  const filtrados = useMemo(() => {
+    const termo = procura.trim().toLowerCase();
+    return biblioteca
+      .filter((e) => (grupo === 'todos' || e.grupo === grupo)
+        && (!termo || e.nome.toLowerCase().includes(termo)))
+      .sort((a, b) => byNamePt(a.nome, b.nome));
+  }, [biblioteca, procura, grupo]);
+
+  return (
+    <Modal title="Escolher exercício" onClose={onFechar}>
+      <div className="flex flex-col gap-3">
+        {!aCriar ? (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="relative min-w-0">
+                <Search size={15} className="absolute text-faint" style={{ left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+                <input value={procura} onChange={(e) => setProcura(e.target.value)} placeholder="Procurar exercício..." aria-label="Procurar exercício" className="input-field" style={{ paddingLeft: 34 }} autoFocus />
+              </div>
+              <select value={grupo} onChange={(e) => setGrupo(e.target.value)} aria-label="Filtrar por grupo muscular" className="input-field">
+                <option value="todos">Todos os grupos</option>
+                {GRUPOS_MUSCULARES.map((g) => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </div>
+
+            <button type="button" onClick={() => setACriar(true)} className="btn btn-ghost self-start" style={{ fontSize: 12 }}>
+              <Plus size={14} /> Criar exercício novo
+            </button>
+
+            <div className="text-2xs font-body text-faint">{plural(filtrados.length, 'exercício', 'exercícios')}</div>
+
+            {filtrados.length === 0 ? (
+              <EmptyState icon={Dumbbell} message="Nenhum exercício encontrado." hint="Experimente outro termo, ou crie um exercício novo." />
+            ) : (
+              <div className="flex flex-col gap-1.5" style={{ maxHeight: '48vh', overflowY: 'auto' }}>
+                {filtrados.map((e) => (
+                  <button
+                    key={e.id}
+                    type="button"
+                    onClick={() => onEscolher(e)}
+                    className="flex items-center justify-between gap-3 text-left px-3 py-2.5 rounded-lg border border-hair btn-surface min-w-0"
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-sm font-body text-primary truncate">{e.nome}</span>
+                      <span className="block text-2xs font-body text-faint truncate">{e.grupo}{e.equipamento ? ' · ' + e.equipamento : ''}</span>
+                    </span>
+                    <Plus size={15} className="text-brass flex-shrink-0" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <FormField label="Nome do exercício">
+              <input value={novo.nome} onChange={(e) => setNovo((n) => ({ ...n, nome: e.target.value }))} className="input-field" placeholder="Ex.: Remada cavalinho" autoFocus />
+            </FormField>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <FormField label="Grupo muscular">
+                <select value={novo.grupo} onChange={(e) => setNovo((n) => ({ ...n, grupo: e.target.value }))} className="input-field">
+                  {GRUPOS_MUSCULARES.map((g) => <option key={g} value={g}>{g}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Equipamento (opcional)">
+                <input value={novo.equipamento} onChange={(e) => setNovo((n) => ({ ...n, equipamento: e.target.value }))} className="input-field" placeholder="Ex.: Barra" />
+              </FormField>
+            </div>
+            <FormField label="Instruções (opcional)">
+              <textarea value={novo.instrucoes} onChange={(e) => setNovo((n) => ({ ...n, instrucoes: e.target.value }))} className="input-field" rows={3} placeholder="Sai impresso no PDF do aluno, por baixo do exercício." />
+            </FormField>
+            <div className="flex gap-2 mobile-stack">
+              <button type="button" onClick={() => setACriar(false)} className="px-4 py-2.5 rounded-lg text-sm font-body border border-hair btn-surface text-muted">Voltar</button>
+              <button
+                type="button"
+                disabled={!novo.nome.trim()}
+                onClick={() => { const criado = onCriar({ ...novo, nome: novo.nome.trim() }); onEscolher(criado); }}
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium disabled:opacity-50"
+                style={{ backgroundColor: 'var(--brass)', color: 'var(--on-accent)' }}
+              >
+                Criar e acrescentar
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// Uma linha de exercicio dentro de um treino.
+function ExercicioRow({ ex, biblioteca, onMudar, onRemover, onSubir, onDescer, primeiro, ultimo }) {
+  const daBiblioteca = biblioteca.find((b) => b.id === ex.exercicioId);
+  return (
+    <div className="rounded-lg border border-hair p-3 flex flex-col gap-2" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+      <div className="flex items-start justify-between gap-2 min-w-0">
+        <div className="min-w-0">
+          <div className="text-sm font-body text-primary truncate" style={{ fontWeight: 500 }}>{ex.nome || 'Exercício'}</div>
+          {daBiblioteca && (
+            <div className="text-2xs font-body text-faint truncate">{daBiblioteca.grupo}{daBiblioteca.equipamento ? ' · ' + daBiblioteca.equipamento : ''}</div>
+          )}
+        </div>
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          <button type="button" onClick={onSubir} disabled={primeiro} className="p-1.5 rounded btn-surface disabled:opacity-30" aria-label="Subir exercício"><ChevronLeft size={14} className="text-muted" style={{ display: 'block', transform: 'rotate(90deg)' }} /></button>
+          <button type="button" onClick={onDescer} disabled={ultimo} className="p-1.5 rounded btn-surface disabled:opacity-30" aria-label="Descer exercício"><ChevronRight size={14} className="text-muted" style={{ display: 'block', transform: 'rotate(90deg)' }} /></button>
+          <button type="button" onClick={onRemover} className="p-1.5 rounded btn-surface" aria-label="Remover exercício"><Trash2 size={14} className="text-rust" style={{ display: 'block' }} /></button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {[
+          ['series', 'Séries', '3'],
+          ['reps', 'Repetições', '8-10'],
+          ['carga', 'Carga', '22 kg'],
+          ['descanso', 'Descanso (s)', '90'],
+        ].map(([campo, rotulo, exemplo]) => (
+          <FormField key={campo} label={rotulo}>
+            <input value={ex[campo] || ''} onChange={(e) => onMudar({ ...ex, [campo]: e.target.value })} className="input-field" placeholder={exemplo} />
+          </FormField>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <FormField label="Método (opcional)">
+          <input value={ex.metodo || ''} onChange={(e) => onMudar({ ...ex, metodo: e.target.value })} className="input-field" placeholder="Ex.: supersérie com o seguinte" />
+        </FormField>
+        <FormField label="Notas (opcional)">
+          <input value={ex.notas || ''} onChange={(e) => onMudar({ ...ex, notas: e.target.value })} className="input-field" placeholder="Ex.: cadência 3-1-1" />
+        </FormField>
+      </div>
+    </div>
+  );
+}
+
+// Construtor de um programa: cabecalho, treinos e exercicios.
+function PrescricaoBuilder({ prescricao, biblioteca, onMudar, onCriarExercicio, onImprimir, onEliminar }) {
+  const [picker, setPicker] = useState(null); // id do treino a receber o exercicio
+  const [confirmar, setConfirmar] = useState(false);
+
+  function mudarTreino(treinoId, novo) {
+    onMudar({ ...prescricao, treinos: prescricao.treinos.map((t) => (t.id === treinoId ? novo : t)) });
+  }
+  function mexerExercicio(treinoId, indice, delta) {
+    const t = prescricao.treinos.find((x) => x.id === treinoId);
+    const lista = [...t.exercicios];
+    const destino = indice + delta;
+    if (destino < 0 || destino >= lista.length) return;
+    [lista[indice], lista[destino]] = [lista[destino], lista[indice]];
+    mudarTreino(treinoId, { ...t, exercicios: lista });
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Sem seta propria: a vista de treinos tem uma so, cujo destino muda
+          consoante haja ou nao um programa aberto. Duas setas empilhadas
+          confundiam. */}
+      <div className="flex items-center justify-end gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button type="button" onClick={onImprimir} className="btn btn-ghost" style={{ fontSize: 12 }}>
+            <Printer size={14} /> Exportar PDF
+          </button>
+          <button type="button" onClick={() => setConfirmar(true)} className="btn btn-ghost" style={{ fontSize: 12, color: 'var(--rust)' }}>
+            <Trash2 size={14} /> Eliminar
+          </button>
+        </div>
+      </div>
+
+      <div className="card p-4 flex flex-col gap-3">
+        <FormField label="Nome do programa">
+          <input value={prescricao.nome} onChange={(e) => onMudar({ ...prescricao, nome: e.target.value })} className="input-field" placeholder="Ex.: Hipertrofia — Fase 1" />
+        </FormField>
+        <FormField label="Objetivo (opcional)">
+          <input value={prescricao.objetivo} onChange={(e) => onMudar({ ...prescricao, objetivo: e.target.value })} className="input-field" placeholder="Ex.: ganho de massa muscular, 3x por semana" />
+        </FormField>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <FormField label="Início">
+            <input type="date" value={prescricao.inicio || ''} onChange={(e) => onMudar({ ...prescricao, inicio: e.target.value })} className="input-field" />
+          </FormField>
+          <FormField label="Fim (opcional)">
+            <input type="date" value={prescricao.fim || ''} onChange={(e) => onMudar({ ...prescricao, fim: e.target.value })} className="input-field" />
+          </FormField>
+        </div>
+      </div>
+
+      {prescricao.treinos.map((t, ti) => (
+        <div key={t.id} className="card p-4 flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <input
+              value={t.nome}
+              onChange={(e) => mudarTreino(t.id, { ...t, nome: e.target.value })}
+              className="input-field"
+              aria-label={'Nome do treino ' + (ti + 1)}
+              style={{ fontWeight: 600, maxWidth: 260 }}
+            />
+            <button
+              type="button"
+              onClick={() => onMudar({ ...prescricao, treinos: prescricao.treinos.filter((x) => x.id !== t.id) })}
+              className="p-1.5 rounded btn-surface flex-shrink-0"
+              aria-label={'Remover ' + t.nome}
+            >
+              <Trash2 size={14} className="text-rust" style={{ display: 'block' }} />
+            </button>
+          </div>
+
+          {t.exercicios.length === 0 ? (
+            <EmptyState icon={Dumbbell} message="Sem exercícios neste treino." />
+          ) : (
+            <div className="flex flex-col gap-2">
+              {t.exercicios.map((ex, i) => (
+                <ExercicioRow
+                  key={ex.id}
+                  ex={ex}
+                  biblioteca={biblioteca}
+                  primeiro={i === 0}
+                  ultimo={i === t.exercicios.length - 1}
+                  onSubir={() => mexerExercicio(t.id, i, -1)}
+                  onDescer={() => mexerExercicio(t.id, i, 1)}
+                  onMudar={(novo) => mudarTreino(t.id, { ...t, exercicios: t.exercicios.map((x) => (x.id === ex.id ? novo : x)) })}
+                  onRemover={() => mudarTreino(t.id, { ...t, exercicios: t.exercicios.filter((x) => x.id !== ex.id) })}
+                />
+              ))}
+            </div>
+          )}
+
+          <button type="button" onClick={() => setPicker(t.id)} className="btn btn-ghost self-start" style={{ fontSize: 12 }}>
+            <Plus size={14} /> Acrescentar exercício
+          </button>
+        </div>
+      ))}
+
+      <button
+        type="button"
+        onClick={() => onMudar({ ...prescricao, treinos: [...prescricao.treinos, novoTreino(prescricao.treinos.length)] })}
+        className="btn btn-ghost self-start"
+        style={{ fontSize: 12 }}
+      >
+        <Plus size={14} /> Acrescentar treino
+      </button>
+
+      {picker && (
+        <BibliotecaPicker
+          biblioteca={biblioteca}
+          onFechar={() => setPicker(null)}
+          onCriar={onCriarExercicio}
+          onEscolher={(exercicio) => {
+            const t = prescricao.treinos.find((x) => x.id === picker);
+            mudarTreino(picker, { ...t, exercicios: [...t.exercicios, novoExercicioTreino(exercicio)] });
+            setPicker(null);
+          }}
+        />
+      )}
+
+      {confirmar && (
+        <ConfirmDialog
+          title="Eliminar programa"
+          message={'Isto elimina "' + prescricao.nome + '" e todos os treinos que tem dentro. Esta ação não pode ser desfeita.'}
+          onCancel={() => setConfirmar(false)}
+          onConfirm={() => { setConfirmar(false); onEliminar(prescricao.id); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Lista de programas de um aluno, e a porta de entrada para o construtor.
+function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, onEliminarPrescricao, onCriarExercicio, onImprimir, onVoltar }) {
+  const [abertoId, setAbertoId] = useState(null);
+  const lista = useMemo(() => prescricoesDoAluno(treinos, student.id), [treinos, student.id]);
+  const aberta = lista.find((p) => p.id === abertoId);
+
+  return (
+    <div className="px-4 py-4 max-w-3xl mx-auto flex flex-col gap-4">
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => (aberta ? setAbertoId(null) : onVoltar())}
+          type="button"
+          className="p-2 rounded-lg bg-surface border border-hair btn-surface flex-shrink-0"
+          aria-label={aberta ? 'Voltar aos programas' : 'Voltar aos alunos'}
+        >
+          <ArrowLeft size={16} className="text-muted" />
+        </button>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: student.color }} />
+          <h1 className="font-display font-semibold text-xl text-primary tracking-wide truncate">{student.name}</h1>
+        </div>
+      </div>
+
+      {aberta ? (
+        <PrescricaoBuilder
+          prescricao={aberta}
+          biblioteca={treinos.biblioteca}
+          onMudar={onMudarPrescricao}
+          onCriarExercicio={onCriarExercicio}
+          onEliminar={(id) => { setAbertoId(null); onEliminarPrescricao(id); }}
+          onImprimir={() => onImprimir(aberta)}
+        />
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={() => { const nova = onCriarPrescricao(student.id); setAbertoId(nova.id); }}
+            className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-body font-medium"
+            style={{ backgroundColor: 'var(--brass)', color: 'var(--on-accent)' }}
+          >
+            <Plus size={15} /> Novo programa de treino
+          </button>
+
+          <div className="text-2xs uppercase tracking-wide text-faint font-mono">Programas ({lista.length})</div>
+
+          {lista.length === 0 ? (
+            <EmptyState
+              icon={Dumbbell}
+              message="Ainda não há programas para este aluno."
+              hint="Crie um programa, junte os treinos e exporte em PDF para o aluno levar para o ginásio."
+            />
+          ) : (
+            <div className="flex flex-col gap-2">
+              {lista.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setAbertoId(p.id)}
+                  className="card p-4 flex items-center justify-between gap-3 text-left min-w-0 card-hover"
+                >
+                  <span className="min-w-0">
+                    <span className="block text-sm font-body text-primary truncate" style={{ fontWeight: 500 }}>{p.nome}</span>
+                    <span className="block text-2xs font-body text-faint truncate">
+                      {plural(p.treinos.length, 'treino', 'treinos')} · {plural(contarExercicios(p), 'exercício', 'exercícios')}
+                      {p.inicio ? ' · desde ' + fmtDateLong(p.inicio + 'T00:00:00') : ''}
+                    </span>
+                  </span>
+                  <ChevronRight size={16} className="text-faint flex-shrink-0" />
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ============================== AVALIAÇÕES FÍSICAS (nova aba) ============================== */
 
 // `assessment` presente = edição. Semear com os campos vazios primeiro garante
@@ -4312,6 +4803,80 @@ function PrintHost({ job, onDone, children }) {
       <div className="print-sheet">{children}</div>
     </div>,
     document.body,
+  );
+}
+
+function TreinoPrintDoc({ student, prescricao, biblioteca, trainerName, userEmail }) {
+  // O aluno ou o programa podem ter desaparecido entre o clique e a impressao.
+  if (!student || !prescricao) return null;
+  const periodo = [
+    prescricao.inicio ? fmtDateLong(prescricao.inicio + 'T00:00:00') : null,
+    prescricao.fim ? fmtDateLong(prescricao.fim + 'T00:00:00') : null,
+  ].filter(Boolean).join(' a ');
+
+  return (
+    <>
+      <PrintHeader
+        trainerName={trainerName}
+        userEmail={userEmail}
+        titulo={prescricao.nome || 'Plano de Treino'}
+        subtitulo={student.name + (periodo ? ' · ' + periodo : '')}
+      />
+
+      {prescricao.objetivo ? (
+        <PrintSection title="Objetivo">
+          <div className="print-notes">{prescricao.objetivo}</div>
+        </PrintSection>
+      ) : null}
+
+      {(prescricao.treinos || []).map((t) => (
+        <PrintSection key={t.id} title={t.nome}>
+          {t.exercicios.length === 0 ? (
+            <div className="print-notes">Sem exercícios.</div>
+          ) : (
+            <table className="print-table">
+              <thead>
+                <tr>
+                  <th>Exercício</th>
+                  <th className="num">Séries</th>
+                  <th className="num">Reps</th>
+                  <th className="num">Carga</th>
+                  <th className="num">Descanso</th>
+                </tr>
+              </thead>
+              <tbody>
+                {t.exercicios.map((ex) => {
+                  const daBiblioteca = biblioteca.find((b) => b.id === ex.exercicioId);
+                  // As instrucoes vivem na biblioteca: o treinador escreve uma
+                  // vez e saem em todos os treinos onde usar o exercicio.
+                  const linhas = [ex.metodo, ex.notas, daBiblioteca && daBiblioteca.instrucoes].filter(Boolean);
+                  return (
+                    <tr key={ex.id}>
+                      <td>
+                        <strong>{ex.nome}</strong>
+                        {linhas.length > 0 && <div className="print-ex-nota">{linhas.join(' · ')}</div>}
+                      </td>
+                      <td className="num">{ex.series || '—'}</td>
+                      <td className="num">{ex.reps || '—'}</td>
+                      <td className="num">{ex.carga || '—'}</td>
+                      <td className="num">{ex.descanso ? ex.descanso + ' s' : '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+          {t.notas ? <div className="print-notes" style={{ marginTop: 6 }}>{t.notas}</div> : null}
+        </PrintSection>
+      ))}
+
+      <PrintSection title="Assinatura do profissional">
+        <div className="print-assinatura" />
+        <div className="print-ex-nota">{trainerName || userEmail || 'Personal Trainer'}</div>
+      </PrintSection>
+
+      <PrintFooter nota={student.name + ' · ' + (prescricao.nome || 'Plano de treino')} />
+    </>
   );
 }
 
@@ -5523,6 +6088,8 @@ function AppInner() {
   const [assessmentsStudentId, setAssessmentsStudentId] = useState(null);
   const [printJob, setPrintJob] = useState(null);
   const [definicoes, setDefinicoes] = useState(() => normalizarDefinicoes(null));
+  const [treinos, setTreinos] = useState(EMPTY_TREINOS);
+  const [treinosStudentId, setTreinosStudentId] = useState(null);
   const [clipboardSession, setClipboardSession] = useState(null);
   const [permissaoNotificacoes, setPermissaoNotificacoes] = useState(
     () => (typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'),
@@ -5702,7 +6269,7 @@ function AppInner() {
 
   async function loadAll() {
     setLoading(true);
-    let st = []; let se = []; let fi = []; let ph = []; let cc = EMPTY_CUSTOM_CATEGORIES; let df = null;
+    let st = []; let se = []; let fi = []; let ph = []; let cc = EMPTY_CUSTOM_CATEGORIES; let df = null; let tr = null;
     if (storageOk) {
       try { const r = await readStoredValue('alunos'); if (r && r.value) st = JSON.parse(r.value); } catch (e) { /* sem dados */ }
       try { const r = await readStoredValue('agenda'); if (r && r.value) se = JSON.parse(r.value); } catch (e) { /* sem dados */ }
@@ -5710,6 +6277,7 @@ function AppInner() {
       try { const r = await readStoredValue('fotos'); if (r && r.value) ph = JSON.parse(r.value); } catch (e) { /* sem dados */ }
       try { const r = await readStoredValue('categorias'); if (r && r.value) cc = JSON.parse(r.value); } catch (e) { /* sem dados */ }
       try { const r = await readStoredValue('definicoes'); if (r && r.value) df = JSON.parse(r.value); } catch (e) { /* sem dados */ }
+      try { const r = await readStoredValue('treinos'); if (r && r.value) tr = JSON.parse(r.value); } catch (e) { /* sem dados */ }
     }
     setStudents(Array.isArray(st) ? st : []);
 
@@ -5726,6 +6294,9 @@ function AppInner() {
     setPhotos(Array.isArray(ph) ? ph : []);
     setCustomCategories({ ...EMPTY_CUSTOM_CATEGORIES, ...(cc || {}) });
     setDefinicoes(normalizarDefinicoes(df));
+    const treinosNorm = normalizarTreinos(tr);
+    treinosRef.current = treinosNorm;
+    setTreinos(treinosNorm);
     setLoading(false);
   }
 
@@ -5736,6 +6307,7 @@ function AppInner() {
     setPhotos([]);
     setCustomCategories(EMPTY_CUSTOM_CATEGORIES);
     setDefinicoes(normalizarDefinicoes(null));
+    setTreinos(EMPTY_TREINOS);
   }
 
   async function refreshSubscription() {
@@ -5777,6 +6349,22 @@ function AppInner() {
     setPhotos(next);
     if (!storageOk) return;
     try { await writeStoredValue('fotos', JSON.stringify(next)); } catch (e) { showToast('Erro ao guardar fotos — experimente imagens mais pequenas.', 'error'); }
+  }
+
+  // Aceita uma funcao do valor atual, e nao um objeto ja montado. Criar um
+  // exercicio e acrescenta-lo ao treino sao duas gravacoes seguidas no mesmo
+  // handler: com um objeto montado a partir do `treinos` do render, a segunda
+  // gravacao escrevia por cima da primeira e o exercicio novo perdia-se.
+  const treinosRef = useRef(EMPTY_TREINOS);
+  useEffect(() => { treinosRef.current = treinos; }, [treinos]);
+
+  async function persistTreinos(atualizar) {
+    const base = treinosRef.current;
+    const normalizado = normalizarTreinos(typeof atualizar === 'function' ? atualizar(base) : atualizar);
+    treinosRef.current = normalizado;
+    setTreinos(normalizado);
+    if (!storageOk) return;
+    try { await writeStoredValue('treinos', JSON.stringify(normalizado)); } catch (e) { showToast('Erro ao guardar os treinos.', 'error'); }
   }
 
   async function persistDefinicoes(next) {
@@ -5954,6 +6542,40 @@ function AppInner() {
     persistSessions(sessions.filter((s) => s.id !== id));
     showToast('Avaliação removida.');
   }
+  function goToTreinos(student) {
+    setShowStudentModal(false);
+    setTreinosStudentId(student.id);
+  }
+
+  function criarPrescricao(studentId) {
+    const nova = novaPrescricao(studentId);
+    persistTreinos((t) => ({ ...t, prescricoes: [...t.prescricoes, nova] }));
+    return nova;
+  }
+
+  function mudarPrescricao(prescricao) {
+    persistTreinos((t) => ({
+      ...t,
+      prescricoes: t.prescricoes.map((p) => (p.id === prescricao.id ? prescricao : p)),
+    }));
+  }
+
+  function eliminarPrescricao(id) {
+    persistTreinos((t) => ({ ...t, prescricoes: t.prescricoes.filter((p) => p.id !== id) }));
+    showToast('Programa eliminado.');
+  }
+
+  // Devolve o exercicio criado para o chamador o poder acrescentar logo ao treino.
+  function criarExercicioBiblioteca(dados) {
+    const exercicio = { id: uid(), base: false, instrucoes: '', ...dados };
+    persistTreinos((t) => ({ ...t, biblioteca: [...t.biblioteca, exercicio] }));
+    return exercicio;
+  }
+
+  function printTreino(prescricao) {
+    setPrintJob({ tipo: 'treino', prescricaoId: prescricao.id, studentId: prescricao.studentId });
+  }
+
   function goToAssessments(student) {
     setShowStudentModal(false);
     setAssessmentsStudentId(student.id);
@@ -6129,6 +6751,21 @@ function AppInner() {
       <Header onOpenSettings={() => setSettingsOpen(true)} />
       <NavTabs view={view} setView={setView} isAdmin={isAdmin} />
       <main className="flex-1 pb-10 pb-nav">
+        {/* Os treinos vivem dentro do aluno e nao na barra de navegacao: quando
+            ha um aluno escolhido, esta vista toma conta do ecra. */}
+        {treinosStudentId && students.some((st) => st.id === treinosStudentId) ? (
+          <TreinosView
+            student={students.find((st) => st.id === treinosStudentId)}
+            treinos={treinos}
+            onMudarPrescricao={mudarPrescricao}
+            onCriarPrescricao={criarPrescricao}
+            onEliminarPrescricao={eliminarPrescricao}
+            onCriarExercicio={criarExercicioBiblioteca}
+            onImprimir={printTreino}
+            onVoltar={() => setTreinosStudentId(null)}
+          />
+        ) : (
+        <>
         {view === 'dashboard' && <Dashboard students={students} sessions={sessions} finances={finances} customCategories={customCategories} setView={setView} onAddSession={openNewSession} onOpenSession={openEditSession} onQuickStatus={quickStatus} />}
         {view === 'agenda' && (
           <div className="px-4 pt-4 max-w-6xl mx-auto">
@@ -6173,6 +6810,8 @@ function AppInner() {
             onNoStudents={() => showToast('Registe um aluno antes de fazer uma avaliação física.', 'error')} />
         )}
         {view === 'finances' && <FinancesView finances={finances} students={students} monthCursor={financeMonthCursor} setMonthCursor={setFinanceMonthCursor} onOpenTransaction={openEditTransaction} onNewTransaction={openNewTransaction} onQuickComplete={quickCompleteTransaction} customCategories={customCategories} />}
+        </>
+        )}
       </main>
       <DeveloperCredit />
 
@@ -6205,6 +6844,15 @@ function AppInner() {
       )}
 
       <PrintHost job={printJob} onDone={setPrintJob}>
+        {printJob?.tipo === 'treino' && (
+          <TreinoPrintDoc
+            student={students.find((st) => st.id === printJob.studentId)}
+            prescricao={treinos.prescricoes.find((pr) => pr.id === printJob.prescricaoId)}
+            biblioteca={treinos.biblioteca}
+            trainerName={trainerName}
+            userEmail={user?.email}
+          />
+        )}
         {printJob?.tipo === 'avaliacao' && (
           <AssessmentPrintDoc
             student={students.find((s) => s.id === printJob.studentId)}
@@ -6240,7 +6888,8 @@ function AppInner() {
         <RegistarFaltaModal students={students} sessions={sessions} onSave={registarFalta} onClose={() => setShowFaltaModal(false)} />
       )}
       {showStudentModal && (
-        <StudentFormModal student={studentModal} sessions={sessions} customCategories={customCategories} onAddCategory={addCategory} onSave={saveStudent} onClose={() => setShowStudentModal(false)} onDelete={deleteStudent} onGoToAssessments={goToAssessments} onGoToSession={openEditSession} onAgendarReposicao={openReposicaoFor} />
+        <StudentFormModal student={studentModal} sessions={sessions} customCategories={customCategories} onAddCategory={addCategory} onSave={saveStudent} onClose={() => setShowStudentModal(false)} onDelete={deleteStudent} onGoToAssessments={goToAssessments} onGoToTreinos={goToTreinos} onGoToSession={openEditSession} onAgendarReposicao={openReposicaoFor}
+          treinoCount={studentModal ? prescricoesDoAluno(treinos, studentModal.id).length : 0} />
       )}
       {showTransactionModal && (
         <TransactionFormModal tx={transactionModal?.tx} defaultType={transactionModal?.defaultType} customCategories={customCategories} onAddCategory={addCategory} onSave={saveTransaction} onClose={() => setShowTransactionModal(false)} onDelete={deleteTransaction} />

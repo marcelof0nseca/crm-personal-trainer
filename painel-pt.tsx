@@ -4295,12 +4295,16 @@ function SessionFormModal({ session, students, defaultDate, reposicaoDe, customC
 
 /* ===================== ECRAS DE TREINO ===================== */
 
-// Escolher um exercicio da biblioteca, ou criar um novo sem sair do sitio.
-function BibliotecaPicker({ biblioteca, onEscolher, onCriar, onFechar }) {
+// Escolher um exercicio da biblioteca, criar, editar ou apagar -- tudo sem sair
+// do sitio. Editar importa mais do que parece: os 60 exercicios semeados nascem
+// sem instrucoes, e sao as instrucoes que o aluno le no PDF.
+function BibliotecaPicker({ biblioteca, usosDoExercicio, onEscolher, onCriar, onEditar, onApagar, onFechar }) {
   const [procura, setProcura] = useState('');
   const [grupo, setGrupo] = useState('todos');
-  const [aCriar, setACriar] = useState(false);
-  const [novo, setNovo] = useState({ nome: '', grupo: GRUPOS_MUSCULARES[0], equipamento: '', instrucoes: '' });
+  // null = a listar; 'novo' = a criar; objeto = a editar esse exercicio.
+  const [emEdicao, setEmEdicao] = useState(null);
+  const [form, setForm] = useState({ nome: '', grupo: GRUPOS_MUSCULARES[0], equipamento: '', instrucoes: '' });
+  const [aApagar, setAApagar] = useState(null);
 
   const filtrados = useMemo(() => {
     const termo = procura.trim().toLowerCase();
@@ -4310,10 +4314,30 @@ function BibliotecaPicker({ biblioteca, onEscolher, onCriar, onFechar }) {
       .sort((a, b) => byNamePt(a.nome, b.nome));
   }, [biblioteca, procura, grupo]);
 
+  function abrirNovo() {
+    setForm({ nome: '', grupo: GRUPOS_MUSCULARES[0], equipamento: '', instrucoes: '' });
+    setEmEdicao('novo');
+  }
+  function abrirEdicao(ex) {
+    setForm({ nome: ex.nome, grupo: ex.grupo, equipamento: ex.equipamento || '', instrucoes: ex.instrucoes || '' });
+    setEmEdicao(ex);
+  }
+  function gravar() {
+    const dados = { ...form, nome: form.nome.trim() };
+    if (emEdicao === 'novo') {
+      onEscolher(onCriar(dados));
+      return;
+    }
+    onEditar({ ...emEdicao, ...dados });
+    setEmEdicao(null);
+  }
+
+  const usos = aApagar ? usosDoExercicio(aApagar.id) : 0;
+
   return (
-    <Modal title="Escolher exercício" onClose={onFechar}>
+    <Modal title={emEdicao ? (emEdicao === 'novo' ? 'Novo exercício' : 'Editar exercício') : 'Escolher exercício'} onClose={onFechar}>
       <div className="flex flex-col gap-3">
-        {!aCriar ? (
+        {!emEdicao ? (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div className="relative min-w-0">
@@ -4326,7 +4350,7 @@ function BibliotecaPicker({ biblioteca, onEscolher, onCriar, onFechar }) {
               </select>
             </div>
 
-            <button type="button" onClick={() => setACriar(true)} className="btn btn-ghost self-start" style={{ fontSize: 12 }}>
+            <button type="button" onClick={abrirNovo} className="btn btn-ghost self-start" style={{ fontSize: 12 }}>
               <Plus size={14} /> Criar exercício novo
             </button>
 
@@ -4335,20 +4359,27 @@ function BibliotecaPicker({ biblioteca, onEscolher, onCriar, onFechar }) {
             {filtrados.length === 0 ? (
               <EmptyState icon={Dumbbell} message="Nenhum exercício encontrado." hint="Experimente outro termo, ou crie um exercício novo." />
             ) : (
-              <div className="flex flex-col gap-1.5" style={{ maxHeight: '48vh', overflowY: 'auto' }}>
+              <div className="flex flex-col gap-1.5" style={{ maxHeight: '46vh', overflowY: 'auto' }}>
                 {filtrados.map((e) => (
-                  <button
-                    key={e.id}
-                    type="button"
-                    onClick={() => onEscolher(e)}
-                    className="flex items-center justify-between gap-3 text-left px-3 py-2.5 rounded-lg border border-hair btn-surface min-w-0"
-                  >
-                    <span className="min-w-0">
-                      <span className="block text-sm font-body text-primary truncate">{e.nome}</span>
-                      <span className="block text-2xs font-body text-faint truncate">{e.grupo}{e.equipamento ? ' · ' + e.equipamento : ''}</span>
-                    </span>
-                    <Plus size={15} className="text-brass flex-shrink-0" />
-                  </button>
+                  // Os tres botoes sao irmaos: aninhar botoes dentro de botoes e
+                  // ARIA invalido e baralha o nome acessivel de cada um.
+                  <div key={e.id} className="flex items-stretch gap-1 rounded-lg border border-hair min-w-0" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+                    <button type="button" onClick={() => onEscolher(e)} className="flex-1 flex items-center justify-between gap-2 text-left px-3 py-2.5 min-w-0 btn-surface rounded-l-lg">
+                      <span className="min-w-0">
+                        <span className="block text-sm font-body text-primary truncate">{e.nome}</span>
+                        <span className="block text-2xs font-body text-faint truncate">
+                          {e.grupo}{e.equipamento ? ' · ' + e.equipamento : ''}{e.instrucoes ? ' · com instruções' : ''}
+                        </span>
+                      </span>
+                      <Plus size={15} className="text-brass flex-shrink-0" />
+                    </button>
+                    <button type="button" onClick={() => abrirEdicao(e)} className="px-2 btn-surface flex-shrink-0" aria-label={'Editar ' + e.nome} title="Editar">
+                      <Pencil size={14} className="text-muted" style={{ display: 'block' }} />
+                    </button>
+                    <button type="button" onClick={() => setAApagar(e)} className="px-2 btn-surface flex-shrink-0 rounded-r-lg" aria-label={'Apagar ' + e.nome} title="Apagar">
+                      <Trash2 size={14} className="text-rust" style={{ display: 'block' }} />
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -4356,36 +4387,48 @@ function BibliotecaPicker({ biblioteca, onEscolher, onCriar, onFechar }) {
         ) : (
           <>
             <FormField label="Nome do exercício">
-              <input value={novo.nome} onChange={(e) => setNovo((n) => ({ ...n, nome: e.target.value }))} className="input-field" placeholder="Ex.: Remada cavalinho" autoFocus />
+              <input value={form.nome} onChange={(e) => setForm((n) => ({ ...n, nome: e.target.value }))} className="input-field" placeholder="Ex.: Remada cavalinho" autoFocus />
             </FormField>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <FormField label="Grupo muscular">
-                <select value={novo.grupo} onChange={(e) => setNovo((n) => ({ ...n, grupo: e.target.value }))} className="input-field">
+                <select value={form.grupo} onChange={(e) => setForm((n) => ({ ...n, grupo: e.target.value }))} className="input-field">
                   {GRUPOS_MUSCULARES.map((g) => <option key={g} value={g}>{g}</option>)}
                 </select>
               </FormField>
               <FormField label="Equipamento (opcional)">
-                <input value={novo.equipamento} onChange={(e) => setNovo((n) => ({ ...n, equipamento: e.target.value }))} className="input-field" placeholder="Ex.: Barra" />
+                <input value={form.equipamento} onChange={(e) => setForm((n) => ({ ...n, equipamento: e.target.value }))} className="input-field" placeholder="Ex.: Barra" />
               </FormField>
             </div>
             <FormField label="Instruções (opcional)">
-              <textarea value={novo.instrucoes} onChange={(e) => setNovo((n) => ({ ...n, instrucoes: e.target.value }))} className="input-field" rows={3} placeholder="Sai impresso no PDF do aluno, por baixo do exercício." />
+              <textarea value={form.instrucoes} onChange={(e) => setForm((n) => ({ ...n, instrucoes: e.target.value }))} className="input-field" rows={3} placeholder="Sai impresso no PDF do aluno, por baixo do exercício." />
             </FormField>
             <div className="flex gap-2 mobile-stack">
-              <button type="button" onClick={() => setACriar(false)} className="px-4 py-2.5 rounded-lg text-sm font-body border border-hair btn-surface text-muted">Voltar</button>
+              <button type="button" onClick={() => setEmEdicao(null)} className="px-4 py-2.5 rounded-lg text-sm font-body border border-hair btn-surface text-muted">Voltar</button>
               <button
                 type="button"
-                disabled={!novo.nome.trim()}
-                onClick={() => { const criado = onCriar({ ...novo, nome: novo.nome.trim() }); onEscolher(criado); }}
+                disabled={!form.nome.trim()}
+                onClick={gravar}
                 className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium disabled:opacity-50"
                 style={{ backgroundColor: 'var(--brass)', color: 'var(--on-accent)' }}
               >
-                Criar e acrescentar
+                {emEdicao === 'novo' ? 'Criar e acrescentar' : 'Guardar alterações'}
               </button>
             </div>
           </>
         )}
       </div>
+
+      {aApagar && (
+        <ConfirmDialog
+          title={'Apagar "' + aApagar.nome + '"'}
+          message={usos > 0
+            ? 'Este exercício está em ' + plural(usos, 'treino', 'treinos') + '. Esses treinos mantêm o nome e os números, mas perdem as instruções. Apagar mesmo assim?'
+            : 'Isto remove o exercício da sua biblioteca. Os treinos já criados não são afetados.'}
+          confirmLabel="Apagar"
+          onCancel={() => setAApagar(null)}
+          onConfirm={() => { onApagar(aApagar.id); setAApagar(null); }}
+        />
+      )}
     </Modal>
   );
 }
@@ -4435,7 +4478,7 @@ function ExercicioRow({ ex, biblioteca, onMudar, onRemover, onSubir, onDescer, p
 }
 
 // Construtor de um programa: cabecalho, treinos e exercicios.
-function PrescricaoBuilder({ prescricao, biblioteca, onMudar, onCriarExercicio, onImprimir, onEliminar }) {
+function PrescricaoBuilder({ prescricao, biblioteca, usosDoExercicio, onMudar, onCriarExercicio, onEditarExercicio, onApagarExercicio, onImprimir, onEliminar }) {
   const [picker, setPicker] = useState(null); // id do treino a receber o exercicio
   const [confirmar, setConfirmar] = useState(false);
 
@@ -4543,7 +4586,10 @@ function PrescricaoBuilder({ prescricao, biblioteca, onMudar, onCriarExercicio, 
         <BibliotecaPicker
           biblioteca={biblioteca}
           onFechar={() => setPicker(null)}
+          usosDoExercicio={usosDoExercicio}
           onCriar={onCriarExercicio}
+          onEditar={onEditarExercicio}
+          onApagar={onApagarExercicio}
           onEscolher={(exercicio) => {
             const t = prescricao.treinos.find((x) => x.id === picker);
             mudarTreino(picker, { ...t, exercicios: [...t.exercicios, novoExercicioTreino(exercicio)] });
@@ -4565,7 +4611,7 @@ function PrescricaoBuilder({ prescricao, biblioteca, onMudar, onCriarExercicio, 
 }
 
 // Lista de programas de um aluno, e a porta de entrada para o construtor.
-function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, onEliminarPrescricao, onCriarExercicio, onImprimir, onVoltar }) {
+function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, onEliminarPrescricao, onCriarExercicio, onEditarExercicio, onApagarExercicio, usosDoExercicio, onImprimir, onVoltar }) {
   const [abertoId, setAbertoId] = useState(null);
   const lista = useMemo(() => prescricoesDoAluno(treinos, student.id), [treinos, student.id]);
   const aberta = lista.find((p) => p.id === abertoId);
@@ -4593,6 +4639,9 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
           biblioteca={treinos.biblioteca}
           onMudar={onMudarPrescricao}
           onCriarExercicio={onCriarExercicio}
+          onEditarExercicio={onEditarExercicio}
+          onApagarExercicio={onApagarExercicio}
+          usosDoExercicio={usosDoExercicio}
           onEliminar={(id) => { setAbertoId(null); onEliminarPrescricao(id); }}
           onImprimir={() => onImprimir(aberta)}
         />
@@ -6572,6 +6621,27 @@ function AppInner() {
     return exercicio;
   }
 
+  function editarExercicioBiblioteca(exercicio) {
+    persistTreinos((t) => ({
+      ...t,
+      biblioteca: t.biblioteca.map((e) => (e.id === exercicio.id ? exercicio : e)),
+    }));
+  }
+
+  function apagarExercicioBiblioteca(id) {
+    persistTreinos((t) => ({ ...t, biblioteca: t.biblioteca.filter((e) => e.id !== id) }));
+    showToast('Exercício removido da biblioteca.');
+  }
+
+  // Quantas linhas de treino apontam para este exercicio. Serve para avisar
+  // antes de apagar: o treino sobrevive (o nome fica copiado), mas perde as
+  // instrucoes, que vivem na biblioteca.
+  function usosDoExercicio(exercicioId) {
+    return treinos.prescricoes.reduce((total, p) => total
+      + (p.treinos || []).reduce((n, t) => n
+        + (t.exercicios || []).filter((x) => x.exercicioId === exercicioId).length, 0), 0);
+  }
+
   function printTreino(prescricao) {
     setPrintJob({ tipo: 'treino', prescricaoId: prescricao.id, studentId: prescricao.studentId });
   }
@@ -6761,6 +6831,9 @@ function AppInner() {
             onCriarPrescricao={criarPrescricao}
             onEliminarPrescricao={eliminarPrescricao}
             onCriarExercicio={criarExercicioBiblioteca}
+            onEditarExercicio={editarExercicioBiblioteca}
+            onApagarExercicio={apagarExercicioBiblioteca}
+            usosDoExercicio={usosDoExercicio}
             onImprimir={printTreino}
             onVoltar={() => setTreinosStudentId(null)}
           />

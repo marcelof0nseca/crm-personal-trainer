@@ -543,18 +543,59 @@ const EXERCICIOS_BASE = [
   ['Extensão de coluna sentado', 'Mobilidade', 'Laboral', 'Cadeira'],
 ];
 
-const EMPTY_TREINOS = { biblioteca: [], gruposMusculares: [], categorias: [], modelos: [], prescricoes: [] };
+// Sobe sempre que a biblioteca de origem crescer. Quem ja usava a aplicacao
+// tem a biblioteca gravada: sem esta marca, ficaria preso a versao em que
+// entrou e nunca veria os exercicios novos.
+const BIBLIOTECA_VERSAO = 2;
+
+const EMPTY_TREINOS = { biblioteca: [], bibliotecaVersao: BIBLIOTECA_VERSAO, gruposMusculares: [], categorias: [], modelos: [], prescricoes: [] };
 
 // A biblioteca base so e semeada uma vez. O `base: true` marca a origem, para
 // distinguir do que o treinador criou -- e para nao voltar a semear se ele
 // apagar tudo de proposito.
+function chaveNome(nome) {
+  return String(nome || '').trim().toLowerCase();
+}
+
+function semearBiblioteca() {
+  return EXERCICIOS_BASE.map(([nome, grupo, categoria, equipamento]) => ({
+    id: uid(), nome, grupo, categoria, equipamento, instrucoes: '', base: true,
+  }));
+}
+
+// Funde a biblioteca gravada com a de origem, uma unica vez por versao.
+// Depois disso a marca fica em dia e apagar um exercicio passa a ser
+// definitivo -- senao, tudo o que o treinador apagasse voltava no arranque
+// seguinte.
+function fundirBiblioteca(guardada, versao) {
+  if (!Array.isArray(guardada)) return semearBiblioteca();
+  if ((versao || 0) >= BIBLIOTECA_VERSAO) return guardada;
+
+  const porNome = new Map(semearBiblioteca().map((e) => [chaveNome(e.nome), e]));
+  const atualizada = guardada.map((e) => {
+    const daBase = porNome.get(chaveNome(e.nome));
+    if (!daBase) {
+      // Criado pelo treinador, ou de uma versao antiga que ja nao existe.
+      // So garante que tem categoria, para nao cair fora dos filtros.
+      return { ...e, categoria: e.categoria || CATEGORIAS_BASE[0] };
+    }
+    porNome.delete(chaveNome(e.nome));
+    // Adota a taxonomia nova mas preserva o que o treinador escreveu.
+    return {
+      ...e,
+      grupo: daBase.grupo,
+      categoria: daBase.categoria,
+      equipamento: e.equipamento || daBase.equipamento,
+    };
+  });
+  return [...atualizada, ...porNome.values()];
+}
+
 function normalizarTreinos(raw) {
   const d = raw && typeof raw === 'object' ? raw : {};
-  const biblioteca = Array.isArray(d.biblioteca) ? d.biblioteca : null;
   return {
-    biblioteca: biblioteca || EXERCICIOS_BASE.map(([nome, grupo, categoria, equipamento]) => ({
-      id: uid(), nome, grupo, categoria, equipamento, instrucoes: '', base: true,
-    })),
+    biblioteca: fundirBiblioteca(d.biblioteca, d.bibliotecaVersao),
+    bibliotecaVersao: BIBLIOTECA_VERSAO,
     // Grupos e categorias que o treinador criou, para lá dos de origem.
     gruposMusculares: Array.isArray(d.gruposMusculares) ? d.gruposMusculares : [],
     categorias: Array.isArray(d.categorias) ? d.categorias : [],
@@ -565,12 +606,19 @@ function normalizarTreinos(raw) {
   };
 }
 
-// Lista completa: os de origem mais os que o treinador acrescentou.
+// Lista completa: os de origem, os que o treinador acrescentou, e ainda os
+// que aparecem na biblioteca sem estar em nenhuma das duas -- restos de
+// versoes antigas que, sem isto, ficariam sem opcao no seletor.
+function listaTaxonomia(base, personalizados, biblioteca, campo) {
+  const vistos = new Set([...base, ...(personalizados || [])]);
+  (biblioteca || []).forEach((e) => { if (e[campo]) vistos.add(e[campo]); });
+  return [...base, ...[...vistos].filter((x) => !base.includes(x)).sort(byNamePt)];
+}
 function gruposDe(treinos) {
-  return [...GRUPOS_BASE, ...(treinos.gruposMusculares || [])];
+  return listaTaxonomia(GRUPOS_BASE, treinos.gruposMusculares, treinos.biblioteca, 'grupo');
 }
 function categoriasDe(treinos) {
-  return [...CATEGORIAS_BASE, ...(treinos.categorias || [])];
+  return listaTaxonomia(CATEGORIAS_BASE, treinos.categorias, treinos.biblioteca, 'categoria');
 }
 
 function novoExercicioTreino(exercicio) {
@@ -4553,11 +4601,13 @@ function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEdi
       <div className="flex flex-col gap-3">
         {!emEdicao ? (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <div className="relative min-w-0">
-                <Search size={15} className="absolute text-faint" style={{ left: 12, top: '50%', transform: 'translateY(-50%)' }} />
-                <input value={procura} onChange={(e) => setProcura(e.target.value)} placeholder="Procurar exercício..." aria-label="Procurar exercício" className="input-field" style={{ paddingLeft: 34 }} autoFocus />
-              </div>
+            {/* A pesquisa ocupa a linha toda: em tres colunas os rotulos dos
+                seletores ficavam cortados dentro do modal. */}
+            <div className="relative min-w-0">
+              <Search size={15} className="absolute text-faint" style={{ left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+              <input value={procura} onChange={(e) => setProcura(e.target.value)} placeholder="Procurar exercício..." aria-label="Procurar exercício" className="input-field" style={{ paddingLeft: 34 }} autoFocus />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <select value={grupo} onChange={(e) => setGrupo(e.target.value)} aria-label="Filtrar por grupo muscular" className="input-field">
                 <option value="todos">Todos os grupos musculares</option>
                 {grupos.map((g) => <option key={g} value={g}>{g}</option>)}

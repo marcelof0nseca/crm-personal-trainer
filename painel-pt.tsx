@@ -7,7 +7,7 @@ import {
   Loader2, Settings, Check, Info, Activity, Ban, Download, Upload,
   Camera, ArrowLeft, LineChart as LineChartIcon, Tag,
   Coffee, Dumbbell, UtensilsCrossed, Stethoscope, Gift, CreditCard, Mail, CircleUser, KeyRound, ShieldCheck,
-  RefreshCcw, Printer, Pencil, Copy, ClipboardPaste, GripVertical, Bell,
+  RefreshCcw, Printer, Pencil, Copy, ClipboardPaste, GripVertical, Bell, Archive, BookMarked,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
@@ -543,7 +543,7 @@ const EXERCICIOS_BASE = [
   ['Extensão de coluna sentado', 'Mobilidade', 'Laboral', 'Cadeira'],
 ];
 
-const EMPTY_TREINOS = { biblioteca: [], gruposMusculares: [], categorias: [], prescricoes: [] };
+const EMPTY_TREINOS = { biblioteca: [], gruposMusculares: [], categorias: [], modelos: [], prescricoes: [] };
 
 // A biblioteca base so e semeada uma vez. O `base: true` marca a origem, para
 // distinguir do que o treinador criou -- e para nao voltar a semear se ele
@@ -558,6 +558,9 @@ function normalizarTreinos(raw) {
     // Grupos e categorias que o treinador criou, para lá dos de origem.
     gruposMusculares: Array.isArray(d.gruposMusculares) ? d.gruposMusculares : [],
     categorias: Array.isArray(d.categorias) ? d.categorias : [],
+    // Programas guardados para reutilizar noutros alunos. Não pertencem a
+    // ninguém: são cópias, e editar o modelo não mexe em quem já o usou.
+    modelos: Array.isArray(d.modelos) ? d.modelos : [],
     prescricoes: Array.isArray(d.prescricoes) ? d.prescricoes : [],
   };
 }
@@ -593,10 +596,20 @@ function novaPrescricao(studentId) {
   };
 }
 
-function prescricoesDoAluno(treinos, studentId) {
+function prescricoesDoAluno(treinos, studentId, arquivadas = false) {
   return treinos.prescricoes
-    .filter((p) => p.studentId === studentId)
+    .filter((p) => p.studentId === studentId && Boolean(p.arquivado) === arquivadas)
     .sort((a, b) => String(b.criadoEm || '').localeCompare(String(a.criadoEm || '')));
+}
+
+// Copia profunda com ids novos: um modelo aplicado a dois alunos tem de dar
+// duas prescrições independentes, senão editar uma mexia na outra.
+function clonarTreinos(lista) {
+  return (lista || []).map((t) => ({
+    ...t,
+    id: uid(),
+    exercicios: (t.exercicios || []).map((ex) => ({ ...ex, id: uid() })),
+  }));
 }
 
 // Quantos exercicios tem o programa todo. Serve de resumo na ficha do aluno.
@@ -4700,7 +4713,7 @@ function ExercicioRow({ ex, biblioteca, onMudar, onRemover, onSubir, onDescer, p
 }
 
 // Construtor de um programa: cabecalho, treinos e exercicios.
-function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onImprimir, onEliminar }) {
+function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onArquivar, onGuardarModelo, onImprimir, onEliminar }) {
   const biblioteca = treinos.biblioteca;
   const [picker, setPicker] = useState(null); // id do treino a receber o exercicio
   const [confirmar, setConfirmar] = useState(false);
@@ -4723,9 +4736,15 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
           consoante haja ou nao um programa aberto. Duas setas empilhadas
           confundiam. */}
       <div className="flex items-center justify-end gap-2 flex-wrap">
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           <button type="button" onClick={onImprimir} className="btn btn-ghost" style={{ fontSize: 12 }}>
             <Printer size={14} /> Exportar PDF
+          </button>
+          <button type="button" onClick={() => onGuardarModelo(prescricao)} className="btn btn-ghost" style={{ fontSize: 12 }}>
+            <BookMarked size={14} /> Guardar como modelo
+          </button>
+          <button type="button" onClick={() => onArquivar(prescricao.id, !prescricao.arquivado)} className="btn btn-ghost" style={{ fontSize: 12 }}>
+            <Archive size={14} /> {prescricao.arquivado ? 'Reativar' : 'Arquivar'}
           </button>
           <button type="button" onClick={() => setConfirmar(true)} className="btn btn-ghost" style={{ fontSize: 12, color: 'var(--rust)' }}>
             <Trash2 size={14} /> Eliminar
@@ -4835,11 +4854,30 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
   );
 }
 
+function LinhaPrograma({ p, onAbrir }) {
+  return (
+    <button type="button" onClick={onAbrir} className="card p-4 flex items-center justify-between gap-3 text-left min-w-0 card-hover">
+      <span className="min-w-0">
+        <span className="block text-sm font-body text-primary truncate" style={{ fontWeight: 500 }}>{p.nome}</span>
+        <span className="block text-2xs font-body text-faint truncate">
+          {plural(p.treinos.length, 'treino', 'treinos')} · {plural(contarExercicios(p), 'exercício', 'exercícios')}
+          {p.inicio ? ' · desde ' + fmtDateLong(p.inicio + 'T00:00:00') : ''}
+        </span>
+      </span>
+      <ChevronRight size={16} className="text-faint flex-shrink-0" />
+    </button>
+  );
+}
+
 // Lista de programas de um aluno, e a porta de entrada para o construtor.
-function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, onEliminarPrescricao, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, usosDoExercicio, onImprimir, onVoltar }) {
+function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, onEliminarPrescricao, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onArquivarPrescricao, onGuardarModelo, onCriarDeModelo, onApagarModelo, usosDoExercicio, onImprimir, onVoltar }) {
   const [abertoId, setAbertoId] = useState(null);
-  const lista = useMemo(() => prescricoesDoAluno(treinos, student.id), [treinos, student.id]);
-  const aberta = lista.find((p) => p.id === abertoId);
+  const [verArquivados, setVerArquivados] = useState(false);
+  const [modeloAApagar, setModeloAApagar] = useState(null);
+  const ativos = useMemo(() => prescricoesDoAluno(treinos, student.id, false), [treinos, student.id]);
+  const arquivados = useMemo(() => prescricoesDoAluno(treinos, student.id, true), [treinos, student.id]);
+  const modelos = treinos.modelos || [];
+  const aberta = [...ativos, ...arquivados].find((p) => p.id === abertoId);
 
   return (
     <div className="px-4 py-4 max-w-3xl mx-auto flex flex-col gap-4">
@@ -4871,6 +4909,8 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
           usosDoExercicio={usosDoExercicio}
           onEliminar={(id) => { setAbertoId(null); onEliminarPrescricao(id); }}
           onImprimir={() => onImprimir(aberta)}
+          onArquivar={onArquivarPrescricao}
+          onGuardarModelo={onGuardarModelo}
         />
       ) : (
         <>
@@ -4883,9 +4923,38 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
             <Plus size={15} /> Novo programa de treino
           </button>
 
-          <div className="text-2xs uppercase tracking-wide text-faint font-mono">Programas ({lista.length})</div>
+          {modelos.length > 0 && (
+            <>
+              <div className="text-2xs uppercase tracking-wide text-faint font-mono">Começar a partir de um modelo</div>
+              <div className="flex flex-col gap-2">
+                {modelos.map((m) => (
+                  // Os dois botões são irmãos: aninhá-los seria ARIA inválido.
+                  <div key={m.id} className="card flex items-stretch gap-1 min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => { const nova = onCriarDeModelo(student.id, m); setAbertoId(nova.id); }}
+                      className="flex-1 flex items-center justify-between gap-3 text-left p-4 min-w-0 btn-surface rounded-l-xl"
+                    >
+                      <span className="min-w-0">
+                        <span className="block text-sm font-body text-primary truncate" style={{ fontWeight: 500 }}>{m.nome}</span>
+                        <span className="block text-2xs font-body text-faint truncate">
+                          {plural((m.treinos || []).length, 'treino', 'treinos')} · {plural(contarExercicios(m), 'exercício', 'exercícios')}
+                        </span>
+                      </span>
+                      <Plus size={16} className="text-brass flex-shrink-0" />
+                    </button>
+                    <button type="button" onClick={() => setModeloAApagar(m)} className="px-3 btn-surface flex-shrink-0 rounded-r-xl" aria-label={'Apagar modelo ' + m.nome}>
+                      <Trash2 size={14} className="text-rust" style={{ display: 'block' }} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
 
-          {lista.length === 0 ? (
+          <div className="text-2xs uppercase tracking-wide text-faint font-mono">Programas ({ativos.length})</div>
+
+          {ativos.length === 0 ? (
             <EmptyState
               icon={Dumbbell}
               message="Ainda não há programas para este aluno."
@@ -4893,26 +4962,39 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
             />
           ) : (
             <div className="flex flex-col gap-2">
-              {lista.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setAbertoId(p.id)}
-                  className="card p-4 flex items-center justify-between gap-3 text-left min-w-0 card-hover"
-                >
-                  <span className="min-w-0">
-                    <span className="block text-sm font-body text-primary truncate" style={{ fontWeight: 500 }}>{p.nome}</span>
-                    <span className="block text-2xs font-body text-faint truncate">
-                      {plural(p.treinos.length, 'treino', 'treinos')} · {plural(contarExercicios(p), 'exercício', 'exercícios')}
-                      {p.inicio ? ' · desde ' + fmtDateLong(p.inicio + 'T00:00:00') : ''}
-                    </span>
-                  </span>
-                  <ChevronRight size={16} className="text-faint flex-shrink-0" />
-                </button>
-              ))}
+              {ativos.map((p) => <LinhaPrograma key={p.id} p={p} onAbrir={() => setAbertoId(p.id)} />)}
             </div>
           )}
+
+          {arquivados.length > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => setVerArquivados((v) => !v)}
+                aria-expanded={verArquivados}
+                className="flex items-center gap-1.5 text-2xs uppercase tracking-wide text-faint font-mono self-start btn-surface rounded px-1.5 py-1"
+              >
+                <Archive size={12} /> Arquivados ({arquivados.length})
+                <ChevronRight size={12} style={{ transform: verArquivados ? 'rotate(90deg)' : 'none' }} />
+              </button>
+              {verArquivados && (
+                <div className="flex flex-col gap-2" style={{ opacity: 0.7 }}>
+                  {arquivados.map((p) => <LinhaPrograma key={p.id} p={p} onAbrir={() => setAbertoId(p.id)} />)}
+                </div>
+              )}
+            </>
+          )}
         </>
+      )}
+
+      {modeloAApagar && (
+        <ConfirmDialog
+          title={'Apagar o modelo "' + modeloAApagar.nome + '"'}
+          message="Isto remove-o da biblioteca de treinos. Os programas já criados a partir dele não são afetados."
+          confirmLabel="Apagar"
+          onCancel={() => setModeloAApagar(null)}
+          onConfirm={() => { onApagarModelo(modeloAApagar.id); setModeloAApagar(null); }}
+        />
       )}
     </div>
   );
@@ -6836,6 +6918,45 @@ function AppInner() {
     }));
   }
 
+  function arquivarPrescricao(id, arquivado) {
+    persistTreinos((t) => ({
+      ...t,
+      prescricoes: t.prescricoes.map((p) => (p.id === id ? { ...p, arquivado } : p)),
+    }));
+    showToast(arquivado ? 'Programa arquivado.' : 'Programa reativado.');
+  }
+
+  // O modelo guarda uma cópia dos treinos, não uma referência. Assim, editar o
+  // programa do aluno depois de o guardar não altera o modelo, nem o contrário.
+  function guardarComoModelo(prescricao) {
+    const modelo = {
+      id: uid(),
+      nome: prescricao.nome || 'Modelo sem nome',
+      objetivo: prescricao.objetivo || '',
+      treinos: clonarTreinos(prescricao.treinos),
+      criadoEm: new Date().toISOString(),
+    };
+    persistTreinos((t) => ({ ...t, modelos: [...(t.modelos || []), modelo] }));
+    showToast('Guardado na biblioteca de treinos.');
+  }
+
+  function criarPrescricaoDeModelo(studentId, modelo) {
+    const nova = {
+      ...novaPrescricao(studentId),
+      nome: modelo.nome,
+      objetivo: modelo.objetivo || '',
+      treinos: clonarTreinos(modelo.treinos),
+    };
+    persistTreinos((t) => ({ ...t, prescricoes: [...t.prescricoes, nova] }));
+    showToast('Programa criado a partir do modelo.');
+    return nova;
+  }
+
+  function apagarModelo(id) {
+    persistTreinos((t) => ({ ...t, modelos: (t.modelos || []).filter((m) => m.id !== id) }));
+    showToast('Modelo removido da biblioteca.');
+  }
+
   function eliminarPrescricao(id) {
     persistTreinos((t) => ({ ...t, prescricoes: t.prescricoes.filter((p) => p.id !== id) }));
     showToast('Programa eliminado.');
@@ -7080,6 +7201,10 @@ function AppInner() {
             onApagarExercicio={apagarExercicioBiblioteca}
             onCriarGrupo={criarGrupoMuscular}
             onCriarCategoria={criarCategoriaExercicio}
+            onArquivarPrescricao={arquivarPrescricao}
+            onGuardarModelo={guardarComoModelo}
+            onCriarDeModelo={criarPrescricaoDeModelo}
+            onApagarModelo={apagarModelo}
             usosDoExercicio={usosDoExercicio}
             onImprimir={printTreino}
             onVoltar={() => setTreinosStudentId(null)}

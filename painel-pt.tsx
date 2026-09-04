@@ -294,77 +294,256 @@ const EMPTY_ASSESS_FIELDS = {
 
 /* ===================== PRESCRICAO DE TREINO ===================== */
 
-const GRUPOS_MUSCULARES = [
-  'Peito', 'Costas', 'Ombros', 'Bíceps', 'Tríceps',
-  'Pernas', 'Glúteos', 'Abdominais', 'Corpo inteiro', 'Cardio', 'Mobilidade',
+// Grupos musculares e categorias (modalidade) sao taxonomias distintas: o
+// agachamento e "Quadricipites" no grupo e "Musculacao" na categoria; o mesmo
+// movimento com elastico muda de categoria mas nao de grupo.
+const GRUPOS_BASE = [
+  'Peito', 'Costas', 'Ombros', 'Bíceps', 'Tríceps', 'Antebraço',
+  'Quadricípites', 'Isquiotibiais', 'Glúteos', 'Gémeos',
+  'Abdominais', 'Lombar', 'Corpo inteiro', 'Cardio', 'Mobilidade',
 ];
 
-// Biblioteca inicial, escrita de raiz em pt-PT. Serve para o treinador nao
-// comecar com um ecra vazio; tudo aqui pode ser editado ou apagado.
+const CATEGORIAS_BASE = [
+  'Musculação', 'Aeróbico', 'Funcional', 'Alongamento', 'Em casa',
+  'Mobilidade', 'Elástico', 'Pilates', 'Laboral', 'Reabilitação',
+];
+
+// [nome, grupo, categoria, equipamento]
 const EXERCICIOS_BASE = [
-  ['Supino com barra', 'Peito', 'Barra'],
-  ['Supino com halteres', 'Peito', 'Halteres'],
-  ['Supino inclinado', 'Peito', 'Barra'],
-  ['Aberturas com halteres', 'Peito', 'Halteres'],
-  ['Flexões de braços', 'Peito', 'Peso corporal'],
-  ['Cruzamento na polia', 'Peito', 'Polia'],
-  ['Elevações na barra fixa', 'Costas', 'Peso corporal'],
-  ['Puxada na polia alta', 'Costas', 'Polia'],
-  ['Remada curvada com barra', 'Costas', 'Barra'],
-  ['Remada unilateral com haltere', 'Costas', 'Halteres'],
-  ['Remada baixa na polia', 'Costas', 'Polia'],
-  ['Levantamento terra', 'Costas', 'Barra'],
-  ['Desenvolvimento militar', 'Ombros', 'Barra'],
-  ['Desenvolvimento com halteres', 'Ombros', 'Halteres'],
-  ['Elevações laterais', 'Ombros', 'Halteres'],
-  ['Elevações frontais', 'Ombros', 'Halteres'],
-  ['Crucifixo invertido', 'Ombros', 'Halteres'],
-  ['Encolhimentos', 'Ombros', 'Halteres'],
-  ['Rosca direta com barra', 'Bíceps', 'Barra'],
-  ['Rosca alternada', 'Bíceps', 'Halteres'],
-  ['Rosca martelo', 'Bíceps', 'Halteres'],
-  ['Rosca concentrada', 'Bíceps', 'Halteres'],
-  ['Rosca na polia', 'Bíceps', 'Polia'],
-  ['Tríceps na polia', 'Tríceps', 'Polia'],
-  ['Tríceps testa', 'Tríceps', 'Barra'],
-  ['Tríceps francês', 'Tríceps', 'Halteres'],
-  ['Fundos em paralelas', 'Tríceps', 'Peso corporal'],
-  ['Extensão de tríceps acima da cabeça', 'Tríceps', 'Halteres'],
-  ['Agachamento livre', 'Pernas', 'Barra'],
-  ['Agachamento frontal', 'Pernas', 'Barra'],
-  ['Agachamento búlgaro', 'Pernas', 'Halteres'],
-  ['Prensa de pernas', 'Pernas', 'Máquina'],
-  ['Extensão de pernas', 'Pernas', 'Máquina'],
-  ['Flexão de pernas deitado', 'Pernas', 'Máquina'],
-  ['Afundos', 'Pernas', 'Halteres'],
-  ['Levantamento terra romeno', 'Pernas', 'Barra'],
-  ['Gémeos em pé', 'Pernas', 'Máquina'],
-  ['Gémeos sentado', 'Pernas', 'Máquina'],
-  ['Elevação pélvica', 'Glúteos', 'Barra'],
-  ['Ponte de glúteos', 'Glúteos', 'Peso corporal'],
-  ['Abdução de anca na máquina', 'Glúteos', 'Máquina'],
-  ['Coice na polia', 'Glúteos', 'Polia'],
-  ['Prancha frontal', 'Abdominais', 'Peso corporal'],
-  ['Prancha lateral', 'Abdominais', 'Peso corporal'],
-  ['Abdominais no solo', 'Abdominais', 'Peso corporal'],
-  ['Elevação de pernas suspenso', 'Abdominais', 'Peso corporal'],
-  ['Rotação russa', 'Abdominais', 'Peso corporal'],
-  ['Roda abdominal', 'Abdominais', 'Roda'],
-  ['Burpees', 'Corpo inteiro', 'Peso corporal'],
-  ['Kettlebell swing', 'Corpo inteiro', 'Kettlebell'],
-  ['Thruster', 'Corpo inteiro', 'Barra'],
-  ['Farmer walk', 'Corpo inteiro', 'Halteres'],
-  ['Passadeira', 'Cardio', 'Máquina'],
-  ['Bicicleta estática', 'Cardio', 'Máquina'],
-  ['Elíptica', 'Cardio', 'Máquina'],
-  ['Remo ergómetro', 'Cardio', 'Máquina'],
-  ['Corda de saltar', 'Cardio', 'Corda'],
-  ['Alongamento de isquiotibiais', 'Mobilidade', 'Peso corporal'],
-  ['Mobilidade de anca', 'Mobilidade', 'Peso corporal'],
-  ['Mobilidade torácica', 'Mobilidade', 'Peso corporal'],
+  // ---------------- PEITO ----------------
+  ['Supino reto com barra', 'Peito', 'Musculação', 'Barra'],
+  ['Supino reto com halteres', 'Peito', 'Musculação', 'Halteres'],
+  ['Supino inclinado com barra', 'Peito', 'Musculação', 'Barra'],
+  ['Supino inclinado com halteres', 'Peito', 'Musculação', 'Halteres'],
+  ['Supino declinado com barra', 'Peito', 'Musculação', 'Barra'],
+  ['Supino na máquina', 'Peito', 'Musculação', 'Máquina'],
+  ['Aberturas com halteres', 'Peito', 'Musculação', 'Halteres'],
+  ['Aberturas inclinadas', 'Peito', 'Musculação', 'Halteres'],
+  ['Peck deck', 'Peito', 'Musculação', 'Máquina'],
+  ['Cruzamento na polia alta', 'Peito', 'Musculação', 'Polia'],
+  ['Cruzamento na polia baixa', 'Peito', 'Musculação', 'Polia'],
+  ['Pullover com haltere', 'Peito', 'Musculação', 'Halteres'],
+  ['Flexões de braços', 'Peito', 'Em casa', 'Peso corporal'],
+  ['Flexões com apoio elevado', 'Peito', 'Em casa', 'Peso corporal'],
+  ['Flexões declinadas', 'Peito', 'Em casa', 'Peso corporal'],
+  ['Flexões diamante', 'Peito', 'Em casa', 'Peso corporal'],
+  ['Flexões com elástico', 'Peito', 'Elástico', 'Elástico'],
+  ['Press de peito com elástico', 'Peito', 'Elástico', 'Elástico'],
+  ['Fundos para peito', 'Peito', 'Musculação', 'Paralelas'],
+  ['Supino com kettlebell', 'Peito', 'Funcional', 'Kettlebell'],
+
+  // ---------------- COSTAS ----------------
+  ['Elevações na barra fixa (pronada)', 'Costas', 'Musculação', 'Barra fixa'],
+  ['Elevações na barra fixa (supinada)', 'Costas', 'Musculação', 'Barra fixa'],
+  ['Elevações assistidas', 'Costas', 'Musculação', 'Máquina'],
+  ['Puxada na polia alta (pronada)', 'Costas', 'Musculação', 'Polia'],
+  ['Puxada na polia alta (supinada)', 'Costas', 'Musculação', 'Polia'],
+  ['Puxada com pega neutra', 'Costas', 'Musculação', 'Polia'],
+  ['Puxada atrás da nuca', 'Costas', 'Musculação', 'Polia'],
+  ['Remada curvada com barra', 'Costas', 'Musculação', 'Barra'],
+  ['Remada curvada com halteres', 'Costas', 'Musculação', 'Halteres'],
+  ['Remada unilateral com haltere', 'Costas', 'Musculação', 'Halteres'],
+  ['Remada baixa na polia', 'Costas', 'Musculação', 'Polia'],
+  ['Remada cavalinho', 'Costas', 'Musculação', 'Barra'],
+  ['Remada na máquina', 'Costas', 'Musculação', 'Máquina'],
+  ['Remada invertida', 'Costas', 'Funcional', 'Peso corporal'],
+  ['Pullover na polia', 'Costas', 'Musculação', 'Polia'],
+  ['Levantamento terra convencional', 'Costas', 'Musculação', 'Barra'],
+  ['Levantamento terra sumo', 'Costas', 'Musculação', 'Barra'],
+  ['Remada com elástico', 'Costas', 'Elástico', 'Elástico'],
+  ['Puxada com elástico', 'Costas', 'Elástico', 'Elástico'],
+  ['Face pull', 'Costas', 'Musculação', 'Polia'],
+  ['Encolhimentos com barra', 'Costas', 'Musculação', 'Barra'],
+  ['Encolhimentos com halteres', 'Costas', 'Musculação', 'Halteres'],
+
+  // ---------------- OMBROS ----------------
+  ['Desenvolvimento militar com barra', 'Ombros', 'Musculação', 'Barra'],
+  ['Desenvolvimento com halteres', 'Ombros', 'Musculação', 'Halteres'],
+  ['Desenvolvimento Arnold', 'Ombros', 'Musculação', 'Halteres'],
+  ['Desenvolvimento na máquina', 'Ombros', 'Musculação', 'Máquina'],
+  ['Elevações laterais', 'Ombros', 'Musculação', 'Halteres'],
+  ['Elevações laterais na polia', 'Ombros', 'Musculação', 'Polia'],
+  ['Elevações frontais', 'Ombros', 'Musculação', 'Halteres'],
+  ['Elevações frontais com barra', 'Ombros', 'Musculação', 'Barra'],
+  ['Crucifixo invertido', 'Ombros', 'Musculação', 'Halteres'],
+  ['Crucifixo invertido na máquina', 'Ombros', 'Musculação', 'Máquina'],
+  ['Remada alta', 'Ombros', 'Musculação', 'Barra'],
+  ['Elevações laterais com elástico', 'Ombros', 'Elástico', 'Elástico'],
+  ['Rotação externa com elástico', 'Ombros', 'Reabilitação', 'Elástico'],
+  ['Rotação interna com elástico', 'Ombros', 'Reabilitação', 'Elástico'],
+  ['Press militar com kettlebell', 'Ombros', 'Funcional', 'Kettlebell'],
+  ['Pino contra a parede', 'Ombros', 'Funcional', 'Peso corporal'],
+
+  // ---------------- BÍCEPS ----------------
+  ['Rosca direta com barra', 'Bíceps', 'Musculação', 'Barra'],
+  ['Rosca direta com barra W', 'Bíceps', 'Musculação', 'Barra W'],
+  ['Rosca alternada com halteres', 'Bíceps', 'Musculação', 'Halteres'],
+  ['Rosca simultânea', 'Bíceps', 'Musculação', 'Halteres'],
+  ['Rosca martelo', 'Bíceps', 'Musculação', 'Halteres'],
+  ['Rosca concentrada', 'Bíceps', 'Musculação', 'Halteres'],
+  ['Rosca Scott', 'Bíceps', 'Musculação', 'Banco Scott'],
+  ['Rosca na polia baixa', 'Bíceps', 'Musculação', 'Polia'],
+  ['Rosca inclinada', 'Bíceps', 'Musculação', 'Halteres'],
+  ['Rosca 21', 'Bíceps', 'Musculação', 'Barra'],
+  ['Rosca com elástico', 'Bíceps', 'Elástico', 'Elástico'],
+
+  // ---------------- TRÍCEPS ----------------
+  ['Tríceps na polia (corda)', 'Tríceps', 'Musculação', 'Polia'],
+  ['Tríceps na polia (barra)', 'Tríceps', 'Musculação', 'Polia'],
+  ['Tríceps testa com barra', 'Tríceps', 'Musculação', 'Barra'],
+  ['Tríceps testa com halteres', 'Tríceps', 'Musculação', 'Halteres'],
+  ['Tríceps francês', 'Tríceps', 'Musculação', 'Halteres'],
+  ['Extensão acima da cabeça na polia', 'Tríceps', 'Musculação', 'Polia'],
+  ['Tríceps coice', 'Tríceps', 'Musculação', 'Halteres'],
+  ['Fundos em paralelas', 'Tríceps', 'Musculação', 'Paralelas'],
+  ['Fundos no banco', 'Tríceps', 'Em casa', 'Peso corporal'],
+  ['Supino fechado', 'Tríceps', 'Musculação', 'Barra'],
+  ['Tríceps com elástico', 'Tríceps', 'Elástico', 'Elástico'],
+
+  // ---------------- ANTEBRAÇO ----------------
+  ['Rosca de punho', 'Antebraço', 'Musculação', 'Barra'],
+  ['Rosca de punho invertida', 'Antebraço', 'Musculação', 'Barra'],
+  ['Rosca inversa', 'Antebraço', 'Musculação', 'Barra W'],
+  ['Farmer walk', 'Antebraço', 'Funcional', 'Halteres'],
+  ['Suspensão na barra', 'Antebraço', 'Funcional', 'Barra fixa'],
+
+  // ---------------- QUADRICÍPITES ----------------
+  ['Agachamento livre', 'Quadricípites', 'Musculação', 'Barra'],
+  ['Agachamento frontal', 'Quadricípites', 'Musculação', 'Barra'],
+  ['Agachamento no Smith', 'Quadricípites', 'Musculação', 'Smith'],
+  ['Agachamento goblet', 'Quadricípites', 'Funcional', 'Kettlebell'],
+  ['Agachamento búlgaro', 'Quadricípites', 'Musculação', 'Halteres'],
+  ['Agachamento sumo', 'Quadricípites', 'Musculação', 'Barra'],
+  ['Agachamento com peso corporal', 'Quadricípites', 'Em casa', 'Peso corporal'],
+  ['Agachamento na parede', 'Quadricípites', 'Em casa', 'Peso corporal'],
+  ['Prensa de pernas 45°', 'Quadricípites', 'Musculação', 'Máquina'],
+  ['Prensa horizontal', 'Quadricípites', 'Musculação', 'Máquina'],
+  ['Extensão de pernas', 'Quadricípites', 'Musculação', 'Máquina'],
+  ['Afundos no lugar', 'Quadricípites', 'Musculação', 'Halteres'],
+  ['Afundos caminhando', 'Quadricípites', 'Funcional', 'Halteres'],
+  ['Afundos reversos', 'Quadricípites', 'Funcional', 'Halteres'],
+  ['Subida ao banco', 'Quadricípites', 'Funcional', 'Halteres'],
+  ['Hack squat', 'Quadricípites', 'Musculação', 'Máquina'],
+  ['Agachamento com elástico', 'Quadricípites', 'Elástico', 'Elástico'],
+
+  // ---------------- ISQUIOTIBIAIS ----------------
+  ['Levantamento terra romeno', 'Isquiotibiais', 'Musculação', 'Barra'],
+  ['Terra romeno com halteres', 'Isquiotibiais', 'Musculação', 'Halteres'],
+  ['Terra unilateral', 'Isquiotibiais', 'Funcional', 'Halteres'],
+  ['Flexão de pernas deitado', 'Isquiotibiais', 'Musculação', 'Máquina'],
+  ['Flexão de pernas sentado', 'Isquiotibiais', 'Musculação', 'Máquina'],
+  ['Flexão nórdica', 'Isquiotibiais', 'Funcional', 'Peso corporal'],
+  ['Bom dia', 'Isquiotibiais', 'Musculação', 'Barra'],
+  ['Curl de pernas com elástico', 'Isquiotibiais', 'Elástico', 'Elástico'],
+
+  // ---------------- GLÚTEOS ----------------
+  ['Elevação pélvica com barra', 'Glúteos', 'Musculação', 'Barra'],
+  ['Ponte de glúteos', 'Glúteos', 'Em casa', 'Peso corporal'],
+  ['Ponte unilateral', 'Glúteos', 'Em casa', 'Peso corporal'],
+  ['Abdução de anca na máquina', 'Glúteos', 'Musculação', 'Máquina'],
+  ['Abdução com elástico', 'Glúteos', 'Elástico', 'Elástico'],
+  ['Coice na polia', 'Glúteos', 'Musculação', 'Polia'],
+  ['Coice quadrupede', 'Glúteos', 'Em casa', 'Peso corporal'],
+  ['Passada lateral com elástico', 'Glúteos', 'Elástico', 'Elástico'],
+  ['Agachamento sumo com haltere', 'Glúteos', 'Musculação', 'Halteres'],
+  ['Hip thrust na máquina', 'Glúteos', 'Musculação', 'Máquina'],
+
+  // ---------------- GÉMEOS ----------------
+  ['Gémeos em pé na máquina', 'Gémeos', 'Musculação', 'Máquina'],
+  ['Gémeos sentado', 'Gémeos', 'Musculação', 'Máquina'],
+  ['Gémeos na prensa', 'Gémeos', 'Musculação', 'Máquina'],
+  ['Elevação de gémeos com halteres', 'Gémeos', 'Musculação', 'Halteres'],
+  ['Elevação de gémeos unilateral', 'Gémeos', 'Em casa', 'Peso corporal'],
+  ['Saltos no lugar', 'Gémeos', 'Funcional', 'Peso corporal'],
+
+  // ---------------- ABDOMINAIS ----------------
+  ['Prancha frontal', 'Abdominais', 'Funcional', 'Peso corporal'],
+  ['Prancha lateral', 'Abdominais', 'Funcional', 'Peso corporal'],
+  ['Prancha com elevação de perna', 'Abdominais', 'Funcional', 'Peso corporal'],
+  ['Abdominais no solo', 'Abdominais', 'Em casa', 'Peso corporal'],
+  ['Abdominais com rotação', 'Abdominais', 'Em casa', 'Peso corporal'],
+  ['Elevação de pernas suspenso', 'Abdominais', 'Musculação', 'Barra fixa'],
+  ['Elevação de pernas no solo', 'Abdominais', 'Em casa', 'Peso corporal'],
+  ['Rotação russa', 'Abdominais', 'Funcional', 'Bola medicinal'],
+  ['Roda abdominal', 'Abdominais', 'Funcional', 'Roda'],
+  ['Abdominal na polia', 'Abdominais', 'Musculação', 'Polia'],
+  ['Mountain climbers', 'Abdominais', 'Funcional', 'Peso corporal'],
+  ['Dead bug', 'Abdominais', 'Reabilitação', 'Peso corporal'],
+  ['Hollow hold', 'Abdominais', 'Funcional', 'Peso corporal'],
+  ['Bicicleta abdominal', 'Abdominais', 'Em casa', 'Peso corporal'],
+  ['Prancha dinâmica', 'Abdominais', 'Funcional', 'Peso corporal'],
+  ['Cem (Pilates)', 'Abdominais', 'Pilates', 'Colchão'],
+  ['Roll up (Pilates)', 'Abdominais', 'Pilates', 'Colchão'],
+  ['Teaser (Pilates)', 'Abdominais', 'Pilates', 'Colchão'],
+
+  // ---------------- LOMBAR ----------------
+  ['Extensão lombar no banco', 'Lombar', 'Musculação', 'Banco romano'],
+  ['Superman', 'Lombar', 'Em casa', 'Peso corporal'],
+  ['Bird dog', 'Lombar', 'Reabilitação', 'Peso corporal'],
+  ['Ponte de glúteos com pausa', 'Lombar', 'Reabilitação', 'Peso corporal'],
+  ['Extensão lombar na máquina', 'Lombar', 'Musculação', 'Máquina'],
+  ['Gato-camelo', 'Lombar', 'Mobilidade', 'Peso corporal'],
+
+  // ---------------- CORPO INTEIRO ----------------
+  ['Burpees', 'Corpo inteiro', 'Funcional', 'Peso corporal'],
+  ['Kettlebell swing', 'Corpo inteiro', 'Funcional', 'Kettlebell'],
+  ['Turkish get-up', 'Corpo inteiro', 'Funcional', 'Kettlebell'],
+  ['Thruster', 'Corpo inteiro', 'Funcional', 'Barra'],
+  ['Clean and press', 'Corpo inteiro', 'Funcional', 'Barra'],
+  ['Snatch com haltere', 'Corpo inteiro', 'Funcional', 'Halteres'],
+  ['Wall ball', 'Corpo inteiro', 'Funcional', 'Bola medicinal'],
+  ['Battle rope', 'Corpo inteiro', 'Funcional', 'Corda naval'],
+  ['Slam ball', 'Corpo inteiro', 'Funcional', 'Bola medicinal'],
+  ['Bear crawl', 'Corpo inteiro', 'Funcional', 'Peso corporal'],
+  ['Sled push', 'Corpo inteiro', 'Funcional', 'Trenó'],
+  ['Box jump', 'Corpo inteiro', 'Funcional', 'Caixa'],
+  ['Jumping jacks', 'Corpo inteiro', 'Em casa', 'Peso corporal'],
+  ['Agachamento com salto', 'Corpo inteiro', 'Funcional', 'Peso corporal'],
+  ['Devil press', 'Corpo inteiro', 'Funcional', 'Halteres'],
+  ['Man maker', 'Corpo inteiro', 'Funcional', 'Halteres'],
+
+  // ---------------- CARDIO ----------------
+  ['Passadeira — caminhada', 'Cardio', 'Aeróbico', 'Passadeira'],
+  ['Passadeira — corrida contínua', 'Cardio', 'Aeróbico', 'Passadeira'],
+  ['Passadeira — intervalado', 'Cardio', 'Aeróbico', 'Passadeira'],
+  ['Passadeira — inclinação', 'Cardio', 'Aeróbico', 'Passadeira'],
+  ['Bicicleta estática', 'Cardio', 'Aeróbico', 'Bicicleta'],
+  ['Bicicleta — intervalado', 'Cardio', 'Aeróbico', 'Bicicleta'],
+  ['Elíptica', 'Cardio', 'Aeróbico', 'Elíptica'],
+  ['Remo ergómetro', 'Cardio', 'Aeróbico', 'Remo'],
+  ['Escadas', 'Cardio', 'Aeróbico', 'Simulador'],
+  ['Corda de saltar', 'Cardio', 'Aeróbico', 'Corda'],
+  ['Assault bike', 'Cardio', 'Aeróbico', 'Bicicleta'],
+  ['Corrida ao ar livre', 'Cardio', 'Aeróbico', 'Nenhum'],
+  ['Caminhada ao ar livre', 'Cardio', 'Aeróbico', 'Nenhum'],
+  ['Natação', 'Cardio', 'Aeróbico', 'Piscina'],
+  ['Sprint', 'Cardio', 'Aeróbico', 'Nenhum'],
+
+  // ---------------- MOBILIDADE E ALONGAMENTO ----------------
+  ['Alongamento de isquiotibiais', 'Mobilidade', 'Alongamento', 'Peso corporal'],
+  ['Alongamento de quadricípite', 'Mobilidade', 'Alongamento', 'Peso corporal'],
+  ['Alongamento de peitoral', 'Mobilidade', 'Alongamento', 'Peso corporal'],
+  ['Alongamento de tricípite', 'Mobilidade', 'Alongamento', 'Peso corporal'],
+  ['Alongamento de gémeos', 'Mobilidade', 'Alongamento', 'Peso corporal'],
+  ['Alongamento de glúteo', 'Mobilidade', 'Alongamento', 'Peso corporal'],
+  ['Mobilidade de anca 90/90', 'Mobilidade', 'Mobilidade', 'Peso corporal'],
+  ['Mobilidade torácica', 'Mobilidade', 'Mobilidade', 'Peso corporal'],
+  ['Mobilidade de ombro com bastão', 'Mobilidade', 'Mobilidade', 'Bastão'],
+  ['Mobilidade de tornozelo', 'Mobilidade', 'Mobilidade', 'Peso corporal'],
+  ['Rotação torácica deitado', 'Mobilidade', 'Mobilidade', 'Peso corporal'],
+  ['Postura da criança', 'Mobilidade', 'Alongamento', 'Colchão'],
+  ['Cão olhando para baixo', 'Mobilidade', 'Alongamento', 'Colchão'],
+  ['Libertação miofascial — quadricípite', 'Mobilidade', 'Reabilitação', 'Rolo'],
+  ['Libertação miofascial — costas', 'Mobilidade', 'Reabilitação', 'Rolo'],
+  ['Libertação miofascial — gémeos', 'Mobilidade', 'Reabilitação', 'Rolo'],
+  ['Alongamento de flexores da anca', 'Mobilidade', 'Alongamento', 'Peso corporal'],
+  ['Alongamento cervical', 'Mobilidade', 'Laboral', 'Nenhum'],
+  ['Alongamento de punho', 'Mobilidade', 'Laboral', 'Nenhum'],
+  ['Rotação de ombros sentado', 'Mobilidade', 'Laboral', 'Nenhum'],
+  ['Extensão de coluna sentado', 'Mobilidade', 'Laboral', 'Cadeira'],
 ];
 
-const EMPTY_TREINOS = { biblioteca: [], prescricoes: [] };
+const EMPTY_TREINOS = { biblioteca: [], gruposMusculares: [], categorias: [], prescricoes: [] };
 
 // A biblioteca base so e semeada uma vez. O `base: true` marca a origem, para
 // distinguir do que o treinador criou -- e para nao voltar a semear se ele
@@ -373,11 +552,22 @@ function normalizarTreinos(raw) {
   const d = raw && typeof raw === 'object' ? raw : {};
   const biblioteca = Array.isArray(d.biblioteca) ? d.biblioteca : null;
   return {
-    biblioteca: biblioteca || EXERCICIOS_BASE.map(([nome, grupo, equipamento]) => ({
-      id: uid(), nome, grupo, equipamento, instrucoes: '', base: true,
+    biblioteca: biblioteca || EXERCICIOS_BASE.map(([nome, grupo, categoria, equipamento]) => ({
+      id: uid(), nome, grupo, categoria, equipamento, instrucoes: '', base: true,
     })),
+    // Grupos e categorias que o treinador criou, para lá dos de origem.
+    gruposMusculares: Array.isArray(d.gruposMusculares) ? d.gruposMusculares : [],
+    categorias: Array.isArray(d.categorias) ? d.categorias : [],
     prescricoes: Array.isArray(d.prescricoes) ? d.prescricoes : [],
   };
+}
+
+// Lista completa: os de origem mais os que o treinador acrescentou.
+function gruposDe(treinos) {
+  return [...GRUPOS_BASE, ...(treinos.gruposMusculares || [])];
+}
+function categoriasDe(treinos) {
+  return [...CATEGORIAS_BASE, ...(treinos.categorias || [])];
 }
 
 function novoExercicioTreino(exercicio) {
@@ -2504,7 +2694,7 @@ function QuinzenaDots({ marks, onToggle, label }) {
   );
 }
 
-function AddCategoryInline({ onAdd, placeholder }) {
+function AddCategoryInline({ onAdd, placeholder, label = 'Adicionar personalizado' }) {
   const [adding, setAdding] = useState(false);
   const [value, setValue] = useState('');
 
@@ -2519,7 +2709,7 @@ function AddCategoryInline({ onAdd, placeholder }) {
   if (!adding) {
     return (
       <button type="button" onClick={() => setAdding(true)} className="flex items-center gap-1.5 text-xs font-body link-sky mt-2">
-        <Plus size={13} /> Adicionar personalizado
+        <Plus size={13} /> {label}
       </button>
     );
   }
@@ -4298,28 +4488,39 @@ function SessionFormModal({ session, students, defaultDate, reposicaoDe, customC
 // Escolher um exercicio da biblioteca, criar, editar ou apagar -- tudo sem sair
 // do sitio. Editar importa mais do que parece: os 60 exercicios semeados nascem
 // sem instrucoes, e sao as instrucoes que o aluno le no PDF.
-function BibliotecaPicker({ biblioteca, usosDoExercicio, onEscolher, onCriar, onEditar, onApagar, onFechar }) {
+function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEditar, onApagar, onCriarGrupo, onCriarCategoria, onFechar }) {
+  const biblioteca = treinos.biblioteca;
+  const grupos = gruposDe(treinos);
+  const categorias = categoriasDe(treinos);
   const [procura, setProcura] = useState('');
   const [grupo, setGrupo] = useState('todos');
+  const [categoria, setCategoria] = useState('todos');
   // null = a listar; 'novo' = a criar; objeto = a editar esse exercicio.
   const [emEdicao, setEmEdicao] = useState(null);
-  const [form, setForm] = useState({ nome: '', grupo: GRUPOS_MUSCULARES[0], equipamento: '', instrucoes: '' });
+  const [form, setForm] = useState({ nome: '', grupo: grupos[0], categoria: categorias[0], equipamento: '', instrucoes: '' });
   const [aApagar, setAApagar] = useState(null);
 
   const filtrados = useMemo(() => {
     const termo = procura.trim().toLowerCase();
     return biblioteca
       .filter((e) => (grupo === 'todos' || e.grupo === grupo)
+        && (categoria === 'todos' || e.categoria === categoria)
         && (!termo || e.nome.toLowerCase().includes(termo)))
       .sort((a, b) => byNamePt(a.nome, b.nome));
-  }, [biblioteca, procura, grupo]);
+  }, [biblioteca, procura, grupo, categoria]);
 
   function abrirNovo() {
-    setForm({ nome: '', grupo: GRUPOS_MUSCULARES[0], equipamento: '', instrucoes: '' });
+    setForm({ nome: '', grupo: grupos[0], categoria: categorias[0], equipamento: '', instrucoes: '' });
     setEmEdicao('novo');
   }
   function abrirEdicao(ex) {
-    setForm({ nome: ex.nome, grupo: ex.grupo, equipamento: ex.equipamento || '', instrucoes: ex.instrucoes || '' });
+    setForm({
+      nome: ex.nome,
+      grupo: ex.grupo || grupos[0],
+      categoria: ex.categoria || categorias[0],
+      equipamento: ex.equipamento || '',
+      instrucoes: ex.instrucoes || '',
+    });
     setEmEdicao(ex);
   }
   function gravar() {
@@ -4339,14 +4540,18 @@ function BibliotecaPicker({ biblioteca, usosDoExercicio, onEscolher, onCriar, on
       <div className="flex flex-col gap-3">
         {!emEdicao ? (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div className="relative min-w-0">
                 <Search size={15} className="absolute text-faint" style={{ left: 12, top: '50%', transform: 'translateY(-50%)' }} />
                 <input value={procura} onChange={(e) => setProcura(e.target.value)} placeholder="Procurar exercício..." aria-label="Procurar exercício" className="input-field" style={{ paddingLeft: 34 }} autoFocus />
               </div>
               <select value={grupo} onChange={(e) => setGrupo(e.target.value)} aria-label="Filtrar por grupo muscular" className="input-field">
-                <option value="todos">Todos os grupos</option>
-                {GRUPOS_MUSCULARES.map((g) => <option key={g} value={g}>{g}</option>)}
+                <option value="todos">Todos os grupos musculares</option>
+                {grupos.map((g) => <option key={g} value={g}>{g}</option>)}
+              </select>
+              <select value={categoria} onChange={(e) => setCategoria(e.target.value)} aria-label="Filtrar por categoria" className="input-field">
+                <option value="todos">Todas as categorias</option>
+                {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
 
@@ -4368,7 +4573,7 @@ function BibliotecaPicker({ biblioteca, usosDoExercicio, onEscolher, onCriar, on
                       <span className="min-w-0">
                         <span className="block text-sm font-body text-primary truncate">{e.nome}</span>
                         <span className="block text-2xs font-body text-faint truncate">
-                          {e.grupo}{e.equipamento ? ' · ' + e.equipamento : ''}{e.instrucoes ? ' · com instruções' : ''}
+                          {[e.grupo, e.categoria, e.equipamento].filter(Boolean).join(' · ')}{e.instrucoes ? ' · com instruções' : ''}
                         </span>
                       </span>
                       <Plus size={15} className="text-brass flex-shrink-0" />
@@ -4390,15 +4595,32 @@ function BibliotecaPicker({ biblioteca, usosDoExercicio, onEscolher, onCriar, on
               <input value={form.nome} onChange={(e) => setForm((n) => ({ ...n, nome: e.target.value }))} className="input-field" placeholder="Ex.: Remada cavalinho" autoFocus />
             </FormField>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <FormField label="Grupo muscular">
-                <select value={form.grupo} onChange={(e) => setForm((n) => ({ ...n, grupo: e.target.value }))} className="input-field">
-                  {GRUPOS_MUSCULARES.map((g) => <option key={g} value={g}>{g}</option>)}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-body text-muted">Grupo muscular</span>
+                <select value={form.grupo} onChange={(e) => setForm((n) => ({ ...n, grupo: e.target.value }))} aria-label="Grupo muscular" className="input-field">
+                  {grupos.map((g) => <option key={g} value={g}>{g}</option>)}
                 </select>
-              </FormField>
-              <FormField label="Equipamento (opcional)">
-                <input value={form.equipamento} onChange={(e) => setForm((n) => ({ ...n, equipamento: e.target.value }))} className="input-field" placeholder="Ex.: Barra" />
-              </FormField>
+                <AddCategoryInline
+                  label="Criar grupo muscular"
+                  placeholder="Nome do grupo muscular"
+                  onAdd={(nome) => { onCriarGrupo(nome); setForm((n) => ({ ...n, grupo: nome })); }}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-body text-muted">Categoria</span>
+                <select value={form.categoria} onChange={(e) => setForm((n) => ({ ...n, categoria: e.target.value }))} aria-label="Categoria" className="input-field">
+                  {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <AddCategoryInline
+                  label="Criar categoria"
+                  placeholder="Nome da categoria"
+                  onAdd={(nome) => { onCriarCategoria(nome); setForm((n) => ({ ...n, categoria: nome })); }}
+                />
+              </div>
             </div>
+            <FormField label="Equipamento (opcional)">
+              <input value={form.equipamento} onChange={(e) => setForm((n) => ({ ...n, equipamento: e.target.value }))} className="input-field" placeholder="Ex.: Barra" />
+            </FormField>
             <FormField label="Instruções (opcional)">
               <textarea value={form.instrucoes} onChange={(e) => setForm((n) => ({ ...n, instrucoes: e.target.value }))} className="input-field" rows={3} placeholder="Sai impresso no PDF do aluno, por baixo do exercício." />
             </FormField>
@@ -4478,7 +4700,8 @@ function ExercicioRow({ ex, biblioteca, onMudar, onRemover, onSubir, onDescer, p
 }
 
 // Construtor de um programa: cabecalho, treinos e exercicios.
-function PrescricaoBuilder({ prescricao, biblioteca, usosDoExercicio, onMudar, onCriarExercicio, onEditarExercicio, onApagarExercicio, onImprimir, onEliminar }) {
+function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onImprimir, onEliminar }) {
+  const biblioteca = treinos.biblioteca;
   const [picker, setPicker] = useState(null); // id do treino a receber o exercicio
   const [confirmar, setConfirmar] = useState(false);
 
@@ -4584,12 +4807,14 @@ function PrescricaoBuilder({ prescricao, biblioteca, usosDoExercicio, onMudar, o
 
       {picker && (
         <BibliotecaPicker
-          biblioteca={biblioteca}
+          treinos={treinos}
           onFechar={() => setPicker(null)}
           usosDoExercicio={usosDoExercicio}
           onCriar={onCriarExercicio}
           onEditar={onEditarExercicio}
           onApagar={onApagarExercicio}
+          onCriarGrupo={onCriarGrupo}
+          onCriarCategoria={onCriarCategoria}
           onEscolher={(exercicio) => {
             const t = prescricao.treinos.find((x) => x.id === picker);
             mudarTreino(picker, { ...t, exercicios: [...t.exercicios, novoExercicioTreino(exercicio)] });
@@ -4611,7 +4836,7 @@ function PrescricaoBuilder({ prescricao, biblioteca, usosDoExercicio, onMudar, o
 }
 
 // Lista de programas de um aluno, e a porta de entrada para o construtor.
-function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, onEliminarPrescricao, onCriarExercicio, onEditarExercicio, onApagarExercicio, usosDoExercicio, onImprimir, onVoltar }) {
+function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, onEliminarPrescricao, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, usosDoExercicio, onImprimir, onVoltar }) {
   const [abertoId, setAbertoId] = useState(null);
   const lista = useMemo(() => prescricoesDoAluno(treinos, student.id), [treinos, student.id]);
   const aberta = lista.find((p) => p.id === abertoId);
@@ -4636,11 +4861,13 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
       {aberta ? (
         <PrescricaoBuilder
           prescricao={aberta}
-          biblioteca={treinos.biblioteca}
+          treinos={treinos}
           onMudar={onMudarPrescricao}
           onCriarExercicio={onCriarExercicio}
           onEditarExercicio={onEditarExercicio}
           onApagarExercicio={onApagarExercicio}
+          onCriarGrupo={onCriarGrupo}
+          onCriarCategoria={onCriarCategoria}
           usosDoExercicio={usosDoExercicio}
           onEliminar={(id) => { setAbertoId(null); onEliminarPrescricao(id); }}
           onImprimir={() => onImprimir(aberta)}
@@ -6628,6 +6855,24 @@ function AppInner() {
     }));
   }
 
+  // Grupos e categorias novos entram na lista propria do treinador, sem tocar
+  // nos de origem. Ignora repetidos para nao encher a lista de duplicados.
+  function criarGrupoMuscular(nome) {
+    const limpo = String(nome || '').trim();
+    if (!limpo) return;
+    persistTreinos((t) => (gruposDe(t).includes(limpo)
+      ? t
+      : { ...t, gruposMusculares: [...(t.gruposMusculares || []), limpo] }));
+  }
+
+  function criarCategoriaExercicio(nome) {
+    const limpo = String(nome || '').trim();
+    if (!limpo) return;
+    persistTreinos((t) => (categoriasDe(t).includes(limpo)
+      ? t
+      : { ...t, categorias: [...(t.categorias || []), limpo] }));
+  }
+
   function apagarExercicioBiblioteca(id) {
     persistTreinos((t) => ({ ...t, biblioteca: t.biblioteca.filter((e) => e.id !== id) }));
     showToast('Exercício removido da biblioteca.');
@@ -6833,6 +7078,8 @@ function AppInner() {
             onCriarExercicio={criarExercicioBiblioteca}
             onEditarExercicio={editarExercicioBiblioteca}
             onApagarExercicio={apagarExercicioBiblioteca}
+            onCriarGrupo={criarGrupoMuscular}
+            onCriarCategoria={criarCategoriaExercicio}
             usosDoExercicio={usosDoExercicio}
             onImprimir={printTreino}
             onVoltar={() => setTreinosStudentId(null)}

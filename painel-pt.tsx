@@ -17,6 +17,9 @@ import logoSrc from './src/assets/ptmanager-logo.png';
 import LandingPage from './src/components/LandingPage';
 import Turnstile from './src/components/Turnstile';
 import LegalModal from './src/components/LegalDocs';
+import {
+  GRUPOS_BASE, CATEGORIAS_BASE, EXERCICIOS_BASE, NOMES_LEGADO,
+} from './src/data/exercicios';
 
 /* ============================== LOGO ============================== */
 
@@ -293,317 +296,166 @@ const EMPTY_ASSESS_FIELDS = {
 };
 
 /* ===================== PRESCRICAO DE TREINO ===================== */
-
 // Grupos musculares e categorias (modalidade) sao taxonomias distintas: o
 // agachamento e "Quadricipites" no grupo e "Musculacao" na categoria; o mesmo
 // movimento com elastico muda de categoria mas nao de grupo.
-const GRUPOS_BASE = [
-  'Peito', 'Costas', 'Ombros', 'Bíceps', 'Tríceps', 'Antebraço',
-  'Quadricípites', 'Isquiotibiais', 'Glúteos', 'Gémeos',
-  'Abdominais', 'Lombar', 'Corpo inteiro', 'Cardio', 'Mobilidade',
-];
+//
+// As duas listas e os 2076 exercicios vivem em src/data/exercicios.ts, gerado
+// por scripts/gerar-exercicios.mjs a partir do catalogo MFIT. Sao 105 kB: nao
+// cabem aqui, e sobretudo nao podem viajar na base de dados (ver
+// `serializarTreinos`).
 
-const CATEGORIAS_BASE = [
-  'Musculação', 'Aeróbico', 'Funcional', 'Alongamento', 'Em casa',
-  'Mobilidade', 'Elástico', 'Pilates', 'Laboral', 'Reabilitação',
-];
+// O id de um exercicio de origem e o proprio nome. Nao ha contador nem uid: os
+// nomes sao unicos -- o gerador garante-o -- e assim o id fica estavel entre
+// versoes, que e o que faz as prescricoes ja gravadas continuarem a apontar
+// para o exercicio certo. O prefixo distingue-o de um uid, que nunca tem ':'.
+const PREFIXO_BASE = 'e:';
+function idBase(nome) { return PREFIXO_BASE + nome; }
+function ehExercicioBase(id) { return String(id || '').startsWith(PREFIXO_BASE); }
 
-// [nome, grupo, categoria, equipamento]
-const EXERCICIOS_BASE = [
-  // ---------------- PEITO ----------------
-  ['Supino reto com barra', 'Peito', 'Musculação', 'Barra'],
-  ['Supino reto com halteres', 'Peito', 'Musculação', 'Halteres'],
-  ['Supino inclinado com barra', 'Peito', 'Musculação', 'Barra'],
-  ['Supino inclinado com halteres', 'Peito', 'Musculação', 'Halteres'],
-  ['Supino declinado com barra', 'Peito', 'Musculação', 'Barra'],
-  ['Supino na máquina', 'Peito', 'Musculação', 'Máquina'],
-  ['Aberturas com halteres', 'Peito', 'Musculação', 'Halteres'],
-  ['Aberturas inclinadas', 'Peito', 'Musculação', 'Halteres'],
-  ['Peck deck', 'Peito', 'Musculação', 'Máquina'],
-  ['Cruzamento na polia alta', 'Peito', 'Musculação', 'Polia'],
-  ['Cruzamento na polia baixa', 'Peito', 'Musculação', 'Polia'],
-  ['Pullover com haltere', 'Peito', 'Musculação', 'Halteres'],
-  ['Flexões de braços', 'Peito', 'Em casa', 'Peso corporal'],
-  ['Flexões com apoio elevado', 'Peito', 'Em casa', 'Peso corporal'],
-  ['Flexões declinadas', 'Peito', 'Em casa', 'Peso corporal'],
-  ['Flexões diamante', 'Peito', 'Em casa', 'Peso corporal'],
-  ['Flexões com elástico', 'Peito', 'Elástico', 'Elástico'],
-  ['Press de peito com elástico', 'Peito', 'Elástico', 'Elástico'],
-  ['Fundos para peito', 'Peito', 'Musculação', 'Paralelas'],
-  ['Supino com kettlebell', 'Peito', 'Funcional', 'Kettlebell'],
+// Nome sem acentos nem maiusculas, calculado uma vez por exercicio. Com 2076
+// na lista, normalizar a cada tecla escrita na pesquisa custava tempo a mais --
+// e sem isto procurar "biceps" nao encontrava "Bíceps".
+function chaveBusca(nome) {
+  return String(nome || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+}
 
-  // ---------------- COSTAS ----------------
-  ['Elevações na barra fixa (pronada)', 'Costas', 'Musculação', 'Barra fixa'],
-  ['Elevações na barra fixa (supinada)', 'Costas', 'Musculação', 'Barra fixa'],
-  ['Elevações assistidas', 'Costas', 'Musculação', 'Máquina'],
-  ['Puxada na polia alta (pronada)', 'Costas', 'Musculação', 'Polia'],
-  ['Puxada na polia alta (supinada)', 'Costas', 'Musculação', 'Polia'],
-  ['Puxada com pega neutra', 'Costas', 'Musculação', 'Polia'],
-  ['Puxada atrás da nuca', 'Costas', 'Musculação', 'Polia'],
-  ['Remada curvada com barra', 'Costas', 'Musculação', 'Barra'],
-  ['Remada curvada com halteres', 'Costas', 'Musculação', 'Halteres'],
-  ['Remada unilateral com haltere', 'Costas', 'Musculação', 'Halteres'],
-  ['Remada baixa na polia', 'Costas', 'Musculação', 'Polia'],
-  ['Remada cavalinho', 'Costas', 'Musculação', 'Barra'],
-  ['Remada na máquina', 'Costas', 'Musculação', 'Máquina'],
-  ['Remada invertida', 'Costas', 'Funcional', 'Peso corporal'],
-  ['Pullover na polia', 'Costas', 'Musculação', 'Polia'],
-  ['Levantamento terra convencional', 'Costas', 'Musculação', 'Barra'],
-  ['Levantamento terra sumo', 'Costas', 'Musculação', 'Barra'],
-  ['Remada com elástico', 'Costas', 'Elástico', 'Elástico'],
-  ['Puxada com elástico', 'Costas', 'Elástico', 'Elástico'],
-  ['Face pull', 'Costas', 'Musculação', 'Polia'],
-  ['Encolhimentos com barra', 'Costas', 'Musculação', 'Barra'],
-  ['Encolhimentos com halteres', 'Costas', 'Musculação', 'Halteres'],
+const BIBLIOTECA_BASE = EXERCICIOS_BASE.map(([nome, g, c, equipamento]) => ({
+  id: idBase(nome),
+  nome,
+  grupo: GRUPOS_BASE[g],
+  categoria: CATEGORIAS_BASE[c],
+  equipamento,
+  instrucoes: '',
+  base: true,
+  busca: chaveBusca(nome),
+}));
 
-  // ---------------- OMBROS ----------------
-  ['Desenvolvimento militar com barra', 'Ombros', 'Musculação', 'Barra'],
-  ['Desenvolvimento com halteres', 'Ombros', 'Musculação', 'Halteres'],
-  ['Desenvolvimento Arnold', 'Ombros', 'Musculação', 'Halteres'],
-  ['Desenvolvimento na máquina', 'Ombros', 'Musculação', 'Máquina'],
-  ['Elevações laterais', 'Ombros', 'Musculação', 'Halteres'],
-  ['Elevações laterais na polia', 'Ombros', 'Musculação', 'Polia'],
-  ['Elevações frontais', 'Ombros', 'Musculação', 'Halteres'],
-  ['Elevações frontais com barra', 'Ombros', 'Musculação', 'Barra'],
-  ['Crucifixo invertido', 'Ombros', 'Musculação', 'Halteres'],
-  ['Crucifixo invertido na máquina', 'Ombros', 'Musculação', 'Máquina'],
-  ['Remada alta', 'Ombros', 'Musculação', 'Barra'],
-  ['Elevações laterais com elástico', 'Ombros', 'Elástico', 'Elástico'],
-  ['Rotação externa com elástico', 'Ombros', 'Reabilitação', 'Elástico'],
-  ['Rotação interna com elástico', 'Ombros', 'Reabilitação', 'Elástico'],
-  ['Press militar com kettlebell', 'Ombros', 'Funcional', 'Kettlebell'],
-  ['Pino contra a parede', 'Ombros', 'Funcional', 'Peso corporal'],
+// Os que existiam antes de o catalogo entrar. So a migracao os usa.
+const IDS_LEGADO = NOMES_LEGADO.map(idBase);
 
-  // ---------------- BÍCEPS ----------------
-  ['Rosca direta com barra', 'Bíceps', 'Musculação', 'Barra'],
-  ['Rosca direta com barra W', 'Bíceps', 'Musculação', 'Barra W'],
-  ['Rosca alternada com halteres', 'Bíceps', 'Musculação', 'Halteres'],
-  ['Rosca simultânea', 'Bíceps', 'Musculação', 'Halteres'],
-  ['Rosca martelo', 'Bíceps', 'Musculação', 'Halteres'],
-  ['Rosca concentrada', 'Bíceps', 'Musculação', 'Halteres'],
-  ['Rosca Scott', 'Bíceps', 'Musculação', 'Banco Scott'],
-  ['Rosca na polia baixa', 'Bíceps', 'Musculação', 'Polia'],
-  ['Rosca inclinada', 'Bíceps', 'Musculação', 'Halteres'],
-  ['Rosca 21', 'Bíceps', 'Musculação', 'Barra'],
-  ['Rosca com elástico', 'Bíceps', 'Elástico', 'Elástico'],
+// Sobe quando a forma do que se grava muda. A 3 tirou a biblioteca de origem
+// da base de dados: com 2076 exercicios, gravar um treino reescrevia ~300 kB
+// de exercicios que ja estao no codigo. Agora so viaja o que o treinador fez.
+const BIBLIOTECA_VERSAO = 3;
 
-  // ---------------- TRÍCEPS ----------------
-  ['Tríceps na polia (corda)', 'Tríceps', 'Musculação', 'Polia'],
-  ['Tríceps na polia (barra)', 'Tríceps', 'Musculação', 'Polia'],
-  ['Tríceps testa com barra', 'Tríceps', 'Musculação', 'Barra'],
-  ['Tríceps testa com halteres', 'Tríceps', 'Musculação', 'Halteres'],
-  ['Tríceps francês', 'Tríceps', 'Musculação', 'Halteres'],
-  ['Extensão acima da cabeça na polia', 'Tríceps', 'Musculação', 'Polia'],
-  ['Tríceps coice', 'Tríceps', 'Musculação', 'Halteres'],
-  ['Fundos em paralelas', 'Tríceps', 'Musculação', 'Paralelas'],
-  ['Fundos no banco', 'Tríceps', 'Em casa', 'Peso corporal'],
-  ['Supino fechado', 'Tríceps', 'Musculação', 'Barra'],
-  ['Tríceps com elástico', 'Tríceps', 'Elástico', 'Elástico'],
+const EMPTY_TREINOS = {
+  bibliotecaVersao: BIBLIOTECA_VERSAO,
+  bibliotecaExtra: [],    // exercicios que o treinador criou
+  bibliotecaEdicoes: {},  // { [id de origem]: campos alterados } -- quase sempre so as instrucoes
+  bibliotecaOcultos: [],  // ids de origem que ele apagou
+  gruposMusculares: [],
+  categorias: [],
+  // Programas guardados para reutilizar noutros alunos. Não pertencem a
+  // ninguém: são cópias, e editar o modelo não mexe em quem já o usou.
+  modelos: [],
+  prescricoes: [],
+  biblioteca: BIBLIOTECA_BASE,  // derivado, nunca gravado
+};
 
-  // ---------------- ANTEBRAÇO ----------------
-  ['Rosca de punho', 'Antebraço', 'Musculação', 'Barra'],
-  ['Rosca de punho invertida', 'Antebraço', 'Musculação', 'Barra'],
-  ['Rosca inversa', 'Antebraço', 'Musculação', 'Barra W'],
-  ['Farmer walk', 'Antebraço', 'Funcional', 'Halteres'],
-  ['Suspensão na barra', 'Antebraço', 'Funcional', 'Barra fixa'],
-
-  // ---------------- QUADRICÍPITES ----------------
-  ['Agachamento livre', 'Quadricípites', 'Musculação', 'Barra'],
-  ['Agachamento frontal', 'Quadricípites', 'Musculação', 'Barra'],
-  ['Agachamento no Smith', 'Quadricípites', 'Musculação', 'Smith'],
-  ['Agachamento goblet', 'Quadricípites', 'Funcional', 'Kettlebell'],
-  ['Agachamento búlgaro', 'Quadricípites', 'Musculação', 'Halteres'],
-  ['Agachamento sumo', 'Quadricípites', 'Musculação', 'Barra'],
-  ['Agachamento com peso corporal', 'Quadricípites', 'Em casa', 'Peso corporal'],
-  ['Agachamento na parede', 'Quadricípites', 'Em casa', 'Peso corporal'],
-  ['Prensa de pernas 45°', 'Quadricípites', 'Musculação', 'Máquina'],
-  ['Prensa horizontal', 'Quadricípites', 'Musculação', 'Máquina'],
-  ['Extensão de pernas', 'Quadricípites', 'Musculação', 'Máquina'],
-  ['Afundos no lugar', 'Quadricípites', 'Musculação', 'Halteres'],
-  ['Afundos caminhando', 'Quadricípites', 'Funcional', 'Halteres'],
-  ['Afundos reversos', 'Quadricípites', 'Funcional', 'Halteres'],
-  ['Subida ao banco', 'Quadricípites', 'Funcional', 'Halteres'],
-  ['Hack squat', 'Quadricípites', 'Musculação', 'Máquina'],
-  ['Agachamento com elástico', 'Quadricípites', 'Elástico', 'Elástico'],
-
-  // ---------------- ISQUIOTIBIAIS ----------------
-  ['Levantamento terra romeno', 'Isquiotibiais', 'Musculação', 'Barra'],
-  ['Terra romeno com halteres', 'Isquiotibiais', 'Musculação', 'Halteres'],
-  ['Terra unilateral', 'Isquiotibiais', 'Funcional', 'Halteres'],
-  ['Flexão de pernas deitado', 'Isquiotibiais', 'Musculação', 'Máquina'],
-  ['Flexão de pernas sentado', 'Isquiotibiais', 'Musculação', 'Máquina'],
-  ['Flexão nórdica', 'Isquiotibiais', 'Funcional', 'Peso corporal'],
-  ['Bom dia', 'Isquiotibiais', 'Musculação', 'Barra'],
-  ['Curl de pernas com elástico', 'Isquiotibiais', 'Elástico', 'Elástico'],
-
-  // ---------------- GLÚTEOS ----------------
-  ['Elevação pélvica com barra', 'Glúteos', 'Musculação', 'Barra'],
-  ['Ponte de glúteos', 'Glúteos', 'Em casa', 'Peso corporal'],
-  ['Ponte unilateral', 'Glúteos', 'Em casa', 'Peso corporal'],
-  ['Abdução de anca na máquina', 'Glúteos', 'Musculação', 'Máquina'],
-  ['Abdução com elástico', 'Glúteos', 'Elástico', 'Elástico'],
-  ['Coice na polia', 'Glúteos', 'Musculação', 'Polia'],
-  ['Coice quadrupede', 'Glúteos', 'Em casa', 'Peso corporal'],
-  ['Passada lateral com elástico', 'Glúteos', 'Elástico', 'Elástico'],
-  ['Agachamento sumo com haltere', 'Glúteos', 'Musculação', 'Halteres'],
-  ['Hip thrust na máquina', 'Glúteos', 'Musculação', 'Máquina'],
-
-  // ---------------- GÉMEOS ----------------
-  ['Gémeos em pé na máquina', 'Gémeos', 'Musculação', 'Máquina'],
-  ['Gémeos sentado', 'Gémeos', 'Musculação', 'Máquina'],
-  ['Gémeos na prensa', 'Gémeos', 'Musculação', 'Máquina'],
-  ['Elevação de gémeos com halteres', 'Gémeos', 'Musculação', 'Halteres'],
-  ['Elevação de gémeos unilateral', 'Gémeos', 'Em casa', 'Peso corporal'],
-  ['Saltos no lugar', 'Gémeos', 'Funcional', 'Peso corporal'],
-
-  // ---------------- ABDOMINAIS ----------------
-  ['Prancha frontal', 'Abdominais', 'Funcional', 'Peso corporal'],
-  ['Prancha lateral', 'Abdominais', 'Funcional', 'Peso corporal'],
-  ['Prancha com elevação de perna', 'Abdominais', 'Funcional', 'Peso corporal'],
-  ['Abdominais no solo', 'Abdominais', 'Em casa', 'Peso corporal'],
-  ['Abdominais com rotação', 'Abdominais', 'Em casa', 'Peso corporal'],
-  ['Elevação de pernas suspenso', 'Abdominais', 'Musculação', 'Barra fixa'],
-  ['Elevação de pernas no solo', 'Abdominais', 'Em casa', 'Peso corporal'],
-  ['Rotação russa', 'Abdominais', 'Funcional', 'Bola medicinal'],
-  ['Roda abdominal', 'Abdominais', 'Funcional', 'Roda'],
-  ['Abdominal na polia', 'Abdominais', 'Musculação', 'Polia'],
-  ['Mountain climbers', 'Abdominais', 'Funcional', 'Peso corporal'],
-  ['Dead bug', 'Abdominais', 'Reabilitação', 'Peso corporal'],
-  ['Hollow hold', 'Abdominais', 'Funcional', 'Peso corporal'],
-  ['Bicicleta abdominal', 'Abdominais', 'Em casa', 'Peso corporal'],
-  ['Prancha dinâmica', 'Abdominais', 'Funcional', 'Peso corporal'],
-  ['Cem (Pilates)', 'Abdominais', 'Pilates', 'Colchão'],
-  ['Roll up (Pilates)', 'Abdominais', 'Pilates', 'Colchão'],
-  ['Teaser (Pilates)', 'Abdominais', 'Pilates', 'Colchão'],
-
-  // ---------------- LOMBAR ----------------
-  ['Extensão lombar no banco', 'Lombar', 'Musculação', 'Banco romano'],
-  ['Superman', 'Lombar', 'Em casa', 'Peso corporal'],
-  ['Bird dog', 'Lombar', 'Reabilitação', 'Peso corporal'],
-  ['Ponte de glúteos com pausa', 'Lombar', 'Reabilitação', 'Peso corporal'],
-  ['Extensão lombar na máquina', 'Lombar', 'Musculação', 'Máquina'],
-  ['Gato-camelo', 'Lombar', 'Mobilidade', 'Peso corporal'],
-
-  // ---------------- CORPO INTEIRO ----------------
-  ['Burpees', 'Corpo inteiro', 'Funcional', 'Peso corporal'],
-  ['Kettlebell swing', 'Corpo inteiro', 'Funcional', 'Kettlebell'],
-  ['Turkish get-up', 'Corpo inteiro', 'Funcional', 'Kettlebell'],
-  ['Thruster', 'Corpo inteiro', 'Funcional', 'Barra'],
-  ['Clean and press', 'Corpo inteiro', 'Funcional', 'Barra'],
-  ['Snatch com haltere', 'Corpo inteiro', 'Funcional', 'Halteres'],
-  ['Wall ball', 'Corpo inteiro', 'Funcional', 'Bola medicinal'],
-  ['Battle rope', 'Corpo inteiro', 'Funcional', 'Corda naval'],
-  ['Slam ball', 'Corpo inteiro', 'Funcional', 'Bola medicinal'],
-  ['Bear crawl', 'Corpo inteiro', 'Funcional', 'Peso corporal'],
-  ['Sled push', 'Corpo inteiro', 'Funcional', 'Trenó'],
-  ['Box jump', 'Corpo inteiro', 'Funcional', 'Caixa'],
-  ['Jumping jacks', 'Corpo inteiro', 'Em casa', 'Peso corporal'],
-  ['Agachamento com salto', 'Corpo inteiro', 'Funcional', 'Peso corporal'],
-  ['Devil press', 'Corpo inteiro', 'Funcional', 'Halteres'],
-  ['Man maker', 'Corpo inteiro', 'Funcional', 'Halteres'],
-
-  // ---------------- CARDIO ----------------
-  ['Passadeira — caminhada', 'Cardio', 'Aeróbico', 'Passadeira'],
-  ['Passadeira — corrida contínua', 'Cardio', 'Aeróbico', 'Passadeira'],
-  ['Passadeira — intervalado', 'Cardio', 'Aeróbico', 'Passadeira'],
-  ['Passadeira — inclinação', 'Cardio', 'Aeróbico', 'Passadeira'],
-  ['Bicicleta estática', 'Cardio', 'Aeróbico', 'Bicicleta'],
-  ['Bicicleta — intervalado', 'Cardio', 'Aeróbico', 'Bicicleta'],
-  ['Elíptica', 'Cardio', 'Aeróbico', 'Elíptica'],
-  ['Remo ergómetro', 'Cardio', 'Aeróbico', 'Remo'],
-  ['Escadas', 'Cardio', 'Aeróbico', 'Simulador'],
-  ['Corda de saltar', 'Cardio', 'Aeróbico', 'Corda'],
-  ['Assault bike', 'Cardio', 'Aeróbico', 'Bicicleta'],
-  ['Corrida ao ar livre', 'Cardio', 'Aeróbico', 'Nenhum'],
-  ['Caminhada ao ar livre', 'Cardio', 'Aeróbico', 'Nenhum'],
-  ['Natação', 'Cardio', 'Aeróbico', 'Piscina'],
-  ['Sprint', 'Cardio', 'Aeróbico', 'Nenhum'],
-
-  // ---------------- MOBILIDADE E ALONGAMENTO ----------------
-  ['Alongamento de isquiotibiais', 'Mobilidade', 'Alongamento', 'Peso corporal'],
-  ['Alongamento de quadricípite', 'Mobilidade', 'Alongamento', 'Peso corporal'],
-  ['Alongamento de peitoral', 'Mobilidade', 'Alongamento', 'Peso corporal'],
-  ['Alongamento de tricípite', 'Mobilidade', 'Alongamento', 'Peso corporal'],
-  ['Alongamento de gémeos', 'Mobilidade', 'Alongamento', 'Peso corporal'],
-  ['Alongamento de glúteo', 'Mobilidade', 'Alongamento', 'Peso corporal'],
-  ['Mobilidade de anca 90/90', 'Mobilidade', 'Mobilidade', 'Peso corporal'],
-  ['Mobilidade torácica', 'Mobilidade', 'Mobilidade', 'Peso corporal'],
-  ['Mobilidade de ombro com bastão', 'Mobilidade', 'Mobilidade', 'Bastão'],
-  ['Mobilidade de tornozelo', 'Mobilidade', 'Mobilidade', 'Peso corporal'],
-  ['Rotação torácica deitado', 'Mobilidade', 'Mobilidade', 'Peso corporal'],
-  ['Postura da criança', 'Mobilidade', 'Alongamento', 'Colchão'],
-  ['Cão olhando para baixo', 'Mobilidade', 'Alongamento', 'Colchão'],
-  ['Libertação miofascial — quadricípite', 'Mobilidade', 'Reabilitação', 'Rolo'],
-  ['Libertação miofascial — costas', 'Mobilidade', 'Reabilitação', 'Rolo'],
-  ['Libertação miofascial — gémeos', 'Mobilidade', 'Reabilitação', 'Rolo'],
-  ['Alongamento de flexores da anca', 'Mobilidade', 'Alongamento', 'Peso corporal'],
-  ['Alongamento cervical', 'Mobilidade', 'Laboral', 'Nenhum'],
-  ['Alongamento de punho', 'Mobilidade', 'Laboral', 'Nenhum'],
-  ['Rotação de ombros sentado', 'Mobilidade', 'Laboral', 'Nenhum'],
-  ['Extensão de coluna sentado', 'Mobilidade', 'Laboral', 'Cadeira'],
-];
-
-// Sobe sempre que a biblioteca de origem crescer. Quem ja usava a aplicacao
-// tem a biblioteca gravada: sem esta marca, ficaria preso a versao em que
-// entrou e nunca veria os exercicios novos.
-const BIBLIOTECA_VERSAO = 2;
-
-const EMPTY_TREINOS = { biblioteca: [], bibliotecaVersao: BIBLIOTECA_VERSAO, gruposMusculares: [], categorias: [], modelos: [], prescricoes: [] };
-
-// A biblioteca base so e semeada uma vez. O `base: true` marca a origem, para
-// distinguir do que o treinador criou -- e para nao voltar a semear se ele
-// apagar tudo de proposito.
 function chaveNome(nome) {
   return String(nome || '').trim().toLowerCase();
 }
 
-function semearBiblioteca() {
-  return EXERCICIOS_BASE.map(([nome, grupo, categoria, equipamento]) => ({
-    id: uid(), nome, grupo, categoria, equipamento, instrucoes: '', base: true,
-  }));
+// A biblioteca que o resto da aplicacao ve: a de origem, menos o que foi
+// apagado, com as edicoes por cima, mais o que o treinador criou. Sem nada
+// disso -- que e o caso comum -- devolve a lista de origem tal e qual, sem
+// alocar 2076 objetos a cada gravacao.
+function derivarBiblioteca(d) {
+  const ocultos = Array.isArray(d.bibliotecaOcultos) ? d.bibliotecaOcultos : [];
+  const edicoes = d.bibliotecaEdicoes || {};
+  const extra = Array.isArray(d.bibliotecaExtra) ? d.bibliotecaExtra : [];
+  if (!ocultos.length && !Object.keys(edicoes).length && !extra.length) return BIBLIOTECA_BASE;
+
+  const escondidos = new Set(ocultos);
+  const lista = [];
+  BIBLIOTECA_BASE.forEach((ex) => {
+    if (escondidos.has(ex.id)) return;
+    const ed = edicoes[ex.id];
+    lista.push(ed ? { ...ex, ...ed, busca: chaveBusca(ed.nome || ex.nome) } : ex);
+  });
+  extra.forEach((e) => lista.push({ ...e, base: false, busca: chaveBusca(e.nome) }));
+  // A lista de origem ja vem ordenada do gerador; so os acrescentados a
+  // desalinham, e esses sao poucos.
+  if (extra.length) lista.sort((a, b) => byNamePt(a.nome, b.nome));
+  return lista;
 }
 
-// Funde a biblioteca gravada com a de origem, uma unica vez por versao.
-// Depois disso a marca fica em dia e apagar um exercicio passa a ser
-// definitivo -- senao, tudo o que o treinador apagasse voltava no arranque
-// seguinte.
-function fundirBiblioteca(guardada, versao) {
-  if (!Array.isArray(guardada)) return semearBiblioteca();
-  if ((versao || 0) >= BIBLIOTECA_VERSAO) return guardada;
+// Ate a versao 2 a biblioteca de origem era gravada inteira, com um id
+// aleatorio por exercicio. Aqui esses ids passam a ser os novos -- que sao o
+// nome -- e as prescricoes ja criadas sao reescritas: sem isto, um programa
+// existente perdia a ligacao ao exercicio e com ela as instrucoes que saem no
+// PDF do aluno.
+function migrarBiblioteca(d) {
+  if (!Array.isArray(d.biblioteca) || (d.bibliotecaVersao || 0) >= BIBLIOTECA_VERSAO) return d;
 
-  const porNome = new Map(semearBiblioteca().map((e) => [chaveNome(e.nome), e]));
-  const atualizada = guardada.map((e) => {
+  const porNome = new Map(BIBLIOTECA_BASE.map((e) => [chaveNome(e.nome), e]));
+  const mapa = new Map();
+  const edicoes = {};
+  const extra = [];
+  const presentes = new Set();
+
+  d.biblioteca.forEach((e) => {
     const daBase = porNome.get(chaveNome(e.nome));
-    if (!daBase) {
-      // Criado pelo treinador, ou de uma versao antiga que ja nao existe.
-      // So garante que tem categoria, para nao cair fora dos filtros.
-      return { ...e, categoria: e.categoria || CATEGORIAS_BASE[0] };
-    }
-    porNome.delete(chaveNome(e.nome));
-    // Adota a taxonomia nova mas preserva o que o treinador escreveu.
-    return {
-      ...e,
-      grupo: daBase.grupo,
-      categoria: daBase.categoria,
-      equipamento: e.equipamento || daBase.equipamento,
-    };
+    if (!daBase) { extra.push({ ...e, base: false }); return; }
+    presentes.add(daBase.id);
+    if (e.id !== daBase.id) mapa.set(e.id, daBase.id);
+    // O que ele escreveu sobrevive; grupo, categoria e equipamento passam a
+    // vir da lista nova, que e a que esta certa.
+    if (e.instrucoes) edicoes[daBase.id] = { instrucoes: e.instrucoes };
   });
-  return [...atualizada, ...porNome.values()];
+
+  // Apagados de proposito: dos que existiam na versao dele, os que ja nao
+  // estao gravados. So a partir da versao 2, que e a unica cuja lista de
+  // origem se conhece -- nas anteriores nao da para distinguir "apagado" de
+  // "ainda nao existia", e ressuscitar um exercicio custa menos do que
+  // esconder mil e novecentos.
+  const ocultos = (d.bibliotecaVersao || 0) === 2
+    ? IDS_LEGADO.filter((id) => !presentes.has(id))
+    : [];
+
+  const remapear = (lista) => (Array.isArray(lista) ? lista : []).map((p) => ({
+    ...p,
+    treinos: (p.treinos || []).map((t) => ({
+      ...t,
+      exercicios: (t.exercicios || []).map((ex) => (mapa.has(ex.exercicioId)
+        ? { ...ex, exercicioId: mapa.get(ex.exercicioId) }
+        : ex)),
+    })),
+  }));
+
+  return {
+    ...d,
+    biblioteca: null,
+    bibliotecaExtra: extra,
+    bibliotecaEdicoes: edicoes,
+    bibliotecaOcultos: ocultos,
+    prescricoes: remapear(d.prescricoes),
+    modelos: remapear(d.modelos),
+  };
 }
 
 function normalizarTreinos(raw) {
-  const d = raw && typeof raw === 'object' ? raw : {};
-  return {
-    biblioteca: fundirBiblioteca(d.biblioteca, d.bibliotecaVersao),
+  const d = migrarBiblioteca(raw && typeof raw === 'object' ? raw : {});
+  const guardado = {
     bibliotecaVersao: BIBLIOTECA_VERSAO,
+    bibliotecaExtra: Array.isArray(d.bibliotecaExtra) ? d.bibliotecaExtra : [],
+    bibliotecaEdicoes: d.bibliotecaEdicoes && typeof d.bibliotecaEdicoes === 'object' ? d.bibliotecaEdicoes : {},
+    bibliotecaOcultos: Array.isArray(d.bibliotecaOcultos) ? d.bibliotecaOcultos : [],
     // Grupos e categorias que o treinador criou, para lá dos de origem.
     gruposMusculares: Array.isArray(d.gruposMusculares) ? d.gruposMusculares : [],
     categorias: Array.isArray(d.categorias) ? d.categorias : [],
-    // Programas guardados para reutilizar noutros alunos. Não pertencem a
-    // ninguém: são cópias, e editar o modelo não mexe em quem já o usou.
     modelos: Array.isArray(d.modelos) ? d.modelos : [],
     prescricoes: Array.isArray(d.prescricoes) ? d.prescricoes : [],
   };
+  return { ...guardado, biblioteca: derivarBiblioteca(guardado) };
+}
+
+// O que vai mesmo para a base de dados. A biblioteca e derivada do codigo:
+// grava-la seria reescrever 2076 exercicios a cada treino guardado.
+function serializarTreinos(t) {
+  const { biblioteca, ...guardado } = t;
+  return guardado;
 }
 
 // Lista completa: os de origem, os que o treinador acrescentou, e ainda os
@@ -4546,8 +4398,12 @@ function SessionFormModal({ session, students, defaultDate, reposicaoDe, customC
 
 /* ===================== ECRAS DE TREINO ===================== */
 
+// Quantos exercicios se desenham de uma vez. Sao 2076 na biblioteca: mostra-los
+// todos enchia o modal de milhares de nos para o treinador ler os primeiros.
+const LIMITE_LISTA_EXERCICIOS = 60;
+
 // Escolher um exercicio da biblioteca, criar, editar ou apagar -- tudo sem sair
-// do sitio. Editar importa mais do que parece: os 60 exercicios semeados nascem
+// do sitio. Editar importa mais do que parece: os exercicios de origem nascem
 // sem instrucoes, e sao as instrucoes que o aluno le no PDF.
 function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEditar, onApagar, onCriarGrupo, onCriarCategoria, onFechar }) {
   const biblioteca = treinos.biblioteca;
@@ -4561,14 +4417,20 @@ function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEdi
   const [form, setForm] = useState({ nome: '', grupo: grupos[0], categoria: categorias[0], equipamento: '', instrucoes: '' });
   const [aApagar, setAApagar] = useState(null);
 
+  // A biblioteca ja vem ordenada; filtrar preserva a ordem. A procura e sobre
+  // o nome sem acentos, senao escrever "biceps" nao encontrava "Bíceps".
   const filtrados = useMemo(() => {
-    const termo = procura.trim().toLowerCase();
-    return biblioteca
-      .filter((e) => (grupo === 'todos' || e.grupo === grupo)
-        && (categoria === 'todos' || e.categoria === categoria)
-        && (!termo || e.nome.toLowerCase().includes(termo)))
-      .sort((a, b) => byNamePt(a.nome, b.nome));
+    const termo = chaveBusca(procura.trim());
+    return biblioteca.filter((e) => (grupo === 'todos' || e.grupo === grupo)
+      && (categoria === 'todos' || e.categoria === categoria)
+      && (!termo || (e.busca || chaveBusca(e.nome)).includes(termo)));
   }, [biblioteca, procura, grupo, categoria]);
+
+  // Sao mais de dois mil exercicios: desenhar todos punha milhares de nos no
+  // ecra so para o treinador ler os primeiros. Mostra os primeiros e diz
+  // quantos ficaram de fora.
+  const visiveis = filtrados.slice(0, LIMITE_LISTA_EXERCICIOS);
+  const escondidos = filtrados.length - visiveis.length;
 
   function abrirNovo() {
     setForm({ nome: '', grupo: grupos[0], categoria: categorias[0], equipamento: '', instrucoes: '' });
@@ -4622,13 +4484,16 @@ function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEdi
               <Plus size={14} /> Criar exercício novo
             </button>
 
-            <div className="text-2xs font-body text-faint">{plural(filtrados.length, 'exercício', 'exercícios')}</div>
+            <div className="text-2xs font-body text-faint">
+              {plural(filtrados.length, 'exercício', 'exercícios')}
+              {escondidos > 0 ? ` · a mostrar os primeiros ${visiveis.length}` : ''}
+            </div>
 
             {filtrados.length === 0 ? (
               <EmptyState icon={Dumbbell} message="Nenhum exercício encontrado." hint="Experimente outro termo, ou crie um exercício novo." />
             ) : (
               <div className="flex flex-col gap-1.5" style={{ maxHeight: '46vh', overflowY: 'auto' }}>
-                {filtrados.map((e) => (
+                {visiveis.map((e) => (
                   // Os tres botoes sao irmaos: aninhar botoes dentro de botoes e
                   // ARIA invalido e baralha o nome acessivel de cada um.
                   <div key={e.id} className="flex items-stretch gap-1 rounded-lg border border-hair min-w-0" style={{ backgroundColor: 'var(--bg-elevated)' }}>
@@ -4649,6 +4514,11 @@ function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEdi
                     </button>
                   </div>
                 ))}
+                {escondidos > 0 ? (
+                  <p className="text-2xs font-body text-faint text-center py-2">
+                    Mais {escondidos.toLocaleString('pt-PT')} correspondem à procura. Escreva mais, ou filtre por grupo.
+                  </p>
+                ) : null}
               </div>
             )}
           </>
@@ -6702,9 +6572,16 @@ function AppInner() {
     setPhotos(Array.isArray(ph) ? ph : []);
     setCustomCategories({ ...EMPTY_CUSTOM_CATEGORIES, ...(cc || {}) });
     setDefinicoes(normalizarDefinicoes(df));
+    // Escreve a migração de imediato em vez de esperar pela próxima gravação:
+    // é o que troca o bloco antigo, com a biblioteca inteira lá dentro, por um
+    // de poucos kB. Enquanto não passar, cada arranque volta a migrar — o que
+    // é inofensivo, mas continua a arrastar tudo pela rede.
     const treinosNorm = normalizarTreinos(tr);
     treinosRef.current = treinosNorm;
     setTreinos(treinosNorm);
+    if (Array.isArray(tr && tr.biblioteca) && storageOk) {
+      try { await writeStoredValue('treinos', JSON.stringify(serializarTreinos(treinosNorm))); } catch (e) { /* fica para a próxima gravação */ }
+    }
     setLoading(false);
   }
 
@@ -6772,7 +6649,7 @@ function AppInner() {
     treinosRef.current = normalizado;
     setTreinos(normalizado);
     if (!storageOk) return;
-    try { await writeStoredValue('treinos', JSON.stringify(normalizado)); } catch (e) { showToast('Erro ao guardar os treinos.', 'error'); }
+    try { await writeStoredValue('treinos', JSON.stringify(serializarTreinos(normalizado))); } catch (e) { showToast('Erro ao guardar os treinos.', 'error'); }
   }
 
   async function persistDefinicoes(next) {
@@ -7015,15 +6892,28 @@ function AppInner() {
   // Devolve o exercicio criado para o chamador o poder acrescentar logo ao treino.
   function criarExercicioBiblioteca(dados) {
     const exercicio = { id: uid(), base: false, instrucoes: '', ...dados };
-    persistTreinos((t) => ({ ...t, biblioteca: [...t.biblioteca, exercicio] }));
+    persistTreinos((t) => ({ ...t, bibliotecaExtra: [...t.bibliotecaExtra, exercicio] }));
     return exercicio;
   }
 
+  // Editar um exercicio de origem nao guarda o exercicio inteiro: guarda so os
+  // campos que mudaram. E o que permite ter 2076 na aplicacao e dois na base de
+  // dados. Se a edicao repuser tudo como estava, a marca desaparece.
   function editarExercicioBiblioteca(exercicio) {
-    persistTreinos((t) => ({
-      ...t,
-      biblioteca: t.biblioteca.map((e) => (e.id === exercicio.id ? exercicio : e)),
-    }));
+    persistTreinos((t) => {
+      if (!ehExercicioBase(exercicio.id)) {
+        return { ...t, bibliotecaExtra: t.bibliotecaExtra.map((e) => (e.id === exercicio.id ? exercicio : e)) };
+      }
+      const origem = BIBLIOTECA_BASE.find((e) => e.id === exercicio.id);
+      const mudanca = {};
+      ['nome', 'grupo', 'categoria', 'equipamento', 'instrucoes'].forEach((campo) => {
+        if ((exercicio[campo] || '') !== ((origem && origem[campo]) || '')) mudanca[campo] = exercicio[campo] || '';
+      });
+      const edicoes = { ...t.bibliotecaEdicoes };
+      if (Object.keys(mudanca).length) edicoes[exercicio.id] = mudanca;
+      else delete edicoes[exercicio.id];
+      return { ...t, bibliotecaEdicoes: edicoes };
+    });
   }
 
   // Grupos e categorias novos entram na lista propria do treinador, sem tocar
@@ -7044,8 +6934,21 @@ function AppInner() {
       : { ...t, categorias: [...(t.categorias || []), limpo] }));
   }
 
+  // Um exercicio de origem nao se apaga -- fica marcado como escondido. Uma
+  // lista de ids ocupa muito menos do que os 2076 que sobram.
   function apagarExercicioBiblioteca(id) {
-    persistTreinos((t) => ({ ...t, biblioteca: t.biblioteca.filter((e) => e.id !== id) }));
+    persistTreinos((t) => {
+      if (!ehExercicioBase(id)) {
+        return { ...t, bibliotecaExtra: t.bibliotecaExtra.filter((e) => e.id !== id) };
+      }
+      const edicoes = { ...t.bibliotecaEdicoes };
+      delete edicoes[id];
+      return {
+        ...t,
+        bibliotecaOcultos: t.bibliotecaOcultos.includes(id) ? t.bibliotecaOcultos : [...t.bibliotecaOcultos, id],
+        bibliotecaEdicoes: edicoes,
+      };
+    });
     showToast('Exercício removido da biblioteca.');
   }
 

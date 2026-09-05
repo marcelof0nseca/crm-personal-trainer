@@ -20,6 +20,8 @@ Stripe · Recharts · lucide-react · Tailwind + CSS-in-JS. Sem router: a navega
 | `src/components/LandingPage.tsx` | Página pública |
 | `src/components/LegalDocs.tsx` | Termos e política de privacidade. **Contém declarações legais** |
 | `src/components/Turnstile.tsx` | CAPTCHA |
+| `src/data/exercicios.ts` | **Gerado.** 2 076 exercícios, 18 grupos, 14 categorias. Não editar à mão |
+| `scripts/gerar-exercicios.mjs` | Gera o ficheiro acima a partir do catálogo MFIT (que não está no repositório) |
 | `supabase/functions/` | 5 Edge Functions |
 | `supabase-schema.sql` | Schema completo, idempotente |
 
@@ -45,6 +47,14 @@ Consequências a ter presentes:
 - **As avaliações físicas são sessões da agenda** (`type: 'avaliacao'` + campos
   `assess*`), não uma entidade própria. Editar avaliações toca na agenda.
 - As fotografias são `data:` URI dentro do bloco `fotos`. Não usar para vídeo.
+- **A biblioteca de exercícios é a exceção: não é gravada.** Vive no código
+  (`src/data/exercicios.ts`) e só as diferenças vão para a base de dados —
+  `bibliotecaExtra` (criados), `bibliotecaEdicoes` (alterados),
+  `bibliotecaOcultos` (apagados). `normalizarTreinos` deriva a lista completa
+  ao ler; `serializarTreinos` volta a tirá-la antes de gravar. Sem isto,
+  guardar um treino reescrevia ~300 kB de exercícios que já estão no `bundle`.
+  O id de um exercício de origem é `'e:' + nome`, estável entre versões, para
+  as prescrições não perderem a ligação.
 
 O modelo aguenta o que existe. Torna-se insuficiente quando chegar a área do
 aluno, os vídeos ou a partilha em equipa.
@@ -54,6 +64,12 @@ aluno, os vídeos ou a partilha em equipa.
 **Idioma.** Interface, comentários e mensagens em pt-PT. `liberar`→`libertar`,
 `em um`→`num`, `seu plano`→`o seu plano`. Números com vírgula decimal:
 `toLocaleString('pt-PT')`, nunca `toFixed` em texto visível.
+
+Isto vale também para os dados. O catálogo de exercícios veio do Brasil e é
+traduzido no gerador, não à mão: `panturrilha`→`gémeos`, `esteira`→`passadeira`,
+`quadríceps`→`quadricípites`, `posteriores de coxa`→`isquiotibiais`,
+`caneleira`→`tornozeleira`. Um termo novo acrescenta-se a `SUBSTITUICOES` em
+`scripts/gerar-exercicios.mjs` e volta a correr-se o script.
 
 **Design.** Tokens CSS em `GlobalStyles` (`--brass` turquesa, `--rust`,
 `--gold`, `--bg-*`, `--text-*`). Regras do dono do produto:
@@ -83,6 +99,10 @@ sobre um cartão clicável são **irmãos**, não filhos.
   impressão esconder a app com um seletor de filho direto. Gráficos de impressão
   usam dimensões fixas — o `ResponsiveContainer` mede zero fora do ecrã.
 - **`fmtDateBR` devolve `dd/mm` sem ano.** Serve na agenda, não em documentos.
+- **Listas de dois mil elementos não se desenham inteiras.** O seletor de
+  exercícios mostra 60 e diz quantos ficaram de fora. A pesquisa é sobre um
+  campo `busca` pré-calculado sem acentos — normalizar 2 076 nomes a cada tecla
+  custava tempo, e sem isso escrever "biceps" não encontrava "Bíceps".
 
 ## Infraestrutura
 

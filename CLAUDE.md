@@ -225,6 +225,29 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   desligado** (nuvem cinzenta), senão o certificado falha.
 - **Turnstile** — cada domínio novo tem de ser acrescentado à lista de
   hostnames, senão ninguém entra.
+- **Dois fatores (TOTP)** — em Definições → Segurança. O ecrã do código é da
+  interface; o portão a sério é a política restritiva `app_data_exige_aal2` no
+  `supabase-schema.sql`. **Se essa política não estiver aplicada, uma sessão em
+  `aal1` continua a ler tudo pela API.**
+
+### O plano gratuito não chega, e a razão não é o número de utilizadores
+
+As fotografias são `data:` URI **dentro da base de dados** (`resizePhoto` a
+700 px e qualidade 0,72 dá ~90 kB cada, já em base64). O bloco `fotos` é lido
+**inteiro em cada abertura da aplicação**.
+
+Um treinador com 30 alunos e 4 avaliações por ano com 3 fotografias faz ~32 MB
+por ano — e cerca de **1 GB de tráfego por mês** só ele, se abrir a aplicação
+todos os dias. O plano gratuito tem 500 MB de base de dados e 5 GB de tráfego:
+**parte por volta do quinto cliente pagante**, e não por causa de "escala".
+
+Some-se que os projetos gratuitos **suspendem ao fim de 7 dias sem atividade** e
+não têm cópias de segurança diárias — inaceitável num produto vendido.
+
+**A correção certa não é mudar de plano, é tirar as fotografias da base de
+dados** e pô-las no Supabase Storage com URL assinado e temporário: carregam a
+pedido em vez de em cada arranque, custam uma fração por GB, e fecham de caminho
+o "URLs temporários para ficheiros" da especificação.
 
 Variáveis em `.env.example`. Segredos ficam em `supabase secrets` e nas
 variáveis do Vercel. Os `price_...` são públicos; **`sk_...` e `whsec_...` nunca
@@ -294,11 +317,14 @@ existe de verdade.
 
 ### Falta, e é barato
 
-- MFA (o Supabase já suporta)
+- **Fotografias para o Storage** — ver a secção 7. É a próxima coisa a fazer,
+  e não é só custo: é o que trava o crescimento
 - Deslocação automática ao arrastar exercícios para fora do ecrã — hoje o
   arrasto só chega ao que está visível; os botões de subir e descer cobrem o
   resto
 - Atalhos de teclado no construtor
+- Códigos de recuperação para os dois fatores — hoje, perder o telemóvel é
+  perder o acesso, e a interface di-lo
 
 **A linha do exercício desenha os campos a partir de `CAMPOS_BASE` e
 `CAMPOS_EXTRA`** — acrescentar um campo é estender uma lista, mais o PDF.
@@ -331,8 +357,10 @@ Combinado por níveis, do mais barato ao mais caro:
 1. ~~Defeitos: conflito de horário e carimbo de versão~~ **feito**
 2. ~~Agenda: vista de dia, lista, filtros, desfazer~~ **feito**
 3. ~~Prescrição: métodos como lista, blocos, campos novos, duplicar e arrastar~~ **feito**
-4. **Segurança:** MFA e registo de sessões
-5. Decisões de produto — ver secção 10
+4. ~~Segurança: dois fatores e fechar sessão em todo o lado~~ **feito**
+   — falta correr a política `app_data_exige_aal2` no Supabase
+5. **Fotografias para o Storage** — custo e escala, ver secção 7
+6. Decisões de produto — ver secção 10
 
 ---
 

@@ -4419,7 +4419,7 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
   if (students.length === 0) {
     return (
       <div className="px-4 py-4 max-w-6xl mx-auto">
-        <EmptyState icon={Users} message="Nenhum aluno registado ainda. Registe seu primeiro aluno para ver o painel financeiro e montar sua agenda." cta="Registar aluno" onCta={() => setView('students')} />
+        <EmptyState icon={Users} message="Nenhum aluno registado ainda. Registe o seu primeiro aluno para ver o painel financeiro e montar a sua agenda." cta="Registar aluno" onCta={() => setView('students')} />
       </div>
     );
   }

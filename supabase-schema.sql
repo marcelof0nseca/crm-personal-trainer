@@ -83,6 +83,29 @@ for delete
 to authenticated
 using (public.has_personal_app_access(user_id));
 
+-- Dois fatores: quem os ativou tem de os passar para chegar aos dados.
+--
+-- Restritiva de propósito: soma-se às políticas acima em vez de as substituir.
+-- E só aperta para quem tem um fator verificado -- para os outros continua a
+-- aceitar aal1, senão ninguém entrava. Sem isto, o pedido do código na
+-- aplicação é só um ecrã: a sessão em aal1 continuava a ler tudo pela API.
+drop policy if exists "app_data_exige_aal2" on public.app_data;
+create policy "app_data_exige_aal2"
+on public.app_data
+as restrictive
+to authenticated
+using (
+  array[(select auth.jwt() ->> 'aal')] <@ (
+    select case
+      when count(id) > 0 then array['aal2']
+      else array['aal1', 'aal2']
+    end
+    from auth.mfa_factors
+    where auth.mfa_factors.user_id = (select auth.uid())
+      and auth.mfa_factors.status = 'verified'
+  )
+);
+
 alter table public.personal_subscriptions enable row level security;
 
 grant select on public.personal_subscriptions to authenticated;

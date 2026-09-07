@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   LayoutDashboard, CalendarDays, CalendarRange, Users, Plus, UserPlus, X, Trash2,
@@ -987,6 +987,42 @@ function resizePhoto(file, maxDim, quality) {
   });
 }
 
+/* ============================== DOIS FATORES ============================== */
+
+// Verificação em dois passos por aplicação autenticadora (TOTP). O Supabase
+// guarda o segredo e valida o código; aqui só existe o fluxo.
+//
+// Um pormenor que não se vê: assim que há um fator verificado, a sessão que sai
+// do início de sessão fica em `aal1` e só sobe a `aal2` depois de o código ser
+// aceite. É por isso que o nível se pergunta, em vez de se assumir.
+async function fatoresMfa() {
+  if (!supabase) return [];
+  const { data, error } = await supabase.auth.mfa.listFactors();
+  if (error || !data) return [];
+  return data.totp || [];
+}
+
+async function nivelDeGarantia() {
+  if (!supabase) return null;
+  const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  return error ? null : data;
+}
+
+// Falta subir um degrau: a conta tem dois fatores e esta sessão ainda não os
+// passou.
+function faltaSegundoFator(nivel) {
+  return Boolean(nivel && nivel.currentLevel === 'aal1' && nivel.nextLevel === 'aal2');
+}
+
+async function validarCodigoMfa(factorId, codigo) {
+  const { data: desafio, error: erroDesafio } = await supabase.auth.mfa.challenge({ factorId });
+  if (erroDesafio) throw erroDesafio;
+  const { error } = await supabase.auth.mfa.verify({
+    factorId, challengeId: desafio.id, code: codigo.replace(/\s/g, ''),
+  });
+  if (error) throw error;
+}
+
 function browserStorageAvailable() {
   if (typeof window === 'undefined') return false;
   return supabaseConfigured || !!(window as any).storage || !!window.localStorage;
@@ -1779,6 +1815,74 @@ function clearLoginAttemptState(email) {
   try { window.localStorage.removeItem(loginAttemptKey(email)); } catch (e) { /* localStorage indisponível */ }
 }
 
+// Ecrã que se interpõe entre o início de sessão e a aplicação quando a conta
+// tem dois fatores. Não tem "continuar sem verificar": ou se passa, ou se sai.
+function MfaChallengeScreen({ onVerificado, onSair }) {
+  const [codigo, setCodigo] = useState('');
+  const [erro, setErro] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+
+  async function verificar(e) {
+    if (e) e.preventDefault();
+    const limpo = codigo.replace(/\s/g, '');
+    if (limpo.length < 6) { setErro('O código tem seis dígitos.'); return; }
+    setOcupado(true);
+    setErro('');
+    try {
+      const fatores = await fatoresMfa();
+      const verificado = fatores.find((f) => f.status === 'verified');
+      if (!verificado) { setErro('Não encontrei o dispositivo registado nesta conta.'); return; }
+      await validarCodigoMfa(verificado.id, limpo);
+      onVerificado();
+    } catch (err) {
+      setErro('Código inválido ou expirado. Os códigos mudam a cada 30 segundos.');
+      setCodigo('');
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-base flex items-center justify-center px-4">
+      <form onSubmit={verificar} className="w-full max-w-sm flex flex-col gap-4">
+        <div className="flex flex-col items-center gap-2.5 text-center">
+          <img src={LOGO_SRC} alt="PTMANAGER" style={{ width: 48, height: 48 }} />
+          <h1 className="font-display text-xl font-semibold text-primary">Verificação em dois passos</h1>
+          <p className="text-sm font-body text-muted">
+            Abra a sua aplicação autenticadora e escreva o código de seis dígitos.
+          </p>
+        </div>
+
+        <input
+          value={codigo}
+          onChange={(e) => setCodigo(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          aria-label="Código de seis dígitos"
+          placeholder="000000"
+          autoFocus
+          className="input-field font-mono"
+          style={{ fontSize: 24, letterSpacing: '0.35em', textAlign: 'center' }}
+        />
+
+        {erro && (
+          <div className="text-xs font-body px-3 py-2 rounded-lg flex items-start gap-2" style={{ backgroundColor: 'var(--rust-soft)', color: 'var(--rust)' }}>
+            <AlertTriangle size={14} className="flex-shrink-0" style={{ marginTop: 1 }} />
+            <span>{erro}</span>
+          </div>
+        )}
+
+        <button type="submit" disabled={ocupado || codigo.length < 6} className="btn btn-primary" style={{ padding: '11px 16px' }}>
+          {ocupado ? <><Loader2 size={15} className="spin" /> A verificar...</> : 'Entrar'}
+        </button>
+        <button type="button" onClick={onSair} className="text-xs font-body link-sky self-center">
+          Sair e entrar com outra conta
+        </button>
+      </form>
+    </div>
+  );
+}
+
 function LoginScreen({ onBack, initialMode = 'signin' }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -2248,6 +2352,7 @@ function ChangePasswordModal({ email, onClose, onDone }) {
 const SETTINGS_SECTIONS = [
   { id: 'conta', label: 'Conta', icon: CircleUser },
   { id: 'aparencia', label: 'Aparência', icon: Sun },
+  { id: 'seguranca', label: 'Segurança', icon: KeyRound },
   { id: 'agenda', label: 'Agenda', icon: CalendarDays },
   { id: 'subscricao', label: 'Subscrição', icon: CreditCard },
   { id: 'dados', label: 'Dados e privacidade', icon: ShieldCheck },
@@ -2272,6 +2377,183 @@ function SettingsRow({ label, value, mono, tone, icon: Icon }) {
   );
 }
 
+// Ativar, desativar e ver o estado dos dois fatores. O QR vem do Supabase já
+// desenhado; o segredo em texto fica à vista porque há quem escreva à mão em
+// vez de apontar a câmara.
+function DoisFatoresBlock({ onToast }) {
+  const [estado, setEstado] = useState('a-ler');   // a-ler | inativo | a-registar | ativo
+  const [fator, setFator] = useState(null);
+  const [codigo, setCodigo] = useState('');
+  const [erro, setErro] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+  const [aDesativar, setADesativar] = useState(false);
+
+  const recarregar = useCallback(async () => {
+    const lista = await fatoresMfa();
+    const verificado = lista.find((f) => f.status === 'verified');
+    if (verificado) { setFator(verificado); setEstado('ativo'); return; }
+    // Registos abandonados a meio ficam pendurados na conta e impedem o
+    // seguinte: limpam-se antes de propor de novo.
+    await Promise.all(lista
+      .filter((f) => f.status !== 'verified')
+      .map((f) => supabase.auth.mfa.unenroll({ factorId: f.id }).catch(() => null)));
+    setFator(null);
+    setEstado('inativo');
+  }, []);
+
+  useEffect(() => { recarregar(); }, [recarregar]);
+
+  async function comecarRegisto() {
+    setOcupado(true);
+    setErro('');
+    try {
+      const { data, error } = await supabase.auth.mfa.enroll({
+        factorType: 'totp',
+        friendlyName: 'PTMANAGER ' + new Date().toISOString().slice(0, 10),
+      });
+      if (error) throw error;
+      setFator(data);
+      setEstado('a-registar');
+    } catch (e) {
+      setErro('Não consegui iniciar o registo. Tente novamente.');
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function confirmarRegisto(e) {
+    if (e) e.preventDefault();
+    setOcupado(true);
+    setErro('');
+    try {
+      await validarCodigoMfa(fator.id, codigo);
+      setCodigo('');
+      await recarregar();
+      onToast('Verificação em dois passos ativada.');
+    } catch (err) {
+      setErro('Código inválido. Confirme que a hora do telemóvel está certa.');
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function cancelarRegisto() {
+    if (fator) await supabase.auth.mfa.unenroll({ factorId: fator.id }).catch(() => null);
+    setCodigo('');
+    setErro('');
+    await recarregar();
+  }
+
+  async function desativar() {
+    setADesativar(false);
+    setOcupado(true);
+    try {
+      await supabase.auth.mfa.unenroll({ factorId: fator.id });
+      await recarregar();
+      onToast('Verificação em dois passos desativada.');
+    } catch (e) {
+      onToast('Não consegui desativar. Tente novamente.', 'error');
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <SettingsBlock
+      title="Verificação em dois passos"
+      description="Além da palavra-passe, pede um código de seis dígitos gerado no seu telemóvel. Guarda avaliações físicas e fotografias — vale a pena."
+    >
+      {estado === 'a-ler' && <div className="text-sm font-body text-faint">A verificar...</div>}
+
+      {estado === 'inativo' && (
+        <>
+          <div className="flex items-center gap-2 text-sm font-body text-muted">
+            <ShieldCheck size={15} className="text-faint flex-shrink-0" />
+            Desativada. Basta a palavra-passe para entrar.
+          </div>
+          <button type="button" onClick={comecarRegisto} disabled={ocupado} className="btn btn-primary self-start" style={{ fontSize: 12 }}>
+            {ocupado ? <><Loader2 size={13} className="spin" /> A preparar...</> : 'Ativar'}
+          </button>
+          {erro && <div className="text-xs font-body" style={{ color: 'var(--rust)' }}>{erro}</div>}
+        </>
+      )}
+
+      {estado === 'a-registar' && fator && (
+        <form onSubmit={confirmarRegisto} className="flex flex-col gap-3">
+          <p className="text-xs font-body text-muted">
+            1. Instale o Google Authenticator, o Authy ou a app de códigos do seu gestor de palavras-passe.<br />
+            2. Aponte a câmara a este código.<br />
+            3. Escreva os seis dígitos que aparecem.
+          </p>
+
+          {fator.totp?.qr_code && (
+            <img
+              src={fator.totp.qr_code}
+              alt="Código QR para a aplicação autenticadora"
+              className="self-start rounded-lg"
+              style={{ width: 176, height: 176, backgroundColor: '#FFFFFF', padding: 8 }}
+            />
+          )}
+
+          {fator.totp?.secret && (
+            <div className="flex flex-col gap-1">
+              <span className="text-2xs font-body text-faint">Ou escreva esta chave à mão:</span>
+              <code className="font-mono text-xs text-primary" style={{ wordBreak: 'break-all' }}>{fator.totp.secret}</code>
+            </div>
+          )}
+
+          <FormField label="Código de seis dígitos">
+            <input
+              value={codigo}
+              onChange={(ev) => setCodigo(ev.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              placeholder="000000"
+              className="input-field font-mono"
+              style={{ letterSpacing: '0.2em' }}
+            />
+          </FormField>
+
+          {erro && <div className="text-xs font-body" style={{ color: 'var(--rust)' }}>{erro}</div>}
+
+          <div className="flex gap-2 flex-wrap">
+            <button type="submit" disabled={ocupado || codigo.length < 6} className="btn btn-primary" style={{ fontSize: 12 }}>
+              {ocupado ? <><Loader2 size={13} className="spin" /> A confirmar...</> : 'Confirmar e ativar'}
+            </button>
+            <button type="button" onClick={cancelarRegisto} className="btn btn-ghost" style={{ fontSize: 12 }}>Cancelar</button>
+          </div>
+        </form>
+      )}
+
+      {estado === 'ativo' && (
+        <>
+          <div className="flex items-center gap-2 text-sm font-body" style={{ color: 'var(--brass)' }}>
+            <ShieldCheck size={15} className="flex-shrink-0" />
+            Ativa. Ao entrar, será pedido o código.
+          </div>
+          <p className="text-xs font-body text-faint">
+            Se perder o telemóvel, perde o acesso — não há códigos de recuperação. Guarde a chave
+            escrita num sítio seguro antes de precisar dela.
+          </p>
+          <button type="button" onClick={() => setADesativar(true)} disabled={ocupado} className="btn btn-ghost self-start" style={{ fontSize: 12, color: 'var(--rust)' }}>
+            Desativar
+          </button>
+        </>
+      )}
+
+      {aDesativar && (
+        <ConfirmDialog
+          title="Desativar dois fatores"
+          message="A conta passa a ficar protegida só pela palavra-passe. Pode voltar a ativar quando quiser."
+          confirmLabel="Desativar"
+          onCancel={() => setADesativar(false)}
+          onConfirm={desativar}
+        />
+      )}
+    </SettingsBlock>
+  );
+}
+
 function SettingsBlock({ title, description, children }) {
   return (
     <section className="flex flex-col gap-3">
@@ -2288,7 +2570,7 @@ function SettingsModal({
   user, subscription, students, sessions, finances, photos, customCategories,
   onClose, onSignOut, onRefreshSubscription, onChangePassword, onReset, onRestore,
   trainerName, onSaveTrainerName, definicoes, onSaveHorario, onSaveLembretes, permissaoNotificacoes,
-  tema, onMudarTema, temaResolvido,
+  tema, onMudarTema, temaResolvido, onToast, onSignOutGlobal,
 }) {
   const [section, setSection] = useState('conta');
   const [nome, setNome] = useState(trainerName || '');
@@ -2530,6 +2812,28 @@ function SettingsModal({
                   seja qual for o tema — poupa tinta e é o que o aluno espera receber.
                 </p>
               </SettingsBlock>
+            )}
+
+            {section === 'seguranca' && (
+              <>
+                {supabaseConfigured ? <DoisFatoresBlock onToast={onToast} /> : (
+                  <SettingsBlock title="Verificação em dois passos" description="Só disponível com sessão iniciada na nuvem.">
+                    <div className="text-sm font-body text-faint">Esta instalação está a correr sem conta.</div>
+                  </SettingsBlock>
+                )}
+
+                <SettingsBlock
+                  title="Sessões abertas"
+                  description="Se entrou num computador que não é seu, ou perdeu o telemóvel, feche tudo daqui."
+                >
+                  <button type="button" onClick={onSignOutGlobal} className="btn btn-ghost self-start" style={{ fontSize: 12 }}>
+                    Terminar sessão em todos os dispositivos
+                  </button>
+                  <p className="text-xs font-body text-faint">
+                    Fecha também esta janela. Terá de voltar a entrar em cada dispositivo.
+                  </p>
+                </SettingsBlock>
+              </>
             )}
 
             {section === 'agenda' && (
@@ -7101,6 +7405,7 @@ function AppInner() {
   // aplicação diz-lhe que o que está no ecrã não ficou guardado.
   const [conflito, setConflito] = useState(null);
   const [movimentoDesfazivel, setMovimentoDesfazivel] = useState(null);
+  const [mfaPendente, setMfaPendente] = useState(false);
   const [agendaFiltro, setAgendaFiltro] = useState(FILTRO_AGENDA_VAZIO);
   const [dayCursor, setDayCursor] = useState(() => new Date());
   const [permissaoNotificacoes, setPermissaoNotificacoes] = useState(
@@ -7370,6 +7675,17 @@ function AppInner() {
     if (!storageOk) { showToast('Dados salvos apenas nesta sessão (armazenamento indisponível).'); return; }
     await gravarBloco('alunos', JSON.stringify(next), 'Erro ao guardar. Tente novamente.');
   }
+  // Pergunta-se o nível a cada troca de utilizador. Quem não tem dois fatores
+  // nunca chega a ver o ecrã do código: `faltaSegundoFator` dá falso.
+  useEffect(() => {
+    if (!supabaseConfigured || !user) { setMfaPendente(false); return undefined; }
+    let cancelado = false;
+    nivelDeGarantia()
+      .then((nivel) => { if (!cancelado) setMfaPendente(faltaSegundoFator(nivel)); })
+      .catch(() => { if (!cancelado) setMfaPendente(false); });
+    return () => { cancelado = true; };
+  }, [user?.id]);
+
   // O filtro vale para as quatro escalas da agenda: alternar entre dia, semana,
   // mês e lista não pode fazer perder o que se estava a procurar.
   const sessoesVisiveis = useMemo(
@@ -7449,6 +7765,17 @@ function AppInner() {
     if (error) return error.message || 'Não foi possível guardar o nome.';
     if (data?.user) setUser(data.user);
     return '';
+  }
+
+  // Fecha a sessao em todo o lado, nao so aqui: e o que serve depois de
+  // perder um telemovel.
+  async function signOutGlobal() {
+    if (!supabase) return;
+    await supabase.auth.signOut({ scope: 'global' }).catch(() => supabase.auth.signOut());
+    esquecerVersoes();
+    setSettingsOpen(false);
+    setShowLogin(false);
+    clearLoadedData();
   }
 
   async function signOut() {
@@ -7912,6 +8239,12 @@ function AppInner() {
   }
 
   if (!authReady || !subscriptionReady || loading) return <LoadingScreen />;
+  // Antes de tudo o resto: a conta tem dois fatores e esta sessão ainda está a
+  // meio caminho. O portão é da interface — para ser mesmo um portão, é preciso
+  // a política `app_data_exige_aal2` do supabase-schema.sql.
+  if (mfaPendente) {
+    return <MfaChallengeScreen onVerificado={() => setMfaPendente(false)} onSair={signOut} />;
+  }
   if (supabaseConfigured && !user) {
     if (showLogin) return <LoginScreen initialMode={loginMode} onBack={() => setShowLogin(false)} />;
     return (
@@ -8092,6 +8425,8 @@ function AppInner() {
       )}
       {settingsOpen && (
         <SettingsModal
+          onToast={showToast}
+          onSignOutGlobal={signOutGlobal}
           tema={tema}
           onMudarTema={setTema}
           temaResolvido={temaResolvido}

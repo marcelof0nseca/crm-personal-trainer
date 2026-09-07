@@ -144,6 +144,9 @@ const EMPTY_DEFINICOES = {
   excecoes: {},          // { '2026-12-25': { aberto: false } }
   lembretes: { ativos: false, minutosAntes: 15 },
   duracaoSlot: 60,
+  // Gerar o credito automaticamente e configuravel, como a especificacao pede.
+  // 0 dias de validade significa sem prazo.
+  reposicao: { automatico: true, validadeDias: 30 },
 };
 
 // Aceita o formato antigo, de um par de horas por dia, e converte-o.
@@ -178,6 +181,10 @@ function normalizarDefinicoes(raw) {
     excecoes,
     lembretes: { ...EMPTY_DEFINICOES.lembretes, ...(d.lembretes || {}) },
     duracaoSlot: DURACOES_SLOT.includes(Number(d.duracaoSlot)) ? Number(d.duracaoSlot) : 60,
+    reposicao: {
+      ...EMPTY_DEFINICOES.reposicao,
+      ...(d.reposicao && typeof d.reposicao === 'object' ? d.reposicao : {}),
+    },
   };
 }
 
@@ -904,10 +911,38 @@ const ALERTA_FALTAS_NO_PERIODO = 3;
 
 const REPOSICAO_ESTADOS = {
   na: { id: 'na', label: 'Sem reposição', color: '#8C8C8C' },
-  pendente: { id: 'pendente', label: 'Pendente', color: '#D6534A' },
+  pendente: { id: 'pendente', label: 'Disponível', color: '#D6534A' },
   agendada: { id: 'agendada', label: 'Agendada', color: '#F5B44C' },
-  concluida: { id: 'concluida', label: 'Concluída', color: '#5FBFA0' },
+  concluida: { id: 'concluida', label: 'Utilizada', color: '#5FBFA0' },
+  expirado: { id: 'expirado', label: 'Expirada', color: '#8C8C8C' },
 };
+
+// Um crédito só expira enquanto está por usar. Depois de marcado, a validade
+// deixou de ter opinião: a aula já foi dada ou está marcada.
+function creditoExpirado(falta) {
+  return Boolean(falta.faltaCreditoValidade)
+    && falta.faltaCreditoValidade < fmtDateISO(new Date());
+}
+
+// Uma entrada de auditoria por cada mexida no crédito. Fica na própria falta:
+// o histórico de um crédito não faz sentido longe do crédito.
+function registarNoCredito(falta, quem, acao, detalhe) {
+  const log = Array.isArray(falta.faltaCreditoLog) ? falta.faltaCreditoLog : [];
+  return [...log, {
+    em: new Date().toISOString(),
+    quem: quem || 'Personal Trainer',
+    acao,
+    detalhe: detalhe || '',
+  }];
+}
+
+function validadePadrao(definicoes, dataDaFalta) {
+  const dias = (definicoes && definicoes.reposicao && definicoes.reposicao.validadeDias) || 0;
+  if (!dias) return '';
+  const base = new Date(`${dataDaFalta}T00:00:00`);
+  base.setDate(base.getDate() + dias);
+  return fmtDateISO(base);
+}
 
 function isFalta(session) {
   return session.status === 'falta' && session.kind !== 'evento';
@@ -923,9 +958,11 @@ function faltaPrecisaReposicao(falta) {
 // haver dois valores a dessincronizar.
 function reposicaoEstadoDe(falta, sessions) {
   if (!faltaPrecisaReposicao(falta)) return REPOSICAO_ESTADOS.na;
-  if (!falta.reposicaoSessionId) return REPOSICAO_ESTADOS.pendente;
+  if (!falta.reposicaoSessionId) {
+    return creditoExpirado(falta) ? REPOSICAO_ESTADOS.expirado : REPOSICAO_ESTADOS.pendente;
+  }
   const rep = sessions.find((s) => s.id === falta.reposicaoSessionId);
-  if (!rep) return REPOSICAO_ESTADOS.pendente;
+  if (!rep) return creditoExpirado(falta) ? REPOSICAO_ESTADOS.expirado : REPOSICAO_ESTADOS.pendente;
   if (rep.status === 'realizado') return REPOSICAO_ESTADOS.concluida;
   // Se a própria reposição falhou ou foi cancelada, a dívida continua por saldar.
   if (rep.status === 'falta' || rep.status === 'cancelado') return REPOSICAO_ESTADOS.pendente;
@@ -1139,6 +1176,14 @@ function fmtDateISO(date) {
 function fmtDateBR(date) {
   const d = new Date(date);
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+// Carimbo de auditoria: dia e hora, com ano — ao contrário de fmtDateBR, que
+// serve na agenda mas não num registo que se lê meses depois.
+function fmtDataHora(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('pt-PT', { dateStyle: 'short', timeStyle: 'short' });
 }
 function periodBounds() {
   const now = new Date();
@@ -2901,7 +2946,7 @@ function SettingsModal({
   user, subscription, students, sessions, finances, photos, customCategories,
   onClose, onSignOut, onRefreshSubscription, onChangePassword, onReset, onRestore,
   trainerName, onSaveTrainerName, definicoes, onSaveHorario, onSaveLembretes, permissaoNotificacoes,
-  onCopiarHorario, onRestaurarHorario, onSaveDuracaoSlot,
+  onCopiarHorario, onRestaurarHorario, onSaveDuracaoSlot, onSaveReposicao,
   tema, onMudarTema, temaResolvido, onToast, onSignOutGlobal,
 }) {
   const [section, setSection] = useState('conta');
@@ -3279,6 +3324,40 @@ function SettingsModal({
                       );
                     })}
                   </div>
+                </SettingsBlock>
+
+                <SettingsBlock
+                  title="Créditos de reposição"
+                  description="A regra que se aplica por omissão a cada falta. Em cada falta continua a poder decidir outra coisa."
+                >
+                  <label className="flex items-center gap-2 text-sm font-body text-primary">
+                    <input
+                      type="checkbox"
+                      checked={definicoes.reposicao.automatico !== false}
+                      onChange={(e) => onSaveReposicao({ automatico: e.target.checked })}
+                      style={{ accentColor: 'var(--brass)' }}
+                    />
+                    Gerar crédito automaticamente ao registar uma falta
+                  </label>
+
+                  <FormField label="Validade do crédito (dias)">
+                    <input
+                      type="number"
+                      min={0}
+                      max={365}
+                      value={definicoes.reposicao.validadeDias}
+                      onChange={(e) => onSaveReposicao({
+                        validadeDias: Math.max(0, Math.min(365, parseInt(e.target.value, 10) || 0)),
+                      })}
+                      className="input-field"
+                      style={{ maxWidth: 120 }}
+                    />
+                  </FormField>
+                  <p className="text-xs font-body text-faint">
+                    {definicoes.reposicao.validadeDias > 0
+                      ? `Um crédito passado hoje fica válido até ${fmtDateLong(`${validadePadrao(definicoes, fmtDateISO(new Date()))}T00:00:00`)}. Depois disso aparece como expirado — mas continua no histórico, e pode sempre agendar a reposição à mesma.`
+                      : 'A zero, os créditos não expiram.'}
+                  </p>
                 </SettingsBlock>
 
                 <SettingsBlock
@@ -7296,18 +7375,32 @@ function AssessmentsView({ students, sessions, photosById, onSaveAssessment, onU
 
 /* ============================== FALTAS E REPOSIÇÕES ============================== */
 
-function RegistarFaltaModal({ students, sessions, onSave, onClose }) {
+function RegistarFaltaModal({ students, sessions, definicoes, onSave, onClose }) {
   const sortedStudents = useMemo(() => [...students].sort((a, b) => byNamePt(a.name, b.name)), [students]);
+  const hoje = fmtDateISO(new Date());
+  const automatico = definicoes.reposicao.automatico !== false;
   const [form, setForm] = useState({
     studentId: sortedStudents[0]?.id || '',
-    date: fmtDateISO(new Date()),
+    date: hoje,
     motivo: '',
     observacoes: '',
     justificada: false,
-    precisaReposicao: true,
+    precisaReposicao: automatico,
+    creditoValidade: automatico ? validadePadrao(definicoes, hoje) : '',
+    // Enquanto ninguém tocar na validade, ela acompanha a data da falta. Mudar
+    // o dia da falta sem mudar o prazo dava um crédito com validade errada.
+    validadeTocada: false,
   });
   const [error, setError] = useState('');
   function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
+
+  function setData(iso) {
+    setForm((f) => ({
+      ...f,
+      date: iso,
+      creditoValidade: f.validadeTocada || !iso ? f.creditoValidade : validadePadrao(definicoes, iso),
+    }));
+  }
 
   // Avisa se já existe aula nesse dia — em vez de criar outra, marca essa.
   const aulaExistente = sessions.find((s) => s.studentId === form.studentId && s.date === form.date
@@ -7337,7 +7430,7 @@ function RegistarFaltaModal({ students, sessions, onSave, onClose }) {
         </FormField>
 
         <FormField label="Data da falta">
-          <input type="date" value={form.date} onChange={(e) => set('date', e.target.value)} className="input-field" />
+          <input type="date" value={form.date} onChange={(e) => setData(e.target.value)} className="input-field" />
         </FormField>
 
         <div className="text-2xs font-body text-faint">
@@ -7371,6 +7464,39 @@ function RegistarFaltaModal({ students, sessions, onSave, onClose }) {
             <input type="checkbox" checked={form.precisaReposicao} onChange={(e) => set('precisaReposicao', e.target.checked)} style={{ accentColor: 'var(--brass)' }} />
             Dá direito a reposição
           </label>
+
+          {form.precisaReposicao && (
+            <div className="flex flex-col gap-1.5" style={{ paddingLeft: 24 }}>
+              <label className="text-2xs uppercase tracking-wide text-faint font-body" htmlFor="credito-validade">
+                Crédito válido até
+              </label>
+              <div className="flex items-center gap-2 flex-wrap">
+                <input
+                  id="credito-validade"
+                  type="date"
+                  value={form.creditoValidade}
+                  min={form.date}
+                  onChange={(e) => setForm((f) => ({ ...f, creditoValidade: e.target.value, validadeTocada: true }))}
+                  className="input-field"
+                  style={{ flex: '1 1 150px', minWidth: 150 }}
+                />
+                {form.creditoValidade && (
+                  <button
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, creditoValidade: '', validadeTocada: true }))}
+                    className="text-2xs font-body link-sky flex-shrink-0"
+                  >
+                    Sem prazo
+                  </button>
+                )}
+              </div>
+              <span className="text-2xs font-body text-faint">
+                {form.creditoValidade
+                  ? 'Passada esta data o crédito aparece como expirado — continua no histórico e ainda pode ser reposto.'
+                  : 'Sem prazo: o crédito fica disponível até ser usado.'}
+              </span>
+            </div>
+          )}
         </div>
 
         <FormField label="Observações (opcional)">
@@ -7388,19 +7514,19 @@ function RegistarFaltaModal({ students, sessions, onSave, onClose }) {
   );
 }
 
-// Histórico de faltas de um aluno, reutilizado na ficha do aluno e no ecrã de Faltas.
-function FaltasDoAluno({ studentId, sessions, onOpenSession, onAgendarReposicao }) {
-  const faltas = faltasDoAluno(studentId, sessions);
-  if (faltas.length === 0) {
-    return <div className="text-xs font-body text-faint py-2">Sem faltas registadas.</div>;
-  }
+// Uma falta de cada vez. Sai daqui de fora para poder ter o seu próprio estado
+// — o histórico do crédito abre e fecha, e um `useState` não pode viver dentro
+// de um `map`.
+function FaltaCard({ falta: f, sessions, onOpenSession, onAgendarReposicao }) {
+  const [verLog, setVerLog] = useState(false);
+  const estado = reposicaoEstadoDe(f, sessions);
+  const rep = f.reposicaoSessionId ? sessions.find((s) => s.id === f.reposicaoSessionId) : null;
+  const log = Array.isArray(f.faltaCreditoLog) ? f.faltaCreditoLog : [];
+  const temCredito = faltaPrecisaReposicao(f);
+  const porUsar = estado.id === 'pendente' || estado.id === 'expirado';
+
   return (
-    <div className="flex flex-col gap-2">
-      {faltas.map((f) => {
-        const estado = reposicaoEstadoDe(f, sessions);
-        const rep = f.reposicaoSessionId ? sessions.find((s) => s.id === f.reposicaoSessionId) : null;
-        return (
-          <div key={f.id} className="rounded-lg border border-hair p-3 flex flex-col gap-2 min-w-0" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+    <div className="rounded-lg border border-hair p-3 flex flex-col gap-2 min-w-0" style={{ backgroundColor: 'var(--bg-elevated)' }}>
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <span className="flex items-center gap-2 min-w-0">
                 <span className="font-mono text-xs text-primary nowrap">{fmtDateBR(new Date(`${f.date}T00:00:00`))}</span>
@@ -7414,22 +7540,80 @@ function FaltasDoAluno({ studentId, sessions, onOpenSession, onAgendarReposicao 
               </span>
             </div>
             {f.faltaObs && <div className="text-2xs font-body text-faint">{f.faltaObs}</div>}
+
+            {temCredito && (f.faltaCreditoValidade || f.faltaCreditoPor) && (
+              <div className="text-2xs font-body text-faint flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                {f.faltaCreditoValidade && (
+                  <span style={estado.id === 'expirado' ? { color: 'var(--text-muted)' } : undefined}>
+                    {estado.id === 'expirado' ? 'Expirou a ' : 'Válido até '}
+                    <span className="font-mono">{fmtDateLong(`${f.faltaCreditoValidade}T00:00:00`)}</span>
+                  </span>
+                )}
+                {!f.faltaCreditoValidade && <span>Sem prazo</span>}
+                {f.faltaCreditoPor && <span className="truncate">· Concedido por {f.faltaCreditoPor}</span>}
+              </div>
+            )}
+
             <div className="flex items-center gap-2 flex-wrap">
               {rep && (
                 <button type="button" onClick={() => onOpenSession(rep)} className="text-2xs font-body link-sky">
                   Reposição em {fmtDateBR(new Date(`${rep.date}T00:00:00`))} às {rep.startTime}
                 </button>
               )}
-              {estado.id === 'pendente' && (
+              {porUsar && (
                 <button type="button" onClick={() => onAgendarReposicao(f)} className="btn btn-ghost" style={{ padding: '5px 10px', fontSize: 11 }}>
-                  Agendar reposição
+                  {estado.id === 'expirado' ? 'Repor mesmo assim' : 'Agendar reposição'}
                 </button>
               )}
               <button type="button" onClick={() => onOpenSession(f)} className="text-2xs font-body link-sky">Ver aula</button>
+              {log.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setVerLog((v) => !v)}
+                  aria-expanded={verLog}
+                  className="text-2xs font-body link-sky ml-auto"
+                >
+                  {verLog ? 'Esconder histórico' : `Histórico do crédito (${log.length})`}
+                </button>
+              )}
             </div>
-          </div>
-        );
-      })}
+
+            {verLog && log.length > 0 && (
+              <ol className="flex flex-col gap-1.5 pt-1 border-t border-hair">
+                {[...log].reverse().map((entrada, i) => (
+                  <li key={i} className="flex flex-col gap-0.5 min-w-0">
+                    <span className="text-2xs font-body text-primary">
+                      {entrada.acao}
+                      {entrada.detalhe ? <span className="text-faint"> — {entrada.detalhe}</span> : null}
+                    </span>
+                    <span className="text-2xs font-body text-faint truncate">
+                      <span className="font-mono">{fmtDataHora(entrada.em)}</span> · {entrada.quem}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
+    </div>
+  );
+}
+
+// Histórico de faltas de um aluno, reutilizado na ficha do aluno e no ecrã de Faltas.
+function FaltasDoAluno({ studentId, sessions, onOpenSession, onAgendarReposicao }) {
+  const faltas = faltasDoAluno(studentId, sessions);
+  if (faltas.length === 0) {
+    return <div className="text-xs font-body text-faint py-2">Sem faltas registadas.</div>;
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      {faltas.map((f) => (
+        <FaltaCard
+          key={f.id}
+          falta={f}
+          sessions={sessions}
+          onOpenSession={onOpenSession}
+          onAgendarReposicao={onAgendarReposicao}
+        />
+      ))}
     </div>
   );
 }
@@ -7493,6 +7677,7 @@ function FaltasView({ students, sessions, onRegistarFalta, onOpenSession, onAgen
     faltas: faltasFiltradas.length,
     semJustificacao: faltasFiltradas.filter((f) => !f.faltaJustificada).length,
     pendentes: faltasFiltradas.filter((f) => reposicaoEstadoDe(f, sessions).id === 'pendente').length,
+    expirados: faltasFiltradas.filter((f) => reposicaoEstadoDe(f, sessions).id === 'expirado').length,
   }), [faltasFiltradas, sessions]);
 
   const proximaGeral = useMemo(() => {
@@ -7515,7 +7700,13 @@ function FaltasView({ students, sessions, onRegistarFalta, onOpenSession, onAgen
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard label="Faltas no período" value={totais.faltas} icon={UserX} accent="rust" />
         <StatCard label="Sem justificação" value={totais.semJustificacao} icon={AlertTriangle} accent="rust" />
-        <StatCard label="Reposições pendentes" value={totais.pendentes} icon={RotateCcw} accent="brass" />
+        <StatCard
+          label="Créditos por usar"
+          value={totais.pendentes}
+          sub={totais.expirados ? `${plural(totais.expirados, 'expirado', 'expirados')}` : undefined}
+          icon={RotateCcw}
+          accent="brass"
+        />
         <StatCard
           label="Próxima reposição"
           value={proximaGeral ? fmtDateBR(new Date(`${proximaGeral.date}T00:00:00`)) : '—'}
@@ -7537,9 +7728,10 @@ function FaltasView({ students, sessions, onRegistarFalta, onOpenSession, onAgen
         </select>
         <select value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)} aria-label="Filtrar por estado da reposição" className="input-field">
           <option value="todos">Qualquer reposição</option>
-          <option value="pendente">Pendentes</option>
-          <option value="agendada">Agendadas</option>
-          <option value="concluida">Concluídas</option>
+          <option value="pendente">Crédito disponível</option>
+          <option value="agendada">Reposição agendada</option>
+          <option value="concluida">Crédito utilizado</option>
+          <option value="expirado">Crédito expirado</option>
           <option value="na">Sem direito a reposição</option>
         </select>
         <select value={justFiltro} onChange={(e) => setJustFiltro(e.target.value)} aria-label="Filtrar por justificação" className="input-field">
@@ -8776,11 +8968,22 @@ function AppInner() {
     } else {
       next = exists ? sessions.map((s) => (s.id === session.id ? session : s)) : [...sessions, session];
     }
-    // Reposição ligada a uma falta: gravar também o sentido inverso na falta.
+    // Reposição ligada a uma falta: gravar também o sentido inverso na falta,
+    // e deixar rasto de quem a marcou e para quando.
     if (session.reposicaoDeSessionId) {
-      next = next.map((s) => (s.id === session.reposicaoDeSessionId
-        ? { ...s, reposicaoSessionId: session.id }
-        : s));
+      const quem = trainerName || user?.email || 'Personal Trainer';
+      next = next.map((s) => {
+        if (s.id !== session.reposicaoDeSessionId) return s;
+        const jaLigada = s.reposicaoSessionId === session.id;
+        return {
+          ...s,
+          reposicaoSessionId: session.id,
+          faltaCreditoLog: jaLigada ? s.faltaCreditoLog : registarNoCredito(
+            s, quem, 'Reposição agendada',
+            `${fmtDateLong(`${session.date}T00:00:00`)} às ${session.startTime}`,
+          ),
+        };
+      });
     }
     persistSessions(next);
     if (!exists) {
@@ -8815,9 +9018,16 @@ function AppInner() {
       ? sessions.filter((s) => s.seriesId === serie).map((s) => s.id)
       : [id]);
     // Apagar a reposição devolve a falta ao estado pendente.
+    const quemApagou = trainerName || user?.email || 'Personal Trainer';
     const next = sessions
       .filter((s) => !remover.has(s.id))
-      .map((s) => (remover.has(s.reposicaoSessionId) ? { ...s, reposicaoSessionId: null } : s));
+      .map((s) => (remover.has(s.reposicaoSessionId)
+        ? {
+          ...s,
+          reposicaoSessionId: null,
+          faltaCreditoLog: registarNoCredito(s, quemApagou, 'Reposição desmarcada', 'O crédito voltou a ficar disponível'),
+        }
+        : s));
     persistSessions(next);
     setShowSessionModal(false);
     if (remover.size > 1) {
@@ -8827,7 +9037,23 @@ function AppInner() {
     }
   }
   function quickStatus(session, status) {
-    persistSessions(sessions.map((s) => (s.id === session.id ? { ...s, status } : s)));
+    const quem = trainerName || user?.email || 'Personal Trainer';
+    // Dar a reposição por realizada gasta o crédito — e isso fica no registo da
+    // falta, que é onde alguém vai procurar meses depois.
+    const falta = session.reposicaoDeSessionId && status === 'realizado'
+      ? sessions.find((s) => s.id === session.reposicaoDeSessionId)
+      : null;
+    persistSessions(sessions.map((s) => {
+      if (s.id === session.id) return { ...s, status };
+      if (falta && s.id === falta.id) {
+        return {
+          ...s,
+          faltaCreditoLog: registarNoCredito(s, quem, 'Crédito utilizado',
+            `Reposição de ${fmtDateLong(`${session.date}T00:00:00`)} dada como realizada`),
+        };
+      }
+      return s;
+    }));
     showToast(status === 'falta' ? 'Falta registada.' : 'Aula marcada como realizada.');
   }
 
@@ -9041,6 +9267,13 @@ function AppInner() {
     persistDefinicoes({ ...definicoes, duracaoSlot: minutos });
   }
 
+  // Muda a regra dos créditos daqui para a frente. Os créditos já passados
+  // ficam com a validade que tinham: mudar a regra não devia encurtar um prazo
+  // que já foi dado ao aluno.
+  function saveReposicao(mudanca) {
+    persistDefinicoes({ ...definicoes, reposicao: { ...definicoes.reposicao, ...mudanca } });
+  }
+
   async function saveLembretes(mudanca) {
     const proximo = { ...definicoes.lembretes, ...mudanca };
     // Pedir a permissao no momento em que se liga a opcao, e nao ao arrancar:
@@ -9127,21 +9360,44 @@ function AppInner() {
   function registarFalta(dados) {
     const existente = sessions.find((s) => s.studentId === dados.studentId && s.date === dados.date
       && s.kind !== 'evento' && s.type !== 'reposicao');
+    const quem = trainerName || user?.email || 'Personal Trainer';
+    const automatico = definicoes.reposicao?.automatico !== false;
+    // A validade que veio do formulário ganha à automática: o treinador pode
+    // querer dar mais tempo neste caso, e a especificação pede que possa.
+    const validade = dados.creditoValidade !== undefined
+      ? dados.creditoValidade
+      : (dados.precisaReposicao && automatico ? validadePadrao(definicoes, dados.date) : '');
+
     const camposFalta = {
       status: 'falta',
       faltaMotivo: dados.motivo,
       faltaObs: dados.observacoes,
       faltaJustificada: dados.justificada,
       faltaPrecisaReposicao: dados.precisaReposicao,
+      faltaCreditoValidade: dados.precisaReposicao ? validade : '',
+      faltaCreditoPor: dados.precisaReposicao ? quem : '',
+      faltaCreditoEm: dados.precisaReposicao ? new Date().toISOString() : '',
       reposicaoSessionId: null,
     };
+
     if (existente) {
-      persistSessions(sessions.map((s) => (s.id === existente.id ? { ...s, ...camposFalta } : s)));
+      const acao = dados.precisaReposicao ? 'Crédito concedido' : 'Crédito retirado';
+      const detalhe = [dados.motivo, validade ? `válido até ${fmtDateLong(`${validade}T00:00:00`)}` : 'sem prazo']
+        .filter(Boolean).join(' · ');
+      const comLog = {
+        ...camposFalta,
+        faltaCreditoLog: registarNoCredito(existente, quem, acao, detalhe),
+      };
+      persistSessions(sessions.map((s) => (s.id === existente.id ? { ...s, ...comLog } : s)));
     } else {
       const nova = {
         id: uid(), kind: 'aula', studentId: dados.studentId, date: dados.date,
         startTime: '08:00', endTime: '09:00', type: 'fixo', notes: '',
         ...EMPTY_ASSESS_FIELDS, ...camposFalta,
+        faltaCreditoLog: dados.precisaReposicao
+          ? registarNoCredito({}, quem, 'Crédito concedido',
+            [dados.motivo, validade ? `válido até ${fmtDateLong(`${validade}T00:00:00`)}` : 'sem prazo'].filter(Boolean).join(' · '))
+          : [],
       };
       persistSessions([...sessions, nova]);
     }
@@ -9373,7 +9629,7 @@ function AppInner() {
         />
       )}
       {showFaltaModal && (
-        <RegistarFaltaModal students={students} sessions={sessions} onSave={registarFalta} onClose={() => setShowFaltaModal(false)} />
+        <RegistarFaltaModal students={students} sessions={sessions} definicoes={definicoes} onSave={registarFalta} onClose={() => setShowFaltaModal(false)} />
       )}
       {showStudentModal && (
         <StudentFormModal student={studentModal} sessions={sessions} customCategories={customCategories} onAddCategory={addCategory} onSave={saveStudent} onClose={() => setShowStudentModal(false)} onDelete={deleteStudent} onGoToAssessments={goToAssessments} onGoToTreinos={goToTreinos} onGoToSession={openEditSession} onAgendarReposicao={openReposicaoFor}
@@ -9412,6 +9668,7 @@ function AppInner() {
           onCopiarHorario={copiarHorarioParaOutrosDias}
           onRestaurarHorario={restaurarHorario}
           onSaveDuracaoSlot={saveDuracaoSlot}
+          onSaveReposicao={saveReposicao}
           onSaveLembretes={saveLembretes}
           permissaoNotificacoes={permissaoNotificacoes}
         />

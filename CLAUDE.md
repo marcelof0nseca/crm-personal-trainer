@@ -284,7 +284,7 @@ existe de verdade.
 |---|---|
 | **Agenda** | Dia, semana, mês, lista · procura e filtros · horário de abertura por dia com exceções · horários livres em lote · arrastar com confirmação e desfazer · copiar/colar · recorrência com "só esta / toda a série" · **aviso de conflito** |
 | **Faltas** | Estados, direito a reposição, crédito ligado à aula de origem |
-| **Prescrição** | Treinos A/B/C, 2 076 exercícios, modelos, arquivo, PDF timbrado. Campos: séries, reps, carga, descanso, método (texto livre), notas, instruções |
+| **Prescrição** | Treinos A/B/C, 2 076 exercícios, modelos, arquivo, PDF timbrado agrupado por bloco. Blocos, métodos como lista, 15 campos por exercício, duplicar, arrastar para reordenar |
 | **Avaliações** | Dobras, % massa gorda, perímetros, fotografias, gráfico de evolução, PDF |
 | **Finanças** | Entradas e saídas, categorias, IVA, taxa do ginásio, pendências |
 | **Pagamentos** | Stripe: mensal/trimestral/anual, cartão, Apple Pay, Google Pay, MB WAY, webhook, portal de faturação, meses grátis |
@@ -294,14 +294,14 @@ existe de verdade.
 
 ### Falta, e é barato
 
-- Métodos de treino como lista em vez de texto livre
-- Blocos no treino (aquecimento, principal, core, volta à calma)
-- Campos por exercício: %1RM, RPE, RIR, tempo, distância, ritmo, inclinação
-- Duplicar e arrastar no construtor de treinos
 - MFA (o Supabase já suporta)
+- Deslocação automática ao arrastar exercícios para fora do ecrã — hoje o
+  arrasto só chega ao que está visível; os botões de subir e descer cobrem o
+  resto
+- Atalhos de teclado no construtor
 
-**A linha do exercício desenha os campos a partir de um vetor de tuplos** —
-acrescentar campos é estender uma lista, mais o PDF.
+**A linha do exercício desenha os campos a partir de  e
+** — acrescentar um campo é estender uma lista, mais o PDF.
 
 ### Não é tarefa, é decisão de produto
 
@@ -330,7 +330,7 @@ Combinado por níveis, do mais barato ao mais caro:
 
 1. ~~Defeitos: conflito de horário e carimbo de versão~~ **feito**
 2. ~~Agenda: vista de dia, lista, filtros, desfazer~~ **feito**
-3. **Prescrição:** métodos como lista, blocos, campos novos, duplicar e arrastar
+3. ~~Prescrição: métodos como lista, blocos, campos novos, duplicar e arrastar~~ **feito**
 4. **Segurança:** MFA e registo de sessões
 5. Decisões de produto — ver secção 10
 

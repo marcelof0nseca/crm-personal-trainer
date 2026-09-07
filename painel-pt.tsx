@@ -8,7 +8,7 @@ import {
   Camera, ArrowLeft, LineChart as LineChartIcon, Tag,
   Coffee, Dumbbell, UtensilsCrossed, Stethoscope, Gift, CreditCard, Mail, CircleUser, KeyRound, ShieldCheck,
   RefreshCcw, Printer, Pencil, Copy, ClipboardPaste, GripVertical, Bell, Archive, BookMarked,
-  Sun, Moon, Monitor,
+  Sun, Moon, Monitor, Send, ImagePlus, Eye,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
@@ -131,6 +131,47 @@ const EMPTY_CUSTOM_CATEGORIES = { expense: [], income: [], planTypes: [], sessio
 // obrigava a marcar como aberto o meio do dia em que nao esta la.
 const DURACOES_SLOT = [15, 30, 45, 60, 90];
 
+// As seccoes de cada documento, na ordem em que saem no papel. O id e a chave
+// guardada em definicoes.timbre.seccoes; `sempre` marca o que nao se pode tirar
+// -- um documento sem o nome do aluno nao serve para nada.
+const SECCOES_AVALIACAO = [
+  { id: 'destaques', label: 'Destaques (peso, massa gorda, massa magra, IMC)' },
+  { id: 'aluno', label: 'Dados do aluno', sempre: true },
+  { id: 'medidas', label: 'Dobras ou bioimpedância' },
+  { id: 'composicao', label: 'Composição corporal' },
+  { id: 'perimetros', label: 'Perímetros e faixas de referência' },
+  { id: 'metas', label: 'Metas' },
+  { id: 'comparacao', label: 'Comparação com a avaliação anterior' },
+  { id: 'evolucao', label: 'Gráfico de evolução' },
+  { id: 'fotos', label: 'Registo fotográfico' },
+  { id: 'observacoes', label: 'Observações' },
+  { id: 'assinatura', label: 'Espaço para assinaturas' },
+];
+
+const SECCOES_TREINO = [
+  { id: 'cabecalho', label: 'Objetivo e período', sempre: true },
+  { id: 'treinos', label: 'Treinos e exercícios', sempre: true },
+  { id: 'instrucoes', label: 'Instruções de execução dos exercícios' },
+  { id: 'notas', label: 'Notas do programa' },
+  { id: 'assinatura', label: 'Espaço para assinaturas' },
+];
+
+const EMPTY_TIMBRE = {
+  logo: '',                  // data URI; sem logotipo sai a marca PTMANAGER
+  estudio: '',
+  numeroProfissional: '',
+  telefone: '',
+  email: '',
+  site: '',
+  morada: '',
+  confidencialidade: true,
+  textoConfidencialidade: 'Documento confidencial. Contém dados de saúde e destina-se apenas ao titular.',
+  seccoes: {
+    avaliacao: Object.fromEntries(SECCOES_AVALIACAO.map((s) => [s.id, true])),
+    treino: Object.fromEntries(SECCOES_TREINO.map((s) => [s.id, true])),
+  },
+};
+
 const EMPTY_DEFINICOES = {
   horarios: {
     0: { aberto: false, intervalos: [{ inicio: '09:00', fim: '13:00' }] },
@@ -147,6 +188,7 @@ const EMPTY_DEFINICOES = {
   // Gerar o credito automaticamente e configuravel, como a especificacao pede.
   // 0 dias de validade significa sem prazo.
   reposicao: { automatico: true, validadeDias: 30 },
+  timbre: { ...EMPTY_TIMBRE },
 };
 
 // Aceita o formato antigo, de um par de horas por dia, e converte-o.
@@ -184,6 +226,30 @@ function normalizarDefinicoes(raw) {
     reposicao: {
       ...EMPTY_DEFINICOES.reposicao,
       ...(d.reposicao && typeof d.reposicao === 'object' ? d.reposicao : {}),
+    },
+    timbre: normalizarTimbre(d.timbre),
+  };
+}
+
+// As secções são preenchidas a partir das listas, e não copiadas do que estava
+// gravado: assim uma secção nova aparece ligada a quem já tem timbre definido,
+// em vez de ficar invisível para sempre.
+function normalizarTimbre(bruto) {
+  const t = bruto && typeof bruto === 'object' ? bruto : {};
+  const guardadas = t.seccoes && typeof t.seccoes === 'object' ? t.seccoes : {};
+  function seccoesDe(lista, chave) {
+    const gravado = guardadas[chave] && typeof guardadas[chave] === 'object' ? guardadas[chave] : {};
+    return Object.fromEntries(lista.map((s) => [
+      s.id,
+      s.sempre || gravado[s.id] === undefined ? true : Boolean(gravado[s.id]),
+    ]));
+  }
+  return {
+    ...EMPTY_TIMBRE,
+    ...t,
+    seccoes: {
+      avaliacao: seccoesDe(SECCOES_AVALIACAO, 'avaliacao'),
+      treino: seccoesDe(SECCOES_TREINO, 'treino'),
     },
   };
 }
@@ -1276,6 +1342,33 @@ function resizePhoto(file, maxDim, quality) {
   });
 }
 
+// Ao contrário das fotografias, um logótipo não pode virar JPEG: a maior parte
+// vem com fundo transparente, e o JPEG trocá-lo-ia por preto. Fica PNG quando
+// entra PNG, e o tamanho continua pequeno porque a imagem é reduzida.
+function resizeLogo(file, maxDim) {
+  const png = file.type === 'image/png' || file.type === 'image/webp' || file.type === 'image/svg+xml';
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Falha ao ler o ficheiro.'));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Falha ao carregar a imagem.'));
+      img.onload = () => {
+        let { width, height } = img;
+        if (!width || !height) { reject(new Error('Imagem sem dimensões.')); return; }
+        if (width > height && width > maxDim) { height = Math.round(height * (maxDim / width)); width = maxDim; }
+        else if (height > maxDim) { width = Math.round(width * (maxDim / height)); height = maxDim; }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(png ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.9));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 /* ============================== DOIS FATORES ============================== */
 
 // Verificação em dois passos por aplicação autenticadora (TOTP). O Supabase
@@ -1649,6 +1742,104 @@ const TOKENS_CLAROS = `
         --celula-tinta: 26%;
 `;
 
+// As regras da folha impressa, com prefixo de escopo. Servem dois sítios: o
+// papel (dentro de @media print) e a pré-visualização no ecrã (dentro de
+// .print-previa). Sai sempre a preto sobre branco, seja qual for o tema.
+function regrasDaFolha(p) {
+  return `
+        ${p}.print-sheet {
+          position: static !important;
+          left: auto !important;
+          width: auto !important;
+          color: #111 !important;
+          background: #fff !important;
+          font-family: ui-sans-serif, system-ui, sans-serif;
+        }
+        ${p}.print-sheet * { color: inherit; background: transparent; }
+
+        ${p}.print-head {
+          display: flex; align-items: flex-start; justify-content: space-between;
+          gap: 16px; padding-bottom: 10px; margin-bottom: 18px;
+          border-bottom: 2px solid #111;
+        }
+        ${p}.print-ident { display: flex; align-items: center; gap: 11px; min-width: 0; }
+        /* O logótipo do treinador manda no topo; a altura fixa evita que um
+           ficheiro alto empurre o resto do cabeçalho para fora da folha. */
+        ${p}.print-logo { height: 16mm; width: auto; max-width: 60mm; object-fit: contain; }
+        ${p}.print-brand { font-size: 19pt; font-weight: 700; letter-spacing: -0.02em; }
+        ${p}.print-brand span { font-weight: 400; color: #555 !important; }
+        ${p}.print-estudio { font-size: 11.5pt; font-weight: 700; line-height: 1.3; }
+        ${p}.print-estudio small { display: block; font-size: 8.5pt; font-weight: 400; color: #555 !important; }
+        ${p}.print-by { text-align: right; font-size: 9pt; line-height: 1.45; color: #444 !important; }
+        ${p}.print-by strong { font-size: 10.5pt; color: #111 !important; }
+
+        ${p}.print-title { font-size: 15pt; font-weight: 700; margin: 0 0 2px; }
+        ${p}.print-sub { font-size: 9.5pt; color: #555 !important; margin-bottom: 16px; }
+
+        ${p}.print-section { margin-bottom: 15px; break-inside: avoid; }
+        ${p}.print-section h3 {
+          font-size: 8pt; text-transform: uppercase; letter-spacing: 0.09em;
+          color: #666 !important; margin: 0 0 6px; padding-bottom: 3px;
+          border-bottom: 1px solid #ccc;
+        }
+
+        ${p}.print-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px 18px; }
+        ${p}.print-field { display: flex; justify-content: space-between; gap: 8px; font-size: 9.5pt; padding: 2.5px 0; border-bottom: 1px dotted #ddd; }
+        ${p}.print-field dt { color: #555 !important; }
+        ${p}.print-field dd { margin: 0; font-weight: 600; white-space: nowrap; }
+
+        ${p}.print-highlight { display: flex; gap: 10px; margin-bottom: 15px; break-inside: avoid; }
+        ${p}.print-kpi { flex: 1; border: 1px solid #bbb; border-radius: 5px; padding: 8px 11px; }
+        ${p}.print-kpi dt { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.08em; color: #666 !important; }
+        ${p}.print-kpi dd { margin: 2px 0 0; font-size: 16pt; font-weight: 700; }
+
+        ${p}.print-photos { display: flex; gap: 8px; flex-wrap: wrap; }
+        ${p}.print-photos img { width: 42mm; height: auto; border: 1px solid #ccc; border-radius: 3px; }
+
+        ${p}.print-notes { font-size: 9.5pt; line-height: 1.5; white-space: pre-wrap; }
+
+        ${p}.print-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+        ${p}.print-table th {
+          text-align: left; font-size: 7.5pt; text-transform: uppercase;
+          letter-spacing: 0.07em; color: #666 !important; font-weight: 600;
+          border-bottom: 1px solid #999; padding: 4px 6px;
+        }
+        ${p}.print-table td { padding: 5px 6px; border-bottom: 1px solid #e2e2e2; vertical-align: top; }
+        ${p}.print-table .num { text-align: right; white-space: nowrap; }
+        ${p}.print-ex-nota { font-size: 8.5pt; color: #555 !important; margin-top: 2px; line-height: 1.4; }
+        /* Cabeçalho de bloco dentro de um treino. Menor que o título da secção
+           e sem fundo: é uma divisão interna, não uma secção nova. */
+        ${p}.print-bloco {
+          font-size: 8.5pt; font-weight: 700; text-transform: uppercase;
+          letter-spacing: 0.06em; color: #333 !important; margin-bottom: 3px;
+        }
+        ${p}.print-assinaturas { display: flex; gap: 22px; flex-wrap: wrap; }
+        ${p}.print-assinatura {
+          border-bottom: 1px solid #111; width: 70mm; height: 14mm; margin-bottom: 4px;
+        }
+
+        ${p}.print-foot {
+          margin-top: 20px; padding-top: 8px; border-top: 1px solid #ccc;
+          font-size: 8pt; color: #666 !important;
+          display: flex; justify-content: space-between; gap: 12px;
+        }
+        /* O aviso de confidencialidade repete-se em todas as folhas: no Chrome,
+           um elemento fixo dentro do documento é reimpresso em cada página. É a
+           única parte do rodapé que tem de aparecer sempre. */
+        ${p}.print-confid {
+          position: fixed; bottom: 0; left: 0; right: 0;
+          font-size: 7.5pt; color: #666 !important; text-align: center;
+          padding-top: 3px; border-top: 1px solid #ddd;
+          /* Fundo branco de propósito: se uma linha de texto acabar por baixo
+             do aviso numa página cheia, é o aviso que se lê, e não os dois
+             sobrepostos. A margem inferior da página deixa-lhe folga. */
+          background: #fff !important;
+        }
+        ${p}.print-page-break { break-before: page; }
+        ${p}.recharts-surface { overflow: visible; }
+  `;
+}
+
 function GlobalStyles() {
   return (
     <style>{`
@@ -1912,11 +2103,31 @@ function GlobalStyles() {
       /* ===================== IMPRESSAO / EXPORTACAO PDF =====================
          A folha vive fora do ecra ate a impressao comecar. Ao imprimir, tudo o
          que e aplicacao desaparece e so a folha ocupa a pagina, a preto sobre
-         branco -- o tema escuro gastaria tinta e sairia ilegivel. */
+         branco -- o tema escuro gastaria tinta e sairia ilegivel.
+
+         As regras da folha estao em regrasDaFolha() e sao emitidas duas vezes:
+         uma para o papel, outra para a pre-visualizacao no ecra. Duplicadas a
+         mao, a previa deixaria de bater certo com o que sai impresso. */
       .print-sheet { position: absolute; left: -10000px; top: 0; width: 190mm; }
 
+      /* Pre-visualizacao: a folha ao tamanho real, num fundo que a destaca. */
+      .print-previa {
+        background: #8a8a8a;
+        padding: 16px;
+        overflow: auto;
+        border-radius: 10px;
+      }
+      .print-previa .print-sheet {
+        margin: 0 auto;
+        padding: 14mm;
+        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+      }
+      /* O papel nao encolhe; e o ecra que o escala. transform-origin no topo
+         para a folha comecar a ler-se de cima, e nao a meio. */
+      .print-previa-escala { transform-origin: top left; }
+
       @media print {
-        @page { size: A4; margin: 14mm 14mm 16mm; }
+        @page { size: A4; margin: 14mm 14mm 20mm; }
 
         html, body, #root {
           background: #fff !important;
@@ -1927,78 +2138,10 @@ function GlobalStyles() {
         body > *:not(.print-root), .app-chrome { display: none !important; }
         .print-root { display: block !important; }
 
-        .print-sheet {
-          position: static !important;
-          left: auto !important;
-          width: auto !important;
-          color: #111 !important;
-          background: #fff !important;
-          font-family: ui-sans-serif, system-ui, sans-serif;
-        }
-        .print-sheet * { color: inherit; background: transparent; }
-
-        .print-head {
-          display: flex; align-items: center; justify-content: space-between;
-          gap: 16px; padding-bottom: 10px; margin-bottom: 18px;
-          border-bottom: 2px solid #111;
-        }
-        .print-brand { font-size: 19pt; font-weight: 700; letter-spacing: -0.02em; }
-        .print-brand span { font-weight: 400; color: #555 !important; }
-        .print-by { text-align: right; font-size: 9pt; line-height: 1.45; color: #444 !important; }
-        .print-by strong { font-size: 10.5pt; color: #111 !important; }
-
-        .print-title { font-size: 15pt; font-weight: 700; margin: 0 0 2px; }
-        .print-sub { font-size: 9.5pt; color: #555 !important; margin-bottom: 16px; }
-
-        .print-section { margin-bottom: 15px; break-inside: avoid; }
-        .print-section h3 {
-          font-size: 8pt; text-transform: uppercase; letter-spacing: 0.09em;
-          color: #666 !important; margin: 0 0 6px; padding-bottom: 3px;
-          border-bottom: 1px solid #ccc;
-        }
-
-        .print-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px 18px; }
-        .print-field { display: flex; justify-content: space-between; gap: 8px; font-size: 9.5pt; padding: 2.5px 0; border-bottom: 1px dotted #ddd; }
-        .print-field dt { color: #555 !important; }
-        .print-field dd { margin: 0; font-weight: 600; white-space: nowrap; }
-
-        .print-highlight { display: flex; gap: 10px; margin-bottom: 15px; break-inside: avoid; }
-        .print-kpi { flex: 1; border: 1px solid #bbb; border-radius: 5px; padding: 8px 11px; }
-        .print-kpi dt { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.08em; color: #666 !important; }
-        .print-kpi dd { margin: 2px 0 0; font-size: 16pt; font-weight: 700; }
-
-        .print-photos { display: flex; gap: 8px; flex-wrap: wrap; }
-        .print-photos img { width: 42mm; height: auto; border: 1px solid #ccc; border-radius: 3px; }
-
-        .print-notes { font-size: 9.5pt; line-height: 1.5; white-space: pre-wrap; }
-
-        .print-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
-        .print-table th {
-          text-align: left; font-size: 7.5pt; text-transform: uppercase;
-          letter-spacing: 0.07em; color: #666 !important; font-weight: 600;
-          border-bottom: 1px solid #999; padding: 4px 6px;
-        }
-        .print-table td { padding: 5px 6px; border-bottom: 1px solid #e2e2e2; vertical-align: top; }
-        .print-table .num { text-align: right; white-space: nowrap; }
-        .print-ex-nota { font-size: 8.5pt; color: #555 !important; margin-top: 2px; line-height: 1.4; }
-        /* Cabeçalho de bloco dentro de um treino. Menor que o título da secção
-           e sem fundo: é uma divisão interna, não uma secção nova. */
-        .print-bloco {
-          font-size: 8.5pt; font-weight: 700; text-transform: uppercase;
-          letter-spacing: 0.06em; color: #333 !important; margin-bottom: 3px;
-        }
-        .print-assinatura {
-          border-bottom: 1px solid #111; width: 70mm; height: 14mm; margin-bottom: 4px;
-        }
-
-        .print-foot {
-          margin-top: 20px; padding-top: 8px; border-top: 1px solid #ccc;
-          font-size: 8pt; color: #666 !important;
-          display: flex; justify-content: space-between; gap: 12px;
-        }
-        .print-page-break { break-before: page; }
-        .recharts-surface { overflow: visible; }
+        ${regrasDaFolha('')}
       }
+
+      ${regrasDaFolha('.print-previa ')}
     `}</style>
   );
 }
@@ -2045,7 +2188,9 @@ function FormField({ label, children }) {
   );
 }
 
-function Modal({ title, onClose, children, onBack }) {
+// `largura` serve os poucos casos que nao cabem na coluna estreita -- a
+// pre-visualizacao de uma folha A4, por exemplo. Por omissao nada muda.
+function Modal({ title, onClose, children, onBack, largura, semPadding, acoes, camada }) {
   // Esc fecha o modal — teclado deve conseguir sair sem rato.
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
@@ -2056,7 +2201,7 @@ function Modal({ title, onClose, children, onBack }) {
   return (
     <div
       className="fixed inset-0 flex items-end sm:items-center justify-center animate-in px-0 sm:px-4"
-      style={{ backgroundColor: 'var(--overlay)', backdropFilter: 'blur(3px)', zIndex: 40 }}
+      style={{ backgroundColor: 'var(--overlay)', backdropFilter: 'blur(3px)', zIndex: camada || 40 }}
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -2064,19 +2209,22 @@ function Modal({ title, onClose, children, onBack }) {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="border border-hair rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md overflow-y-auto"
-        style={{ backgroundColor: 'var(--bg-surface)', maxHeight: 'min(92dvh, 760px)', paddingBottom: 'env(safe-area-inset-bottom)', boxShadow: 'var(--shadow-lg)' }}
+        className={`border border-hair rounded-t-2xl sm:rounded-2xl w-full overflow-y-auto ${largura ? '' : 'sm:max-w-md'}`}
+        style={{ backgroundColor: 'var(--bg-surface)', maxWidth: largura || undefined, maxHeight: 'min(92dvh, 760px)', paddingBottom: 'env(safe-area-inset-bottom)', boxShadow: 'var(--shadow-lg)' }}
       >
         <div className="flex items-center justify-between gap-2 px-5 py-4 border-b border-hair sticky top-0" style={{ backgroundColor: 'var(--bg-surface)', zIndex: 1 }}>
           <div className="flex items-center gap-2 min-w-0">
             {onBack && <button onClick={onBack} type="button" className="p-1.5 rounded-lg btn-surface flex-shrink-0" aria-label="Voltar"><ArrowLeft size={16} className="text-muted" style={{ display: 'block' }} /></button>}
             <h2 className="font-display font-semibold text-lg text-primary truncate">{title}</h2>
           </div>
-          <button onClick={onClose} type="button" className="p-1.5 rounded-lg btn-surface flex-shrink-0" aria-label="Fechar">
-            <X size={18} className="text-muted" style={{ display: 'block' }} />
-          </button>
+          <span className="flex items-center gap-2 flex-shrink-0">
+            {acoes}
+            <button onClick={onClose} type="button" className="p-1.5 rounded-lg btn-surface flex-shrink-0" aria-label="Fechar">
+              <X size={18} className="text-muted" style={{ display: 'block' }} />
+            </button>
+          </span>
         </div>
-        <div className="p-5">{children}</div>
+        <div className={semPadding ? '' : 'p-5'}>{children}</div>
       </div>
     </div>
   );
@@ -2730,6 +2878,7 @@ const SETTINGS_SECTIONS = [
   { id: 'aparencia', label: 'Aparência', icon: Sun },
   { id: 'seguranca', label: 'Segurança', icon: KeyRound },
   { id: 'agenda', label: 'Agenda', icon: CalendarDays },
+  { id: 'documentos', label: 'Documentos', icon: Printer },
   { id: 'subscricao', label: 'Subscrição', icon: CreditCard },
   { id: 'dados', label: 'Dados e privacidade', icon: ShieldCheck },
   { id: 'sobre', label: 'Sobre', icon: Info },
@@ -2947,6 +3096,7 @@ function SettingsModal({
   onClose, onSignOut, onRefreshSubscription, onChangePassword, onReset, onRestore,
   trainerName, onSaveTrainerName, definicoes, onSaveHorario, onSaveLembretes, permissaoNotificacoes,
   onCopiarHorario, onRestaurarHorario, onSaveDuracaoSlot, onSaveReposicao,
+  onSaveTimbre, onSaveSeccao, onCarregarLogo, onPreverTimbre,
   tema, onMudarTema, temaResolvido, onToast, onSignOutGlobal,
 }) {
   const [section, setSection] = useState('conta');
@@ -3392,6 +3542,200 @@ function SettingsModal({
                       As notificações estão bloqueadas para este site. Só continua a ver o aviso dentro da aplicação.
                     </div>
                   )}
+                </SettingsBlock>
+              </>
+            )}
+
+            {section === 'documentos' && (
+              <>
+                <SettingsBlock
+                  title="Logótipo"
+                  description="Aparece no topo das avaliações e dos planos de treino. Com logótipo, a marca PTMANAGER sai do cabeçalho — o documento é seu."
+                >
+                  {definicoes.timbre.logo ? (
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <img
+                        src={definicoes.timbre.logo}
+                        alt="Logótipo atual"
+                        style={{
+                          height: 56, width: 'auto', maxWidth: 180, objectFit: 'contain',
+                          // Fundo claro fixo: um logótipo preto sobre o tema
+                          // escuro desaparecia aqui, e no papel vê-se assim.
+                          backgroundColor: '#fff', borderRadius: 6, padding: 6,
+                          border: '1px solid var(--border-hair)',
+                        }}
+                      />
+                      <button type="button" onClick={() => onSaveTimbre({ logo: '' })} className="btn btn-ghost" style={{ fontSize: 12 }}>
+                        <Trash2 size={14} /> Remover
+                      </button>
+                    </div>
+                  ) : null}
+                  <label className="btn btn-ghost self-start" style={{ fontSize: 12, cursor: 'pointer' }}>
+                    <ImagePlus size={14} /> {definicoes.timbre.logo ? 'Trocar logótipo' : 'Carregar logótipo'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={(e) => { onCarregarLogo(e.target.files && e.target.files[0]); e.target.value = ''; }}
+                    />
+                  </label>
+                  <p className="text-xs font-body text-faint">
+                    PNG ou JPEG. É reduzido para caber no cabeçalho; um ficheiro
+                    com fundo transparente fica melhor sobre papel branco.
+                  </p>
+                </SettingsBlock>
+
+                <SettingsBlock
+                  title="Identificação"
+                  description="O que sai no timbre a seguir ao seu nome profissional."
+                >
+                  <FormField label="Estúdio ou ginásio">
+                    <input
+                      value={definicoes.timbre.estudio}
+                      onChange={(e) => onSaveTimbre({ estudio: e.target.value })}
+                      className="input-field"
+                      maxLength={80}
+                      placeholder="Ex.: Estúdio Fonseca"
+                    />
+                  </FormField>
+                  <FormField label="Nº profissional">
+                    <input
+                      value={definicoes.timbre.numeroProfissional}
+                      onChange={(e) => onSaveTimbre({ numeroProfissional: e.target.value })}
+                      className="input-field"
+                      maxLength={40}
+                      placeholder="Ex.: cédula IPDJ 12345"
+                    />
+                  </FormField>
+                  <FormField label="Morada">
+                    <input
+                      value={definicoes.timbre.morada}
+                      onChange={(e) => onSaveTimbre({ morada: e.target.value })}
+                      className="input-field"
+                      maxLength={120}
+                      placeholder="Rua, número, localidade"
+                    />
+                  </FormField>
+                </SettingsBlock>
+
+                <SettingsBlock
+                  title="Contactos"
+                  description="Saem no canto do timbre, para o aluno saber como o encontrar."
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <FormField label="Telefone">
+                      <input
+                        value={definicoes.timbre.telefone}
+                        onChange={(e) => onSaveTimbre({ telefone: e.target.value })}
+                        className="input-field"
+                        maxLength={40}
+                        inputMode="tel"
+                        placeholder="+351 910 000 000"
+                      />
+                    </FormField>
+                    <FormField label="E-mail nos documentos">
+                      <input
+                        value={definicoes.timbre.email}
+                        onChange={(e) => onSaveTimbre({ email: e.target.value })}
+                        className="input-field"
+                        maxLength={80}
+                        inputMode="email"
+                        placeholder={user?.email || 'contacto@exemplo.pt'}
+                      />
+                    </FormField>
+                  </div>
+                  <FormField label="Site ou rede social">
+                    <input
+                      value={definicoes.timbre.site}
+                      onChange={(e) => onSaveTimbre({ site: e.target.value })}
+                      className="input-field"
+                      maxLength={80}
+                      placeholder="instagram.com/oseunome"
+                    />
+                  </FormField>
+                  <p className="text-xs font-body text-faint">
+                    Sem e-mail preenchido, sai o e-mail de acesso à conta.
+                  </p>
+                </SettingsBlock>
+
+                <SettingsBlock
+                  title="Rodapé"
+                  description="O aviso repete-se em todas as folhas — é o que acompanha uma página que se perca."
+                >
+                  <label className="flex items-center gap-2 text-sm font-body text-primary">
+                    <input
+                      type="checkbox"
+                      checked={definicoes.timbre.confidencialidade}
+                      onChange={(e) => onSaveTimbre({ confidencialidade: e.target.checked })}
+                      style={{ accentColor: 'var(--brass)' }}
+                    />
+                    Incluir aviso de confidencialidade
+                  </label>
+                  {definicoes.timbre.confidencialidade && (
+                    <FormField label="Texto do aviso">
+                      <textarea
+                        value={definicoes.timbre.textoConfidencialidade}
+                        onChange={(e) => onSaveTimbre({ textoConfidencialidade: e.target.value })}
+                        className="input-field"
+                        rows={2}
+                        maxLength={200}
+                      />
+                    </FormField>
+                  )}
+                  <p className="text-xs font-body text-faint">
+                    <strong>Numeração das páginas:</strong> quem a imprime é o
+                    browser. Na caixa de impressão, ligue “Cabeçalhos e rodapés”.
+                    Não há forma de a aplicação a desenhar na folha.
+                  </p>
+                </SettingsBlock>
+
+                <SettingsBlock
+                  title="Secções da avaliação física"
+                  description="O que entra no PDF. Desligar aqui não apaga nada — só deixa de sair no papel."
+                >
+                  {SECCOES_AVALIACAO.map((sec) => (
+                    <label key={sec.id} className="flex items-center gap-2 text-sm font-body text-primary">
+                      <input
+                        type="checkbox"
+                        checked={definicoes.timbre.seccoes.avaliacao[sec.id]}
+                        disabled={sec.sempre}
+                        onChange={(e) => onSaveSeccao('avaliacao', sec.id, e.target.checked)}
+                        style={{ accentColor: 'var(--brass)' }}
+                      />
+                      <span style={{ opacity: sec.sempre ? 0.55 : 1 }}>
+                        {sec.label}{sec.sempre ? ' (sempre)' : ''}
+                      </span>
+                    </label>
+                  ))}
+                </SettingsBlock>
+
+                <SettingsBlock
+                  title="Secções do plano de treino"
+                  description="O mesmo para o PDF que o aluno leva para o ginásio."
+                >
+                  {SECCOES_TREINO.map((sec) => (
+                    <label key={sec.id} className="flex items-center gap-2 text-sm font-body text-primary">
+                      <input
+                        type="checkbox"
+                        checked={definicoes.timbre.seccoes.treino[sec.id]}
+                        disabled={sec.sempre}
+                        onChange={(e) => onSaveSeccao('treino', sec.id, e.target.checked)}
+                        style={{ accentColor: 'var(--brass)' }}
+                      />
+                      <span style={{ opacity: sec.sempre ? 0.55 : 1 }}>
+                        {sec.label}{sec.sempre ? ' (sempre)' : ''}
+                      </span>
+                    </label>
+                  ))}
+                </SettingsBlock>
+
+                <SettingsBlock
+                  title="Ver o timbre"
+                  description="Abre uma folha de exemplo com estas definições, sem gastar papel."
+                >
+                  <button type="button" onClick={onPreverTimbre} className="btn btn-primary self-start" style={{ fontSize: 12 }}>
+                    <Eye size={14} /> Pré-visualizar
+                  </button>
                 </SettingsBlock>
               </>
             )}
@@ -6925,14 +7269,28 @@ function PrintSection({ title, children }) {
 }
 
 // Timbre partilhado pela avaliacao e pelo plano de treino.
-function PrintHeader({ trainerName, userEmail, titulo, subtitulo }) {
+// Timbre. Com logótipo do treinador, é o logótipo que manda no topo e a marca
+// PTMANAGER desce para o rodapé: o documento é entregue por ele ao aluno dele,
+// e não é a nossa marca que interessa nessa folha.
+function PrintHeader({ trainerName, userEmail, timbre, titulo, subtitulo }) {
+  const t = timbre || EMPTY_TIMBRE;
+  const contactos = [t.telefone, t.email || userEmail, t.site].filter(Boolean);
   return (
     <>
       <header className="print-head">
-        <div className="print-brand">PT<span>MANAGER</span></div>
+        <div className="print-ident">
+          {t.logo ? <img className="print-logo" src={t.logo} alt="" /> : null}
+          {t.estudio ? (
+            <div className="print-estudio">
+              {t.estudio}
+              {t.morada ? <small>{t.morada}</small> : null}
+            </div>
+          ) : (!t.logo ? <div className="print-brand">PT<span>MANAGER</span></div> : null)}
+        </div>
         <div className="print-by">
           <strong>{trainerName || userEmail || 'Personal Trainer'}</strong>
-          {trainerName && userEmail ? <><br />{userEmail}</> : null}
+          {t.numeroProfissional ? <><br />Nº profissional {t.numeroProfissional}</> : null}
+          {contactos.length > 0 ? <><br />{contactos.join(' · ')}</> : null}
           <br />Emitido a {fmtDateLong(new Date().toISOString())}
         </div>
       </header>
@@ -6942,12 +7300,40 @@ function PrintHeader({ trainerName, userEmail, titulo, subtitulo }) {
   );
 }
 
-function PrintFooter({ nota }) {
+// Duas peças distintas: o rodapé sai uma vez, no fim do documento; o aviso de
+// confidencialidade é fixo e repete-se em todas as folhas — é o que tem de
+// acompanhar cada página solta que se perca em cima de uma secretária.
+function PrintFooter({ nota, timbre }) {
+  const t = timbre || EMPTY_TIMBRE;
   return (
-    <footer className="print-foot">
-      <span>{nota}</span>
-      <span>Gerado pelo PTMANAGER</span>
-    </footer>
+    <>
+      <footer className="print-foot">
+        <span>{nota}</span>
+        <span>Gerado pelo PTMANAGER</span>
+      </footer>
+      {t.confidencialidade && t.textoConfidencialidade ? (
+        <div className="print-confid">{t.textoConfidencialidade}</div>
+      ) : null}
+    </>
+  );
+}
+
+// Linhas de assinatura no fim do documento. O aluno assina o que recebeu; o
+// treinador assina o que prescreveu.
+function PrintAssinaturas({ nomeAluno, trainerName, userEmail }) {
+  return (
+    <PrintSection title="Assinaturas">
+      <div className="print-assinaturas">
+        <div>
+          <div className="print-assinatura" />
+          <div className="print-ex-nota">{nomeAluno}</div>
+        </div>
+        <div>
+          <div className="print-assinatura" />
+          <div className="print-ex-nota">{trainerName || userEmail || 'Personal Trainer'}</div>
+        </div>
+      </div>
+    </PrintSection>
   );
 }
 
@@ -6983,6 +7369,146 @@ function PrintEvolutionChart({ assessments, sex }) {
 // A folha e montada num portal para o body, e nao dentro de #root: assim o CSS
 // de impressao pode esconder a aplicacao inteira com um seletor de filho direto,
 // sem depender da arvore de componentes.
+// Folha de exemplo, só para ver o timbre. Os dados são inventados de propósito
+// — quem está nas definições não quer escolher um aluno para ver um cabeçalho,
+// e não faz sentido pôr as medidas de uma pessoa real neste ecrã.
+function ExemploPrintDoc({ trainerName, userEmail, timbre }) {
+  const marca = timbre || EMPTY_TIMBRE;
+  return (
+    <>
+      <PrintHeader
+        trainerName={trainerName}
+        userEmail={userEmail}
+        timbre={marca}
+        titulo="Exemplo de documento"
+        subtitulo="Maria Exemplo · dados fictícios"
+      />
+
+      <div className="print-highlight">
+        <div className="print-kpi"><dt>Peso</dt><dd>64,5 kg</dd></div>
+        <div className="print-kpi"><dt>Massa gorda</dt><dd>22,4 %</dd></div>
+        <div className="print-kpi"><dt>Massa magra</dt><dd>50,1 kg</dd></div>
+        <div className="print-kpi"><dt>IMC</dt><dd>22,8</dd></div>
+      </div>
+
+      <PrintSection title="Aluno">
+        <dl className="print-grid">
+          <PrintField label="Nome" value="Maria Exemplo" />
+          <PrintField label="Sexo" value="Feminino" />
+          <PrintField label="Altura" value="168 cm" />
+        </dl>
+      </PrintSection>
+
+      <PrintSection title="Como fica o seu timbre">
+        <div className="print-notes">
+          Esta folha usa exatamente o cabeçalho, os contactos e o rodapé que
+          escolheu. As secções que desligou não aparecem nos documentos a sério.
+        </div>
+      </PrintSection>
+
+      <PrintAssinaturas nomeAluno="Maria Exemplo" trainerName={trainerName} userEmail={userEmail} />
+      <PrintFooter nota="Maria Exemplo · Documento de exemplo" timbre={marca} />
+    </>
+  );
+}
+
+// Pré-visualização: a mesma folha, à escala, antes de abrir a caixa de
+// impressão do sistema. Vale sobretudo pelas secções — depois de as desligar,
+// ver o resultado sem gastar papel é o que evita a segunda tentativa.
+//
+// A folha tem largura fixa em milímetros (é papel). Quem encolhe é o ecrã, com
+// um transform: mudar a largura do A4 daria uma previsão que não corresponde
+// ao que sai impresso, que é justamente o que isto existe para evitar.
+const LARGURA_FOLHA_PX = 824;   // 190 mm de conteúdo + 2 × 14 mm de margem, a 96 dpi
+
+function PrevisualizacaoModal({ titulo, aluno, assunto, onImprimir, onClose, children }) {
+  const caixa = useRef(null);
+  const folha = useRef(null);
+  const [escala, setEscala] = useState(1);
+  const [altura, setAltura] = useState(0);
+
+  // `transform` não muda a caixa que o elemento ocupa: sem medir a folha e
+  // encolher o invólucro à mão, ficava um vazio cinzento por baixo do papel.
+  useEffect(() => {
+    function medir() {
+      if (caixa.current) {
+        setEscala(Math.min(1, (caixa.current.clientWidth - 32) / LARGURA_FOLHA_PX));
+      }
+      if (folha.current) setAltura(folha.current.scrollHeight);
+    }
+    medir();
+    window.addEventListener('resize', medir);
+    // A folha cresce depois de as imagens chegarem; o observador apanha isso.
+    const observador = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(medir) : null;
+    if (observador && folha.current) observador.observe(folha.current);
+    return () => {
+      window.removeEventListener('resize', medir);
+      if (observador) observador.disconnect();
+    };
+  }, []);
+
+  // Não há forma de anexar o PDF a partir daqui: o browser guarda o ficheiro
+  // onde o utilizador mandar. O que se pode fazer é abrir a mensagem já escrita
+  // e dizê-lo sem rodeios.
+  function enviar() {
+    const corpo = [
+      `Olá${aluno && aluno.name ? ` ${aluno.name.split(' ')[0]}` : ''},`,
+      '',
+      `Segue em anexo ${assunto}.`,
+      '',
+      'Qualquer dúvida, diga.',
+    ].join('\n');
+    const destino = aluno && aluno.email ? encodeURIComponent(aluno.email) : '';
+    window.location.href = `mailto:${destino}?subject=${encodeURIComponent(titulo)}&body=${encodeURIComponent(corpo)}`;
+  }
+
+  return (
+    <Modal
+      title="Pré-visualização"
+      onClose={onClose}
+      largura={LARGURA_FOLHA_PX + 64}
+      semPadding
+      // Abre-se por cima das definições, de onde também se chega ao timbre.
+      // Na mesma camada que os outros modais, ficava por baixo e sem cliques.
+      camada={55}
+      acoes={(
+        <>
+          <button type="button" onClick={enviar} className="btn btn-ghost" style={{ fontSize: 12 }}>
+            <Send size={14} /> Enviar
+          </button>
+          <button type="button" onClick={onImprimir} className="btn btn-primary" style={{ fontSize: 12 }}>
+            <Printer size={14} /> Imprimir
+          </button>
+        </>
+      )}
+    >
+      <div className="px-4 pt-3 pb-1 text-2xs font-body text-faint">
+        Na caixa de impressão, escolha <strong>Guardar como PDF</strong>. Para
+        numerar as páginas, ligue lá <strong>Cabeçalhos e rodapés</strong> — a
+        numeração é do browser, não nossa.
+      </div>
+      <div ref={caixa} className="p-4">
+        <div className="print-previa">
+          <div style={{
+            width: LARGURA_FOLHA_PX * escala,
+            height: altura ? altura * escala : undefined,
+            margin: '0 auto',
+            overflow: 'hidden',
+          }}>
+            <div
+              ref={folha}
+              className="print-previa-escala"
+              style={{ width: LARGURA_FOLHA_PX, transform: `scale(${escala})` }}
+            >
+              <div className="print-sheet">{children}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function PrintHost({ job, onDone, children }) {
   useEffect(() => {
     if (!job) return undefined;
@@ -7039,9 +7565,11 @@ function PrintHost({ job, onDone, children }) {
   );
 }
 
-function TreinoPrintDoc({ student, prescricao, biblioteca, trainerName, userEmail }) {
+function TreinoPrintDoc({ student, prescricao, biblioteca, trainerName, userEmail, timbre }) {
   // O aluno ou o programa podem ter desaparecido entre o clique e a impressao.
   if (!student || !prescricao) return null;
+  const marca = timbre || EMPTY_TIMBRE;
+  const ver = marca.seccoes.treino;
   const periodo = [
     prescricao.inicio ? fmtDateLong(prescricao.inicio + 'T00:00:00') : null,
     prescricao.fim ? fmtDateLong(prescricao.fim + 'T00:00:00') : null,
@@ -7052,6 +7580,7 @@ function TreinoPrintDoc({ student, prescricao, biblioteca, trainerName, userEmai
       <PrintHeader
         trainerName={trainerName}
         userEmail={userEmail}
+        timbre={marca}
         titulo={prescricao.nome || 'Plano de Treino'}
         subtitulo={student.name + (periodo ? ' · ' + periodo : '')}
       />
@@ -7090,7 +7619,7 @@ function TreinoPrintDoc({ student, prescricao, biblioteca, trainerName, userEmai
                         descreverMetodo(ex),
                         ...extrasPreenchidos(ex).map(([campo, rotulo]) => `${rotulo}: ${ex[campo]}`),
                         ex.notas,
-                        daBiblioteca && daBiblioteca.instrucoes,
+                        ver.instrucoes && daBiblioteca && daBiblioteca.instrucoes,
                       ].filter(Boolean);
                       const series = Array.isArray(ex.linhas) && ex.linhas.length ? ex.linhas : [null];
                       return series.map((linha, i) => (
@@ -7112,23 +7641,24 @@ function TreinoPrintDoc({ student, prescricao, biblioteca, trainerName, userEmai
               </div>
             )); })()
           )}
-          {t.notas ? <div className="print-notes" style={{ marginTop: 6 }}>{t.notas}</div> : null}
+          {ver.notas && t.notas ? <div className="print-notes" style={{ marginTop: 6 }}>{t.notas}</div> : null}
         </PrintSection>
       ))}
 
-      <PrintSection title="Assinatura do profissional">
-        <div className="print-assinatura" />
-        <div className="print-ex-nota">{trainerName || userEmail || 'Personal Trainer'}</div>
-      </PrintSection>
+      {ver.assinatura && (
+        <PrintAssinaturas nomeAluno={student.name} trainerName={trainerName} userEmail={userEmail} />
+      )}
 
-      <PrintFooter nota={student.name + ' · ' + (prescricao.nome || 'Plano de treino')} />
+      <PrintFooter nota={student.name + ' · ' + (prescricao.nome || 'Plano de treino')} timbre={marca} />
     </>
   );
 }
 
-function AssessmentPrintDoc({ student, assessment, historico, photosById, trainerName, userEmail }) {
+function AssessmentPrintDoc({ student, assessment, historico, photosById, trainerName, userEmail, timbre }) {
   // O aluno ou a avaliacao podem ter desaparecido entre o clique e a impressao.
   if (!student || !assessment) return null;
+  const marca = timbre || EMPTY_TIMBRE;
+  const ver = marca.seccoes.avaliacao;
   const a = assessment;
   const isDobras = a.assessMethod === 'dobras';
   const protocolo = FOLD_PROTOCOLS.find((p) => p.id === a.assessProtocol);
@@ -7193,16 +7723,19 @@ function AssessmentPrintDoc({ student, assessment, historico, photosById, traine
       <PrintHeader
         trainerName={trainerName}
         userEmail={userEmail}
+        timbre={marca}
         titulo="Avaliação Física"
         subtitulo={`${student.name} · ${fmtDateLong(`${a.date}T00:00:00`)}`}
       />
 
+      {ver.destaques && (
       <div className="print-highlight">
         <div className="print-kpi"><dt>Peso</dt><dd>{printValue(peso, 'kg') || '—'}</dd></div>
         <div className="print-kpi"><dt>Massa gorda</dt><dd>{gordura != null ? `${nPT(gordura)} %` : '—'}</dd></div>
         <div className="print-kpi"><dt>Massa magra</dt><dd>{massaMagraKg != null ? `${nPT(massaMagraKg)} kg` : '—'}</dd></div>
         <div className="print-kpi"><dt>IMC</dt><dd>{bmi != null ? nPT(bmi) : '—'}</dd></div>
       </div>
+      )}
 
       <PrintSection title="Aluno">
         <dl className="print-grid">
@@ -7215,7 +7748,7 @@ function AssessmentPrintDoc({ student, assessment, historico, photosById, traine
         </dl>
       </PrintSection>
 
-      {isDobras ? (
+      {ver.medidas && (isDobras ? (
         <PrintSection title={`Dobras cutâneas${protocolo ? ` — ${protocolo.label}` : ''}`}>
           <dl className="print-grid">
             {sitesUsados.map((id) => <PrintField key={id} label={foldLabel(id)} value={printValue(a[id], 'mm')} />)}
@@ -7229,9 +7762,9 @@ function AssessmentPrintDoc({ student, assessment, historico, photosById, traine
             {BIA_FIELDS.map((f) => <PrintField key={f.id} label={f.label} value={printValue(a[f.id])} />)}
           </dl>
         </PrintSection>
-      )}
+      ))}
 
-      {massaGordaKg != null && (
+      {ver.composicao && massaGordaKg != null && (
         <PrintSection title="Composição corporal">
           <dl className="print-grid">
             <PrintField label="Massa gorda" value={`${nPT(massaGordaKg)} kg`} />
@@ -7241,7 +7774,7 @@ function AssessmentPrintDoc({ student, assessment, historico, photosById, traine
         </PrintSection>
       )}
 
-      {perimetrosPreenchidos.length > 0 && (
+      {ver.perimetros && perimetrosPreenchidos.length > 0 && (
         <PrintSection title="Perímetros">
           <dl className="print-grid">
             {perimetrosPreenchidos.map((p) => (
@@ -7259,7 +7792,7 @@ function AssessmentPrintDoc({ student, assessment, historico, photosById, traine
         </PrintSection>
       )}
 
-      {metas.length > 0 && (
+      {ver.metas && metas.length > 0 && (
         <PrintSection title="Metas">
           <dl className="print-grid">
             {metas.map((m) => <PrintField key={m.rotulo} label={m.rotulo} value={m.texto} />)}
@@ -7268,7 +7801,7 @@ function AssessmentPrintDoc({ student, assessment, historico, photosById, traine
         </PrintSection>
       )}
 
-      {comparacao.length > 0 && (
+      {ver.comparacao && comparacao.length > 0 && (
         <PrintSection title={`Comparação com a avaliação de ${fmtDateLong(`${anterior.date}T00:00:00`)}`}>
           <table className="print-table">
             <thead>
@@ -7293,9 +7826,9 @@ function AssessmentPrintDoc({ student, assessment, historico, photosById, traine
         </PrintSection>
       )}
 
-      <PrintEvolutionChart assessments={historico} sex={student.sex} />
+      {ver.evolucao && <PrintEvolutionChart assessments={historico} sex={student.sex} />}
 
-      {fotos.length > 0 && (
+      {ver.fotos && fotos.length > 0 && (
         <PrintSection title="Registo fotográfico">
           <div className="print-photos">
             {fotos.map((f, i) => <img key={f.id || i} src={f.dataUri} alt="" />)}
@@ -7303,14 +7836,18 @@ function AssessmentPrintDoc({ student, assessment, historico, photosById, traine
         </PrintSection>
       )}
 
-      {a.assessNotes ? (
+      {ver.observacoes && a.assessNotes ? (
         <PrintSection title="Observações">
           <div className="print-notes">{a.assessNotes}</div>
         </PrintSection>
       ) : null}
 
+      {ver.assinatura && (
+        <PrintAssinaturas nomeAluno={student.name} trainerName={trainerName} userEmail={userEmail} />
+      )}
+
       {/* fmtDateBR e dd/mm, sem ano: serve na agenda, nao num documento que o aluno guarda. */}
-      <PrintFooter nota={`${student.name} · Avaliação de ${fmtDateLong(`${a.date}T00:00:00`)}`} />
+      <PrintFooter nota={`${student.name} · Avaliação de ${fmtDateLong(`${a.date}T00:00:00`)}`} timbre={marca} />
     </>
   );
 }
@@ -8549,6 +9086,7 @@ function AppInner() {
   const [financeMonthCursor, setFinanceMonthCursor] = useState(new Date());
   const [assessmentsStudentId, setAssessmentsStudentId] = useState(null);
   const [printJob, setPrintJob] = useState(null);
+  const [previaJob, setPreviaJob] = useState(null);
   const [definicoes, setDefinicoes] = useState(() => normalizarDefinicoes(null));
   const [treinos, setTreinos] = useState(EMPTY_TREINOS);
   const [treinosStudentId, setTreinosStudentId] = useState(null);
@@ -9176,7 +9714,56 @@ function AppInner() {
   function printAssessment(assessment) {
     const aluno = students.find((s) => s.id === assessment.studentId);
     if (!aluno) { showToast('Aluno não encontrado.', 'error'); return; }
-    setPrintJob({ tipo: 'avaliacao', assessmentId: assessment.id, studentId: aluno.id });
+    setPreviaJob({ tipo: 'avaliacao', assessmentId: assessment.id, studentId: aluno.id });
+  }
+
+  // A folha é desenhada duas vezes: na pré-visualização e no que vai para o
+  // papel. Vem daqui as duas, para não haver hipótese de divergirem.
+  function documentoDaFolha(job) {
+    if (!job) return null;
+    if (job.tipo === 'treino') {
+      return (
+        <TreinoPrintDoc
+          student={students.find((st) => st.id === job.studentId)}
+          prescricao={treinos.prescricoes.find((pr) => pr.id === job.prescricaoId)}
+          biblioteca={treinos.biblioteca}
+          trainerName={trainerName}
+          userEmail={user?.email}
+          timbre={definicoes.timbre}
+        />
+      );
+    }
+    if (job.tipo === 'exemplo') {
+      return (
+        <ExemploPrintDoc trainerName={trainerName} userEmail={user?.email} timbre={definicoes.timbre} />
+      );
+    }
+    if (job.tipo === 'avaliacao') {
+      return (
+        <AssessmentPrintDoc
+          student={students.find((s) => s.id === job.studentId)}
+          assessment={sessions.find((s) => s.id === job.assessmentId)}
+          historico={sessions.filter((s) => s.studentId === job.studentId && s.type === 'avaliacao' && (s.assessWeight || s.assessBodyFat))}
+          photosById={photosById}
+          trainerName={trainerName}
+          userEmail={user?.email}
+          timbre={definicoes.timbre}
+        />
+      );
+    }
+    return null;
+  }
+
+  function tituloDaFolha(job) {
+    if (!job) return 'Documento';
+    if (job.tipo === 'exemplo') return 'Exemplo de timbre';
+    const aluno = students.find((st) => st.id === job.studentId);
+    if (job.tipo === 'treino') {
+      const pr = treinos.prescricoes.find((x) => x.id === job.prescricaoId);
+      return `${pr?.nome || 'Plano de treino'} — ${aluno?.name || ''}`.trim();
+    }
+    const av = sessions.find((x) => x.id === job.assessmentId);
+    return `Avaliação física${av ? ` de ${fmtDateLong(`${av.date}T00:00:00`)}` : ''} — ${aluno?.name || ''}`.trim();
   }
 
   function saveAssessment(studentId, form) {
@@ -9335,7 +9922,7 @@ function AppInner() {
   }
 
   function printTreino(prescricao) {
-    setPrintJob({ tipo: 'treino', prescricaoId: prescricao.id, studentId: prescricao.studentId });
+    setPreviaJob({ tipo: 'treino', prescricaoId: prescricao.id, studentId: prescricao.studentId });
   }
 
   function goToAssessments(student) {
@@ -9386,6 +9973,41 @@ function AppInner() {
   // que já foi dado ao aluno.
   function saveReposicao(mudanca) {
     persistDefinicoes({ ...definicoes, reposicao: { ...definicoes.reposicao, ...mudanca } });
+  }
+
+  function saveTimbre(mudanca) {
+    persistDefinicoes({ ...definicoes, timbre: { ...definicoes.timbre, ...mudanca } });
+  }
+
+  function saveSeccao(documento, seccao, ligada) {
+    saveTimbre({
+      seccoes: {
+        ...definicoes.timbre.seccoes,
+        [documento]: { ...definicoes.timbre.seccoes[documento], [seccao]: ligada },
+      },
+    });
+  }
+
+  // O logótipo é guardado como `data:` URI dentro das definições, ao contrário
+  // das fotografias dos alunos. É um só, pequeno, e tem de estar presente no
+  // momento exato em que a folha é impressa — um URL assinado a chegar tarde
+  // dava um cabeçalho vazio. Reduzido a 400 px, pesa uns poucos kB.
+  async function carregarLogo(ficheiro) {
+    if (!ficheiro) return;
+    if (!ficheiro.type.startsWith('image/')) { showToast('Escolha uma imagem.', 'error'); return; }
+    try {
+      const dataUri = await resizeLogo(ficheiro, 400);
+      saveTimbre({ logo: dataUri });
+      showToast('Logótipo guardado.');
+    } catch (e) {
+      showToast('Não foi possível ler a imagem.', 'error');
+    }
+  }
+
+  // Folha de exemplo com dados inventados: serve para ver o timbre sem ter de
+  // escolher um aluno real nem expor os dados de ninguém no ecrã das definições.
+  function preverTimbre() {
+    setPreviaJob({ tipo: 'exemplo' });
   }
 
   async function saveLembretes(mudanca) {
@@ -9791,27 +10413,19 @@ function AppInner() {
         </div>
       )}
 
-      <PrintHost job={printJob} onDone={setPrintJob}>
-        {printJob?.tipo === 'treino' && (
-          <TreinoPrintDoc
-            student={students.find((st) => st.id === printJob.studentId)}
-            prescricao={treinos.prescricoes.find((pr) => pr.id === printJob.prescricaoId)}
-            biblioteca={treinos.biblioteca}
-            trainerName={trainerName}
-            userEmail={user?.email}
-          />
-        )}
-        {printJob?.tipo === 'avaliacao' && (
-          <AssessmentPrintDoc
-            student={students.find((s) => s.id === printJob.studentId)}
-            assessment={sessions.find((s) => s.id === printJob.assessmentId)}
-            historico={sessions.filter((s) => s.studentId === printJob.studentId && s.type === 'avaliacao' && (s.assessWeight || s.assessBodyFat))}
-            photosById={photosById}
-            trainerName={trainerName}
-            userEmail={user?.email}
-          />
-        )}
-      </PrintHost>
+      <PrintHost job={printJob} onDone={setPrintJob}>{documentoDaFolha(printJob)}</PrintHost>
+
+      {previaJob && (
+        <PrevisualizacaoModal
+          titulo={tituloDaFolha(previaJob)}
+          aluno={students.find((st) => st.id === previaJob.studentId)}
+          assunto={previaJob.tipo === 'treino' ? 'o seu plano de treino' : 'a sua avaliação física'}
+          onImprimir={() => { setPrintJob(previaJob); setPreviaJob(null); }}
+          onClose={() => setPreviaJob(null)}
+        >
+          {documentoDaFolha(previaJob)}
+        </PrevisualizacaoModal>
+      )}
 
       {showSessionModal && (
         <SessionFormModal
@@ -9874,6 +10488,10 @@ function AppInner() {
           onRestaurarHorario={restaurarHorario}
           onSaveDuracaoSlot={saveDuracaoSlot}
           onSaveReposicao={saveReposicao}
+          onSaveTimbre={saveTimbre}
+          onSaveSeccao={saveSeccao}
+          onCarregarLogo={carregarLogo}
+          onPreverTimbre={preverTimbre}
           onSaveLembretes={saveLembretes}
           permissaoNotificacoes={permissaoNotificacoes}
         />

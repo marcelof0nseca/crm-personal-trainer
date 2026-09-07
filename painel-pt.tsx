@@ -4046,9 +4046,14 @@ function useArrastarSessao(onLargar) {
   return { arrasto, alvo, comecar };
 }
 
-function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, customCategories, compact }) {
+function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, customCategories, compact, selecao }) {
   const largar = React.useCallback((iso) => { if (onMoveTo) onMoveTo(session, iso); }, [onMoveTo, session]);
   const { arrasto, alvo, comecar } = useArrastarSessao(largar);
+  // Em modo de seleção o cartão deixa de abrir e passa a marcar-se. A pega de
+  // arrastar sai: mover em bloco faz-se pela barra, com data à escolha.
+  const aSelecionar = Boolean(selecao && selecao.ativo);
+  const selecionada = aSelecionar && selecao.ids.includes(session.id);
+  const abrir = aSelecionar ? () => selecao.alternar(session.id) : onOpen;
   const aArrastar = Boolean(arrasto);
   const isEvento = session.kind === 'evento';
   const type = isEvento ? eventTypeFor(session.type, customCategories) : sessionTypeFor(session.type, customCategories);
@@ -4075,7 +4080,7 @@ function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, custom
         filter: aArrastar ? 'drop-shadow(var(--shadow-drag))' : 'none',
       }}
     >
-      {onMoveTo && (
+      {onMoveTo && !aSelecionar && (
         <button
           type="button"
           onPointerDown={comecar}
@@ -4094,10 +4099,11 @@ function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, custom
         </button>
       )}
     <div
-      onClick={onOpen}
+      onClick={abrir}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => { if (e.key === 'Enter') onOpen(); }}
+      aria-pressed={aSelecionar ? selecionada : undefined}
+      onKeyDown={(e) => { if (e.key === 'Enter') abrir(); }}
       className={`rounded-lg border border-hair pl-3 pr-1.5 py-2.5 cursor-pointer card-hover animate-in ${isCancelado ? 'opacity-50' : ''}`}
       // Sem borderColor: a abreviada entra em conflito com borderLeftColor e o
       // React avisa. O retorno do arrasto vem do realce da coluna e da sombra,
@@ -4110,8 +4116,24 @@ function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, custom
         borderStyle: isEvento ? 'dashed solid solid dashed' : 'solid',
         borderLeftWidth: '3px',
         borderLeftColor: color,
+        // Marcada: anel a toda a volta, que a cor da célula já ocupa o fundo.
+        boxShadow: selecionada ? '0 0 0 2px var(--brass)' : undefined,
+        opacity: aSelecionar && !selecionada ? 0.62 : undefined,
       }}
     >
+      {aSelecionar && (
+        <span className="flex items-center gap-1.5 mb-1.5">
+          <input
+            type="checkbox"
+            checked={selecionada}
+            readOnly
+            tabIndex={-1}
+            aria-hidden="true"
+            style={{ accentColor: 'var(--brass)', pointerEvents: 'none' }}
+          />
+          <span className="text-2xs font-body text-faint">{selecionada ? 'Selecionada' : 'Selecionar'}</span>
+        </span>
+      )}
       {/* Compacto: hora + ações na 1.ª linha, nome na 2.ª, estado com a linha
           toda na 3.ª — assim "Agendado" nunca é cortado a meio. */}
       {compact ? (
@@ -4122,7 +4144,7 @@ function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, custom
               <TypeIcon size={10} style={{ color: acentoTexto(type.color), display: 'block' }} />
             </span>
             <span className="flex-1" />
-            {!isEvento && (
+            {!isEvento && !aSelecionar && (
               <span className="flex gap-0.5 flex-shrink-0">
                 {!isRealizado && !isCancelado && !isFalta && (
                   <button onClick={(e) => { e.stopPropagation(); onQuickStatus(session, 'realizado'); }} type="button" className="p-1 rounded btn-surface" aria-label="Marcar como realizado" title="Marcar como realizado">
@@ -4167,7 +4189,7 @@ function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, custom
                 {isEvento ? type.label : (student?.name || 'Aluno removido')}
               </div>
             </div>
-            {!isEvento && (
+            {!isEvento && !aSelecionar && (
               <div className="flex flex-col gap-0.5 flex-shrink-0">
                 {!isRealizado && !isCancelado && !isFalta && (
                   <button onClick={(e) => { e.stopPropagation(); onQuickStatus(session, 'realizado'); }} type="button" className="p-1 rounded btn-surface" aria-label="Marcar como realizado" title="Marcar como realizado">
@@ -4667,10 +4689,13 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
 
 /* ============================== WEEKLY VIEW ============================== */
 
-function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSession, onPasteSession, onMoveSession, temCopia, horario, students, compact, customCategories }) {
+function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSession, onPasteSession, onMoveSession, temCopia, horario, students, compact, customCategories, selecao }) {
   const iso = fmtDateISO(date);
   const isToday = iso === fmtDateISO(new Date());
   const fechado = horario && !horario.aberto;
+  const aSelecionar = Boolean(selecao && selecao.ativo);
+  const idsDoDia = sessionsList.map((s) => s.id);
+  const todasMarcadas = idsDoDia.length > 0 && idsDoDia.every((id) => selecao.ids.includes(id));
   return (
     <div
       // data-day-iso e o alvo que o arrasto procura com elementFromPoint.
@@ -4692,21 +4717,36 @@ function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSess
           )}
         </div>
         <div className="flex items-center gap-0.5 flex-shrink-0">
-          {temCopia && onPasteSession && (
-            <button onClick={() => onPasteSession(iso)} type="button" className="p-1.5 rounded-lg btn-surface" aria-label="Colar aqui" title="Colar aqui">
-              <ClipboardPaste size={16} className="text-brass" style={{ display: 'block' }} />
-            </button>
+          {aSelecionar ? (
+            idsDoDia.length > 0 && (
+              <button
+                onClick={() => selecao.alternarVarias(idsDoDia, !todasMarcadas)}
+                type="button"
+                className="text-2xs font-body link-sky"
+                style={{ padding: '4px 2px' }}
+              >
+                {todasMarcadas ? 'Nenhuma' : 'Todas'}
+              </button>
+            )
+          ) : (
+            <>
+              {temCopia && onPasteSession && (
+                <button onClick={() => onPasteSession(iso)} type="button" className="p-1.5 rounded-lg btn-surface" aria-label="Colar aqui" title="Colar aqui">
+                  <ClipboardPaste size={16} className="text-brass" style={{ display: 'block' }} />
+                </button>
+              )}
+              <button onClick={() => onAddSession(iso)} type="button" className="p-1.5 rounded-lg btn-surface" aria-label="Adicionar">
+                <Plus size={16} className="text-muted" style={{ display: 'block' }} />
+              </button>
+            </>
           )}
-          <button onClick={() => onAddSession(iso)} type="button" className="p-1.5 rounded-lg btn-surface" aria-label="Adicionar">
-            <Plus size={16} className="text-muted" style={{ display: 'block' }} />
-          </button>
         </div>
       </div>
       <div className="flex flex-col gap-2 min-w-0">
         {sessionsList.length === 0 && <div className="text-xs text-faint font-body py-3 text-center">Nada agendado</div>}
         {sessionsList.map((s) => {
           const student = students.find((st) => st.id === s.studentId);
-          return <SessionCard key={s.id} session={s} student={student} onOpen={() => onOpenSession(s)} onQuickStatus={onQuickStatus} onMoveTo={onMoveSession} customCategories={customCategories} compact={compact} />;
+          return <SessionCard key={s.id} session={s} student={student} onOpen={() => onOpenSession(s)} onQuickStatus={onQuickStatus} onMoveTo={onMoveSession} customCategories={customCategories} compact={compact} selecao={selecao} />;
         })}
       </div>
     </div>
@@ -4776,9 +4816,74 @@ function AgendaFiltros({ filtro, setFiltro, total, visiveis }) {
   );
 }
 
+// Barra de seleção múltipla. Fica colada ao fundo do ecrã: em modo de seleção
+// o utilizador está a olhar para os cartões, não para o topo da página.
+function BarraSelecao({ selecao }) {
+  const [destino, setDestino] = useState('');
+  const total = selecao.ids.length;
+
+  function mover() {
+    if (!destino) return;
+    selecao.moverPara(destino);
+    setDestino('');
+  }
+
+  return (
+    <div
+      className="sticky flex flex-col gap-2 rounded-xl border border-hair p-3 mb-4"
+      style={{ bottom: 12, zIndex: 30, backgroundColor: 'var(--bg-surface)', boxShadow: 'var(--shadow-drag)' }}
+    >
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <span className="text-sm font-body text-primary">
+          {total === 0 ? 'Toque nas marcações para as selecionar.' : `${plural(total, 'marcação selecionada', 'marcações selecionadas')}`}
+        </span>
+        <button type="button" onClick={selecao.sair} className="btn btn-ghost flex-shrink-0" style={{ fontSize: 12 }}>
+          Sair da seleção
+        </button>
+      </div>
+
+      {total > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <button type="button" onClick={() => selecao.deslocar(-7)} className="btn btn-ghost" style={{ fontSize: 12 }}>
+            <ChevronLeft size={13} /> 7 dias
+          </button>
+          <button type="button" onClick={() => selecao.deslocar(-1)} className="btn btn-ghost" style={{ fontSize: 12 }}>
+            <ChevronLeft size={13} /> 1 dia
+          </button>
+          <button type="button" onClick={() => selecao.deslocar(1)} className="btn btn-ghost" style={{ fontSize: 12 }}>
+            1 dia <ChevronRight size={13} />
+          </button>
+          <button type="button" onClick={() => selecao.deslocar(7)} className="btn btn-ghost" style={{ fontSize: 12 }}>
+            7 dias <ChevronRight size={13} />
+          </button>
+          <span className="flex items-center gap-1.5 flex-wrap" style={{ marginLeft: 'auto' }}>
+            <input
+              type="date"
+              value={destino}
+              onChange={(e) => setDestino(e.target.value)}
+              aria-label="Mover as marcações selecionadas para esta data"
+              className="input-field"
+              style={{ flex: '0 1 148px', minWidth: 140 }}
+            />
+            <button type="button" onClick={mover} disabled={!destino} className="btn btn-primary" style={{ fontSize: 12, opacity: destino ? 1 : 0.45 }}>
+              Mover para o dia
+            </button>
+          </span>
+        </div>
+      )}
+
+      {total > 0 && (
+        <span className="text-2xs font-body text-faint">
+          As horas mantêm-se. Deslocar mantém também os dias de intervalo entre marcações.
+        </span>
+      )}
+    </div>
+  );
+}
+
 // Um dia inteiro, em coluna unica. Reaproveita a DayColumn da semana: o mesmo
 // cartao, o mesmo arrastar, o mesmo menu de colar.
-function DailyView({ sessions, students, dayCursor, setDayCursor, onOpenSession, onQuickStatus, onAddSession, onPasteSession, onMoveSession, temCopia, definicoes, customCategories }) {
+function DailyView({ sessions, students, dayCursor, setDayCursor, onOpenSession, onQuickStatus, onAddSession, onPasteSession, onMoveSession, temCopia, definicoes, customCategories, selecao }) {
   const iso = fmtDateISO(dayCursor);
   const doDia = sessions.filter((s) => s.date === iso).sort((a, b) => a.startTime.localeCompare(b.startTime));
   const horario = definicoes ? horarioDoDia(definicoes, iso) : null;
@@ -4802,6 +4907,8 @@ function DailyView({ sessions, students, dayCursor, setDayCursor, onOpenSession,
         </button>
       </div>
 
+      {selecao && selecao.ativo && <BarraSelecao selecao={selecao} />}
+
       <DayColumn
         date={dayCursor}
         sessionsList={doDia}
@@ -4814,6 +4921,7 @@ function DailyView({ sessions, students, dayCursor, setDayCursor, onOpenSession,
         onMoveSession={onMoveSession}
         temCopia={temCopia}
         customCategories={customCategories}
+        selecao={selecao}
       />
     </div>
   );
@@ -4904,7 +5012,7 @@ function ListaView({ sessions, students, onOpenSession, customCategories }) {
   );
 }
 
-function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession, onQuickStatus, onAddSession, onPasteSession, onMoveSession, onLibertarSemana, temCopia, definicoes, customCategories }) {
+function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession, onQuickStatus, onAddSession, onPasteSession, onMoveSession, onLibertarSemana, temCopia, definicoes, customCategories, selecao }) {
   const [selectedDay, setSelectedDay] = useState(fmtDateISO(new Date()));
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
@@ -4960,7 +5068,9 @@ function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession
         </button>
       </div>
 
-      {onLibertarSemana && (
+      {selecao && selecao.ativo && <BarraSelecao selecao={selecao} />}
+
+      {onLibertarSemana && !(selecao && selecao.ativo) && (
         <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
           <span className="text-2xs font-body text-faint">
             {livresACriar.length === 0
@@ -5003,7 +5113,7 @@ function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession
       </div>
 
       <div className="md:hidden">
-        <DayColumn date={days.find((d) => fmtDateISO(d) === selectedDay) || days[0]} sessionsList={sessionsForDay(selectedDay)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} onPasteSession={onPasteSession} onMoveSession={onMoveSession} temCopia={temCopia} horario={horarioDoDia(definicoes, selectedDay)} customCategories={customCategories} />
+        <DayColumn date={days.find((d) => fmtDateISO(d) === selectedDay) || days[0]} sessionsList={sessionsForDay(selectedDay)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} onPasteSession={onPasteSession} onMoveSession={onMoveSession} temCopia={temCopia} horario={horarioDoDia(definicoes, selectedDay)} customCategories={customCategories} selecao={selecao} />
       </div>
 
       {/* Largura mínima por coluna: abaixo disso os nomes ficavam ilegíveis.
@@ -5012,7 +5122,7 @@ function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession
         <div className="grid grid-cols-7 gap-3" style={{ minWidth: 980 }}>
           {days.map((d) => {
             const iso = fmtDateISO(d);
-            return <DayColumn key={iso} date={d} sessionsList={sessionsForDay(iso)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} onPasteSession={onPasteSession} onMoveSession={onMoveSession} temCopia={temCopia} horario={horarioDoDia(definicoes, iso)} compact customCategories={customCategories} />;
+            return <DayColumn key={iso} date={d} sessionsList={sessionsForDay(iso)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} onPasteSession={onPasteSession} onMoveSession={onMoveSession} temCopia={temCopia} horario={horarioDoDia(definicoes, iso)} compact customCategories={customCategories} selecao={selecao} />;
           })}
         </div>
       </div>
@@ -8428,6 +8538,10 @@ function AppInner() {
   const [customCategories, setCustomCategories] = useState(EMPTY_CUSTOM_CATEGORIES);
   const [view, setView] = useState('dashboard');
   const [agendaScale, setAgendaScale] = useState('weekly');
+  // Seleção múltipla na agenda. Guardam-se ids, e não sessões: entre marcar e
+  // mover pode ter havido uma gravação, e uma cópia velha traria dados velhos.
+  const [modoSelecao, setModoSelecao] = useState(false);
+  const [selecionadas, setSelecionadas] = useState([]);
   const [showFaltaModal, setShowFaltaModal] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date()));
@@ -9337,6 +9451,79 @@ function AppInner() {
     setShowSessionModal(true);
   }
 
+  /* ---------- seleção múltipla na agenda ---------- */
+
+  function alternarSelecionada(id) {
+    setSelecionadas((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  }
+
+  function alternarVariasSelecionadas(ids, marcar) {
+    setSelecionadas((atuais) => (marcar
+      ? [...new Set([...atuais, ...ids])]
+      : atuais.filter((x) => !ids.includes(x))));
+  }
+
+  function sairDaSelecao() {
+    setModoSelecao(false);
+    setSelecionadas([]);
+  }
+
+  // Grava um lote de datas novas e devolve o desfazer. `novaData` recebe a
+  // sessão e devolve o dia onde ela vai ficar — é o que separa deslocar de
+  // juntar tudo no mesmo dia.
+  function aplicarMovimentoEmLote(novaData, descricao) {
+    const alvo = new Set(selecionadas);
+    const mexidas = sessions.filter((s) => alvo.has(s.id));
+    if (mexidas.length === 0) return;
+
+    const anteriores = mexidas.map((s) => ({ id: s.id, date: s.date }));
+    const next = sessions.map((s) => (alvo.has(s.id) ? { ...s, date: novaData(s) } : s));
+
+    // Avisa de sobreposições, não as impede: a agenda de um personal tem
+    // exceções legítimas, e bloquear aqui só faria perder o trabalho todo.
+    const choques = next.filter((s) => alvo.has(s.id) && conflitosDe(next, s).length > 0).length;
+
+    persistSessions(next);
+    sairDaSelecao();
+    showToast(
+      `${descricao}${choques ? ` · ${plural(choques, 'sobreposição', 'sobreposições')}` : ''}`,
+      choques ? 'error' : 'success',
+      { label: 'Desfazer', onClick: () => desfazerMovimentoEmLote(anteriores) },
+    );
+  }
+
+  function desfazerMovimentoEmLote(anteriores) {
+    const porId = new Map(anteriores.map((a) => [a.id, a.date]));
+    persistSessions(sessionsRef.current.map((s) => (porId.has(s.id) ? { ...s, date: porId.get(s.id) } : s)));
+    showToast('Repostas nos dias anteriores.');
+  }
+
+  // Empurra cada marcação N dias, mantendo os intervalos entre elas.
+  function deslocarSelecionadas(dias) {
+    aplicarMovimentoEmLote(
+      (s) => fmtDateISO(addDays(new Date(`${s.date}T00:00:00`), dias)),
+      `${plural(selecionadas.length, 'marcação movida', 'marcações movidas')} ${dias > 0 ? `${dias} dia` : `${Math.abs(dias)} dia`}${Math.abs(dias) === 1 ? '' : 's'} para ${dias > 0 ? 'a frente' : 'trás'}`,
+    );
+  }
+
+  // Junta tudo no mesmo dia, com as horas que cada uma já tinha.
+  function moverSelecionadasPara(iso) {
+    aplicarMovimentoEmLote(
+      () => iso,
+      `${plural(selecionadas.length, 'marcação movida', 'marcações movidas')} para ${fmtDateBR(`${iso}T00:00:00`)}`,
+    );
+  }
+
+  const selecaoAgenda = {
+    ativo: modoSelecao,
+    ids: selecionadas,
+    alternar: alternarSelecionada,
+    alternarVarias: alternarVariasSelecionadas,
+    sair: sairDaSelecao,
+    deslocar: deslocarSelecionadas,
+    moverPara: moverSelecionadasPara,
+  };
+
   // Lê da referência e não do estado do render: entre gravar e clicar em
   // Desfazer houve outra gravação, e a lista deste render já está velha.
   function desfazerMovimento(anterior) {
@@ -9509,29 +9696,47 @@ function AppInner() {
         {view === 'dashboard' && <Dashboard students={students} sessions={sessions} finances={finances} customCategories={customCategories} setView={setView} onAddSession={openNewSession} onOpenSession={openEditSession} onQuickStatus={quickStatus} />}
         {view === 'agenda' && (
           <div className="px-4 pt-4 max-w-6xl mx-auto flex flex-col gap-3">
-            <div className="flex rounded-lg border border-hair overflow-hidden w-fit">
-              {[['daily', 'Dia'], ['weekly', 'Semana'], ['monthly', 'Mês'], ['lista', 'Lista']].map(([id, label]) => (
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex rounded-lg border border-hair overflow-hidden w-fit">
+                {[['daily', 'Dia'], ['weekly', 'Semana'], ['monthly', 'Mês'], ['lista', 'Lista']].map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    // O mês e a lista não têm cartões que se marquem: mudar
+                    // para lá com uma seleção aberta deixaria a barra sem alvo.
+                    onClick={() => {
+                      setAgendaScale(id);
+                      if (id !== 'daily' && id !== 'weekly') sairDaSelecao();
+                    }}
+                    aria-pressed={agendaScale === id}
+                    className="px-4 py-2 text-sm font-body nowrap"
+                    style={{
+                      backgroundColor: agendaScale === id ? 'var(--bg-elevated)' : 'transparent',
+                      color: agendaScale === id ? 'var(--text-primary)' : 'var(--text-muted)',
+                      fontWeight: agendaScale === id ? 600 : 400,
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {(agendaScale === 'daily' || agendaScale === 'weekly') && (
                 <button
-                  key={id}
                   type="button"
-                  onClick={() => setAgendaScale(id)}
-                  aria-pressed={agendaScale === id}
-                  className="px-4 py-2 text-sm font-body nowrap"
-                  style={{
-                    backgroundColor: agendaScale === id ? 'var(--bg-elevated)' : 'transparent',
-                    color: agendaScale === id ? 'var(--text-primary)' : 'var(--text-muted)',
-                    fontWeight: agendaScale === id ? 600 : 400,
-                  }}
+                  onClick={() => (modoSelecao ? sairDaSelecao() : setModoSelecao(true))}
+                  aria-pressed={modoSelecao}
+                  className="btn btn-ghost flex-shrink-0"
+                  style={{ fontSize: 12 }}
                 >
-                  {label}
+                  <CheckCircle2 size={14} /> {modoSelecao ? 'Sair da seleção' : 'Selecionar várias'}
                 </button>
-              ))}
+              )}
             </div>
             <AgendaFiltros filtro={agendaFiltro} setFiltro={setAgendaFiltro} total={sessions.length} visiveis={sessoesVisiveis.length} />
           </div>
         )}
-        {view === 'agenda' && agendaScale === 'daily' && <DailyView sessions={sessoesVisiveis} students={students} dayCursor={dayCursor} setDayCursor={setDayCursor} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} onPasteSession={pasteSession} onMoveSession={moveSessionTo} temCopia={Boolean(clipboardSession)} definicoes={definicoes} customCategories={customCategories} />}
-        {view === 'agenda' && agendaScale === 'weekly' && <WeeklyView sessions={sessoesVisiveis} students={students} weekStart={weekStart} setWeekStart={setWeekStart} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} onPasteSession={pasteSession} onMoveSession={moveSessionTo} onLibertarSemana={libertarSemana} temCopia={Boolean(clipboardSession)} definicoes={definicoes} customCategories={customCategories} />}
+        {view === 'agenda' && agendaScale === 'daily' && <DailyView sessions={sessoesVisiveis} students={students} dayCursor={dayCursor} setDayCursor={setDayCursor} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} onPasteSession={pasteSession} onMoveSession={moveSessionTo} temCopia={Boolean(clipboardSession)} definicoes={definicoes} customCategories={customCategories} selecao={selecaoAgenda} />}
+        {view === 'agenda' && agendaScale === 'weekly' && <WeeklyView sessions={sessoesVisiveis} students={students} weekStart={weekStart} setWeekStart={setWeekStart} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} onPasteSession={pasteSession} onMoveSession={moveSessionTo} onLibertarSemana={libertarSemana} temCopia={Boolean(clipboardSession)} definicoes={definicoes} customCategories={customCategories} selecao={selecaoAgenda} />}
         {view === 'agenda' && agendaScale === 'monthly' && <MonthlyView sessions={sessoesVisiveis} students={students} monthCursor={monthCursor} setMonthCursor={setMonthCursor} onOpenDay={setDayDetailIso} customCategories={customCategories} />}
         {view === 'agenda' && agendaScale === 'lista' && <ListaView sessions={sessoesVisiveis} students={students} onOpenSession={openEditSession} customCategories={customCategories} />}
         {view === 'faltas' && (

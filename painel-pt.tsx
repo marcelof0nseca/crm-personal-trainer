@@ -484,11 +484,68 @@ function categoriasDe(treinos) {
   return listaTaxonomia(CATEGORIAS_BASE, treinos.categorias, treinos.biblioteca, 'categoria');
 }
 
+// Os blocos por que passa uma sessão, na ordem em que se treinam. É esta a
+// ordem por que saem no PDF, e não a ordem por que foram acrescentados: quem
+// monta o treino salta de um lado para o outro, quem o executa não.
+const BLOCOS_TREINO = ['Aquecimento', 'Ativação', 'Principal', 'Core', 'Cardio', 'Mobilidade', 'Volta à calma'];
+const BLOCO_OMISSAO = 'Principal';
+
+// Os métodos que um treinador escreve mesmo numa ficha. A lista poupa-lhe a
+// escrita e uniformiza o que sai no PDF, mas não fecha a porta: "Personalizado"
+// deixa escrever o que não está aqui.
+const METODOS_TREINO = [
+  'Série tradicional', 'Supersérie', 'Trissérie', 'Giant set', 'Circuito',
+  'EMOM', 'AMRAP', 'Tabata', 'Intervalado', 'For time', 'Rest-pause',
+  'Drop-set', 'Série de aproximação', 'Série de trabalho', 'Back-off',
+  'Até à falha', 'Pirâmide',
+];
+
+// O que se preenche quase sempre.
+const CAMPOS_BASE = [
+  ['series', 'Séries', '3'],
+  ['reps', 'Repetições', '8-10'],
+  ['carga', 'Carga', '22 kg'],
+  ['descanso', 'Descanso (s)', '90'],
+];
+
+// O resto. Fica escondido até ser preciso: onze campos à frente de toda a gente
+// tornavam ilegível a ficha de quem só quer séries e repetições.
+const CAMPOS_EXTRA = [
+  ['percentagem1rm', '% de 1RM', '75%'],
+  ['rpe', 'RPE', '8'],
+  ['rir', 'RIR', '2'],
+  ['tempo', 'Tempo sob tensão', '40 s'],
+  ['duracao', 'Duração', '12 min'],
+  ['distancia', 'Distância', '400 m'],
+  ['velocidade', 'Velocidade', '10 km/h'],
+  ['ritmo', 'Ritmo', '5:30 /km'],
+  ['potencia', 'Potência', '180 W'],
+  ['inclinacao', 'Inclinação', '6%'],
+  ['alternativa', 'Alternativa (casa)', 'Agachamento livre'],
+];
+
+function extrasPreenchidos(ex) {
+  return CAMPOS_EXTRA.filter(([campo]) => ex[campo]);
+}
+
+// Agrupa mantendo a ordem dos blocos e, dentro de cada um, a ordem em que o
+// treinador os pôs. Blocos vazios não aparecem.
+function agruparPorBloco(exercicios) {
+  const porBloco = new Map();
+  (exercicios || []).forEach((ex) => {
+    const bloco = BLOCOS_TREINO.includes(ex.bloco) ? ex.bloco : BLOCO_OMISSAO;
+    if (!porBloco.has(bloco)) porBloco.set(bloco, []);
+    porBloco.get(bloco).push(ex);
+  });
+  return BLOCOS_TREINO.filter((b) => porBloco.has(b)).map((b) => [b, porBloco.get(b)]);
+}
+
 function novoExercicioTreino(exercicio) {
   return {
     id: uid(),
     exercicioId: exercicio ? exercicio.id : null,
     nome: exercicio ? exercicio.nome : '',
+    bloco: BLOCO_OMISSAO,
     series: '3', reps: '10', carga: '', descanso: '90', metodo: '', notas: '',
   };
 }
@@ -1512,6 +1569,12 @@ function GlobalStyles() {
         .print-table td { padding: 5px 6px; border-bottom: 1px solid #e2e2e2; vertical-align: top; }
         .print-table .num { text-align: right; white-space: nowrap; }
         .print-ex-nota { font-size: 8.5pt; color: #555 !important; margin-top: 2px; line-height: 1.4; }
+        /* Cabeçalho de bloco dentro de um treino. Menor que o título da secção
+           e sem fundo: é uma divisão interna, não uma secção nova. */
+        .print-bloco {
+          font-size: 8.5pt; font-weight: 700; text-transform: uppercase;
+          letter-spacing: 0.06em; color: #333 !important; margin-bottom: 3px;
+        }
         .print-assinatura {
           border-bottom: 1px solid #111; width: 70mm; height: 14mm; margin-bottom: 4px;
         }
@@ -5074,31 +5137,63 @@ function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEdi
 }
 
 // Uma linha de exercicio dentro de um treino.
-function ExercicioRow({ ex, biblioteca, onMudar, onRemover, onSubir, onDescer, primeiro, ultimo }) {
+function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, onSubir, onDescer, primeiro, ultimo, aoPegar, aArrastar }) {
   const daBiblioteca = biblioteca.find((b) => b.id === ex.exercicioId);
+  const naLista = METODOS_TREINO.includes(ex.metodo);
+  // Guarda-se se está em modo livre em vez de o deduzir do texto: apagar o que
+  // escreveu não pode devolvê-lo à lista a meio da escrita.
+  const [metodoLivre, setMetodoLivre] = useState(Boolean(ex.metodo) && !naLista);
+  const [maisCampos, setMaisCampos] = useState(false);
+  const extras = extrasPreenchidos(ex);
+
+  function mudarMetodo(valor) {
+    if (valor === '__livre') { setMetodoLivre(true); return; }
+    setMetodoLivre(false);
+    onMudar({ ...ex, metodo: valor });
+  }
+
   return (
-    <div className="rounded-lg border border-hair p-3 flex flex-col gap-2" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+    <div
+      data-ex-indice={indice}
+      className="rounded-lg border p-3 flex flex-col gap-2"
+      style={{
+        backgroundColor: 'var(--bg-elevated)',
+        borderColor: aArrastar ? 'var(--brass)' : 'var(--border-hair)',
+        opacity: aArrastar ? 0.65 : 1,
+      }}
+    >
       <div className="flex items-start justify-between gap-2 min-w-0">
-        <div className="min-w-0">
-          <div className="text-sm font-body text-primary truncate" style={{ fontWeight: 500 }}>{ex.nome || 'Exercício'}</div>
-          {daBiblioteca && (
-            <div className="text-2xs font-body text-faint truncate">{daBiblioteca.grupo}{daBiblioteca.equipamento ? ' · ' + daBiblioteca.equipamento : ''}</div>
-          )}
+        <div className="flex items-start gap-1.5 min-w-0">
+          {/* Irmão dos outros botões, nunca dentro do cartão clicável: aninhar
+              botões é ARIA inválido. `touch-action: none` senão o telemóvel
+              interpreta o arrasto como deslocação da página. */}
+          <button
+            type="button"
+            onPointerDown={(e) => aoPegar && aoPegar(indice, e)}
+            className="p-1 rounded btn-surface flex-shrink-0"
+            style={{ cursor: 'grab', touchAction: 'none' }}
+            aria-label={'Arrastar ' + (ex.nome || 'exercício')}
+            title="Arrastar para reordenar"
+          >
+            <GripVertical size={14} className="text-faint" style={{ display: 'block' }} />
+          </button>
+          <div className="min-w-0">
+            <div className="text-sm font-body text-primary truncate" style={{ fontWeight: 500 }}>{ex.nome || 'Exercício'}</div>
+            {daBiblioteca && (
+              <div className="text-2xs font-body text-faint truncate">{daBiblioteca.grupo}{daBiblioteca.equipamento ? ' · ' + daBiblioteca.equipamento : ''}</div>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-0.5 flex-shrink-0">
           <button type="button" onClick={onSubir} disabled={primeiro} className="p-1.5 rounded btn-surface disabled:opacity-30" aria-label="Subir exercício"><ChevronLeft size={14} className="text-muted" style={{ display: 'block', transform: 'rotate(90deg)' }} /></button>
           <button type="button" onClick={onDescer} disabled={ultimo} className="p-1.5 rounded btn-surface disabled:opacity-30" aria-label="Descer exercício"><ChevronRight size={14} className="text-muted" style={{ display: 'block', transform: 'rotate(90deg)' }} /></button>
+          <button type="button" onClick={onDuplicar} className="p-1.5 rounded btn-surface" aria-label={'Duplicar ' + (ex.nome || 'exercício')} title="Duplicar"><Copy size={14} className="text-muted" style={{ display: 'block' }} /></button>
           <button type="button" onClick={onRemover} className="p-1.5 rounded btn-surface" aria-label="Remover exercício"><Trash2 size={14} className="text-rust" style={{ display: 'block' }} /></button>
         </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {[
-          ['series', 'Séries', '3'],
-          ['reps', 'Repetições', '8-10'],
-          ['carga', 'Carga', '22 kg'],
-          ['descanso', 'Descanso (s)', '90'],
-        ].map(([campo, rotulo, exemplo]) => (
+        {CAMPOS_BASE.map(([campo, rotulo, exemplo]) => (
           <FormField key={campo} label={rotulo}>
             <input value={ex[campo] || ''} onChange={(e) => onMudar({ ...ex, [campo]: e.target.value })} className="input-field" placeholder={exemplo} />
           </FormField>
@@ -5106,15 +5201,109 @@ function ExercicioRow({ ex, biblioteca, onMudar, onRemover, onSubir, onDescer, p
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <FormField label="Método (opcional)">
-          <input value={ex.metodo || ''} onChange={(e) => onMudar({ ...ex, metodo: e.target.value })} className="input-field" placeholder="Ex.: supersérie com o seguinte" />
-        </FormField>
-        <FormField label="Notas (opcional)">
-          <input value={ex.notas || ''} onChange={(e) => onMudar({ ...ex, notas: e.target.value })} className="input-field" placeholder="Ex.: cadência 3-1-1" />
-        </FormField>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-body text-muted">Bloco</span>
+          <select
+            value={BLOCOS_TREINO.includes(ex.bloco) ? ex.bloco : BLOCO_OMISSAO}
+            onChange={(e) => onMudar({ ...ex, bloco: e.target.value })}
+            aria-label="Bloco do treino"
+            className="input-field"
+          >
+            {BLOCOS_TREINO.map((b) => <option key={b} value={b}>{b}</option>)}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-body text-muted">Método</span>
+          <select
+            value={metodoLivre ? '__livre' : (naLista ? ex.metodo : '')}
+            onChange={(e) => mudarMetodo(e.target.value)}
+            aria-label="Método"
+            className="input-field"
+          >
+            <option value="">Sem método</option>
+            {METODOS_TREINO.map((m) => <option key={m} value={m}>{m}</option>)}
+            <option value="__livre">Personalizado…</option>
+          </select>
+          {metodoLivre && (
+            <input
+              value={ex.metodo || ''}
+              onChange={(e) => onMudar({ ...ex, metodo: e.target.value })}
+              className="input-field"
+              aria-label="Método personalizado"
+              placeholder="Ex.: supersérie com o seguinte"
+            />
+          )}
+        </div>
       </div>
+
+      <FormField label="Notas (opcional)">
+        <input value={ex.notas || ''} onChange={(e) => onMudar({ ...ex, notas: e.target.value })} className="input-field" placeholder="Ex.: cadência 3-1-1" />
+      </FormField>
+
+      {maisCampos ? (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {CAMPOS_EXTRA.map(([campo, rotulo, exemplo]) => (
+            <FormField key={campo} label={rotulo}>
+              <input value={ex[campo] || ''} onChange={(e) => onMudar({ ...ex, [campo]: e.target.value })} className="input-field" placeholder={exemplo} />
+            </FormField>
+          ))}
+        </div>
+      ) : extras.length > 0 && (
+        // Escondido não é apagado: o que está preenchido continua à vista.
+        <div className="text-2xs font-body text-faint">
+          {extras.map(([campo, rotulo]) => `${rotulo}: ${ex[campo]}`).join(' · ')}
+        </div>
+      )}
+
+      <button type="button" onClick={() => setMaisCampos((v) => !v)} className="btn btn-ghost self-start" style={{ fontSize: 11 }}>
+        {maisCampos ? 'Menos campos' : `Mais campos${extras.length ? ` (${plural(extras.length, 'preenchido', 'preenchidos')})` : ''}`}
+      </button>
     </div>
   );
+}
+
+// Reordenar exercicios por arrasto. Pointer Events e nao HTML5 drag-and-drop:
+// o segundo nao funciona em toque, e e no telemovel que o treinador monta o
+// treino entre series. A lista muda enquanto se arrasta -- nao ha fantasma nem
+// posicao a fingir, o proprio cartao troca de sitio.
+function useArrastarExercicio(onReordenar) {
+  const [arrasto, setArrasto] = useState(null);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!arrasto) return undefined;
+
+    function indiceSob(x, y) {
+      const el = document.elementFromPoint(x, y);
+      const alvo = el && el.closest('[data-ex-indice]');
+      return alvo ? Number(alvo.getAttribute('data-ex-indice')) : null;
+    }
+    function mover(e) {
+      const sob = indiceSob(e.clientX, e.clientY);
+      if (sob === null || sob === ref.current.indice) return;
+      onReordenar(ref.current.treinoId, ref.current.indice, sob);
+      ref.current.indice = sob;
+      setArrasto({ ...ref.current });
+    }
+    function largar() { ref.current = null; setArrasto(null); }
+
+    window.addEventListener('pointermove', mover);
+    window.addEventListener('pointerup', largar);
+    window.addEventListener('pointercancel', largar);
+    return () => {
+      window.removeEventListener('pointermove', mover);
+      window.removeEventListener('pointerup', largar);
+      window.removeEventListener('pointercancel', largar);
+    };
+  }, [arrasto, onReordenar]);
+
+  function pegar(treinoId, indice, e) {
+    e.preventDefault();
+    ref.current = { treinoId, indice };
+    setArrasto({ treinoId, indice });
+  }
+
+  return { arrasto, pegar };
 }
 
 // Construtor de um programa: cabecalho, treinos e exercicios.
@@ -5122,17 +5311,47 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
   const biblioteca = treinos.biblioteca;
   const [picker, setPicker] = useState(null); // id do treino a receber o exercicio
   const [confirmar, setConfirmar] = useState(false);
+  const { arrasto, pegar } = useArrastarExercicio(
+    (treinoId, de, para) => reordenarExercicio(treinoId, de, para),
+  );
 
   function mudarTreino(treinoId, novo) {
     onMudar({ ...prescricao, treinos: prescricao.treinos.map((t) => (t.id === treinoId ? novo : t)) });
   }
   function mexerExercicio(treinoId, indice, delta) {
+    reordenarExercicio(treinoId, indice, indice + delta);
+  }
+
+  function reordenarExercicio(treinoId, de, para) {
     const t = prescricao.treinos.find((x) => x.id === treinoId);
+    if (!t || para < 0 || para >= t.exercicios.length || de === para) return;
     const lista = [...t.exercicios];
-    const destino = indice + delta;
-    if (destino < 0 || destino >= lista.length) return;
-    [lista[indice], lista[destino]] = [lista[destino], lista[indice]];
+    const [movido] = lista.splice(de, 1);
+    lista.splice(para, 0, movido);
     mudarTreino(treinoId, { ...t, exercicios: lista });
+  }
+
+  function duplicarExercicio(treinoId, ex) {
+    const t = prescricao.treinos.find((x) => x.id === treinoId);
+    const i = t.exercicios.findIndex((x) => x.id === ex.id);
+    const lista = [...t.exercicios];
+    // Entra logo a seguir ao original: duplica-se para variar uma coisa, não
+    // para o mandar para o fim da lista.
+    lista.splice(i + 1, 0, { ...ex, id: uid() });
+    mudarTreino(treinoId, { ...t, exercicios: lista });
+  }
+
+  function duplicarTreino(t) {
+    const i = prescricao.treinos.findIndex((x) => x.id === t.id);
+    const copia = {
+      ...t,
+      id: uid(),
+      nome: `${t.nome} (cópia)`,
+      exercicios: (t.exercicios || []).map((ex) => ({ ...ex, id: uid() })),
+    };
+    const lista = [...prescricao.treinos];
+    lista.splice(i + 1, 0, copia);
+    onMudar({ ...prescricao, treinos: lista });
   }
 
   return (
@@ -5184,6 +5403,16 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
               aria-label={'Nome do treino ' + (ti + 1)}
               style={{ fontWeight: 600, maxWidth: 260 }}
             />
+            <div className="flex items-center gap-0.5 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => duplicarTreino(t)}
+              className="p-1.5 rounded btn-surface flex-shrink-0"
+              aria-label={'Duplicar ' + t.nome}
+              title="Duplicar treino"
+            >
+              <Copy size={15} className="text-muted" style={{ display: 'block' }} />
+            </button>
             <button
               type="button"
               onClick={() => onMudar({ ...prescricao, treinos: prescricao.treinos.filter((x) => x.id !== t.id) })}
@@ -5192,6 +5421,7 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
             >
               <Trash2 size={14} className="text-rust" style={{ display: 'block' }} />
             </button>
+            </div>
           </div>
 
           {t.exercicios.length === 0 ? (
@@ -5202,11 +5432,15 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
                 <ExercicioRow
                   key={ex.id}
                   ex={ex}
+                  indice={i}
                   biblioteca={biblioteca}
                   primeiro={i === 0}
                   ultimo={i === t.exercicios.length - 1}
+                  aArrastar={Boolean(arrasto) && arrasto.treinoId === t.id && arrasto.indice === i}
+                  aoPegar={(indice, e) => pegar(t.id, indice, e)}
                   onSubir={() => mexerExercicio(t.id, i, -1)}
                   onDescer={() => mexerExercicio(t.id, i, 1)}
+                  onDuplicar={() => duplicarExercicio(t.id, ex)}
                   onMudar={(novo) => mudarTreino(t.id, { ...t, exercicios: t.exercicios.map((x) => (x.id === ex.id ? novo : x)) })}
                   onRemover={() => mudarTreino(t.id, { ...t, exercicios: t.exercicios.filter((x) => x.id !== ex.id) })}
                 />
@@ -5597,37 +5831,45 @@ function TreinoPrintDoc({ student, prescricao, biblioteca, trainerName, userEmai
           {t.exercicios.length === 0 ? (
             <div className="print-notes">Sem exercícios.</div>
           ) : (
-            <table className="print-table">
-              <thead>
-                <tr>
-                  <th>Exercício</th>
-                  <th className="num">Séries</th>
-                  <th className="num">Reps</th>
-                  <th className="num">Carga</th>
-                  <th className="num">Descanso</th>
-                </tr>
-              </thead>
-              <tbody>
-                {t.exercicios.map((ex) => {
-                  const daBiblioteca = biblioteca.find((b) => b.id === ex.exercicioId);
-                  // As instrucoes vivem na biblioteca: o treinador escreve uma
-                  // vez e saem em todos os treinos onde usar o exercicio.
-                  const linhas = [ex.metodo, ex.notas, daBiblioteca && daBiblioteca.instrucoes].filter(Boolean);
-                  return (
-                    <tr key={ex.id}>
-                      <td>
-                        <strong>{ex.nome}</strong>
-                        {linhas.length > 0 && <div className="print-ex-nota">{linhas.join(' · ')}</div>}
-                      </td>
-                      <td className="num">{ex.series || '—'}</td>
-                      <td className="num">{ex.reps || '—'}</td>
-                      <td className="num">{ex.carga || '—'}</td>
-                      <td className="num">{ex.descanso ? ex.descanso + ' s' : '—'}</td>
+            // Agrupado por bloco e pela ordem por que se treina, não pela ordem
+            // por que foi escrito. Com um bloco só, o cabeçalho é ruído: omite-se.
+            agruparPorBloco(t.exercicios).map(([bloco, doBloco], bi, todos) => (
+              <div key={bloco} style={{ marginTop: bi === 0 ? 0 : 8 }}>
+                {todos.length > 1 && <div className="print-bloco">{bloco}</div>}
+                <table className="print-table">
+                  <thead>
+                    <tr>
+                      <th>Exercício</th>
+                      <th className="num">Séries</th>
+                      <th className="num">Reps</th>
+                      <th className="num">Carga</th>
+                      <th className="num">Descanso</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody>
+                    {doBloco.map((ex) => {
+                      const daBiblioteca = biblioteca.find((b) => b.id === ex.exercicioId);
+                      // As instrucoes vivem na biblioteca: o treinador escreve uma
+                      // vez e saem em todos os treinos onde usar o exercicio.
+                      const extra = extrasPreenchidos(ex).map(([campo, rotulo]) => `${rotulo}: ${ex[campo]}`);
+                      const linhas = [ex.metodo, ...extra, ex.notas, daBiblioteca && daBiblioteca.instrucoes].filter(Boolean);
+                      return (
+                        <tr key={ex.id}>
+                          <td>
+                            <strong>{ex.nome}</strong>
+                            {linhas.length > 0 && <div className="print-ex-nota">{linhas.join(' · ')}</div>}
+                          </td>
+                          <td className="num">{ex.series || '—'}</td>
+                          <td className="num">{ex.reps || '—'}</td>
+                          <td className="num">{ex.carga || '—'}</td>
+                          <td className="num">{ex.descanso ? ex.descanso + ' s' : '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ))
           )}
           {t.notas ? <div className="print-notes" style={{ marginTop: 6 }}>{t.notas}</div> : null}
         </PrintSection>

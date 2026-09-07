@@ -1103,6 +1103,23 @@ async function lerFotoDoBalde(caminho) {
   return blobParaDataUri(data);
 }
 
+// Lê um campo de dinheiro ou percentagem.
+//
+// Vazio vale zero, e não é um erro: há quem registe o aluno antes de combinar
+// o preço, e a gravação já fazia `parseFloat(...) || 0` logo a seguir — a
+// validação é que estava mais exigente do que o código que vinha atrás dela.
+// Devolve `null` só para o que é mesmo inválido: texto, ou negativo.
+//
+// A vírgula é aceite de propósito. O campo é `type="number"` e hoje não a
+// deixa passar, mas em Portugal escreve-se `35,50`, e no dia em que este
+// campo mudar de tipo não se hão de perder os cêntimos em silêncio.
+function valorDoCampo(texto) {
+  const limpo = String(texto ?? '').trim().replace(',', '.');
+  if (limpo === '') return 0;
+  const numero = Number(limpo);
+  return Number.isFinite(numero) && numero >= 0 ? numero : null;
+}
+
 function browserStorageAvailable() {
   if (typeof window === 'undefined') return false;
   return supabaseConfigured || !!(window as any).storage || !!window.localStorage;
@@ -3422,7 +3439,7 @@ function AssessmentFields({ form, set, studentHeight, studentSex }) {
             </select>
           </FormField>
           {!studentSex && <div className="text-2xs text-rust font-body">Defina o sexo biológico do aluno no registo para este protocolo calcular corretamente.</div>}
-          {protocol.needsAge && !form.assessAge && <div className="text-2xs text-rust font-body">Informe a idade acima — este protocolo precisa dela para calcular.</div>}
+          {protocol.needsAge && !form.assessAge && <div className="text-2xs text-rust font-body">Indique a idade acima — este protocolo precisa dela para calcular.</div>}
           <div className="grid grid-cols-2 gap-3">
             {activeSites.map((id) => (
               <FormField key={id} label={`${foldLabel(id)} (mm)`}>
@@ -4757,21 +4774,22 @@ function StudentFormModal({ student, sessions, customCategories, treinoCount = 0
   const assessmentCount = isEdit ? sessions.filter((s) => s.studentId === student.id && s.type === 'avaliacao' && (s.assessWeight || s.assessBodyFat)).length : 0;
 
   function handleSubmit() {
-    if (!form.name.trim()) { setError('Informe o nome do aluno.'); return; }
-    if (form.paymentMode === 'mensal') {
-      const pv = parseFloat(form.planValue);
-      if (Number.isNaN(pv) || pv < 0) { setError('Informe um valor de plano válido.'); return; }
-    } else {
-      const bv = parseFloat(form.biweeklyValue);
-      if (Number.isNaN(bv) || bv < 0) { setError('Informe um valor de quinzena válido.'); return; }
+    if (!form.name.trim()) { setError('Indique o nome do aluno.'); return; }
+    const mensal = form.paymentMode === 'mensal';
+    const valor = valorDoCampo(mensal ? form.planValue : form.biweeklyValue);
+    if (valor === null) {
+      setError(mensal
+        ? 'O valor do plano tem de ser um número igual ou maior que zero.'
+        : 'O valor da quinzena tem de ser um número igual ou maior que zero.');
+      return;
     }
     setError('');
     onSave({
       ...form,
-      planValue: parseFloat(form.planValue) || 0,
-      biweeklyValue: parseFloat(form.biweeklyValue) || 0,
-      taxPercent: parseFloat(form.taxPercent) || 0,
-      gymFeeValue: parseFloat(form.gymFeeValue) || 0,
+      planValue: valorDoCampo(form.planValue) || 0,
+      biweeklyValue: valorDoCampo(form.biweeklyValue) || 0,
+      taxPercent: valorDoCampo(form.taxPercent) || 0,
+      gymFeeValue: valorDoCampo(form.gymFeeValue) || 0,
       height: parseFloat(form.height) || '',
     });
   }
@@ -7310,7 +7328,7 @@ function TransactionFormModal({ tx, defaultType, customCategories, onAddCategory
 
   function handleSubmit() {
     const amt = parseFloat(form.amount);
-    if (Number.isNaN(amt) || amt <= 0) { setError('Informe um valor válido.'); return; }
+    if (Number.isNaN(amt) || amt <= 0) { setError('Indique um valor maior que zero.'); return; }
     if (!form.date) { setError('Selecione uma data.'); return; }
     setError('');
     onSave({ ...form, amount: amt });

@@ -95,8 +95,13 @@ Consequências que decidem quase tudo:
 - **Cada gravação reescreve o bloco inteiro.** Daí o carimbo de versão, abaixo.
 - **As avaliações físicas são sessões da agenda** (`type: 'avaliacao'` + campos
   `assess*`), não uma entidade própria. Mexer em avaliações mexe na agenda.
-- **As fotografias são `data:` URI** dentro do bloco `fotos`. Nunca usar para
-  vídeo.
+- **As fotografias já não vivem aqui.** O bloco `fotos` guarda só
+  `{ id, path, createdAt }`; os ficheiros estão no balde privado `fotos` do
+  Supabase Storage, em `<user_id>/<foto_id>.jpg`, e chegam por URL assinado com
+  oito horas de prazo. `photosById` continua a devolver `dataUri` para o resto
+  da aplicação não ter de saber disto — em modo local é mesmo a imagem, com
+  conta ligada é o endereço assinado. Uma fotografia antiga com `dataUri` e sem
+  `path` ainda aparece: a migração é preguiçosa e segura de interromper.
 - **A biblioteca de exercícios é a exceção: não é gravada.** Vive no código e só
   as diferenças vão para a base de dados — `bibliotecaExtra` (criados),
   `bibliotecaEdicoes` (alterados), `bibliotecaOcultos` (apagados).
@@ -230,24 +235,21 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   `supabase-schema.sql`. **Se essa política não estiver aplicada, uma sessão em
   `aal1` continua a ler tudo pela API.**
 
-### O plano gratuito não chega, e a razão não é o número de utilizadores
+- **Storage** — balde privado `fotos`, criado pelo `supabase-schema.sql` com
+  limite de 5 MB e só imagens. As políticas escoram-se no primeiro segmento do
+  caminho ser o id do dono, e exigem `aal2` a quem tem dois fatores. A CSP do
+  `index.html` tem de aceitar `img-src https://*.supabase.co`, senão nenhuma
+  fotografia aparece.
 
-As fotografias são `data:` URI **dentro da base de dados** (`resizePhoto` a
-700 px e qualidade 0,72 dá ~90 kB cada, já em base64). O bloco `fotos` é lido
-**inteiro em cada abertura da aplicação**.
+### Sobre o plano do Supabase
 
-Um treinador com 30 alunos e 4 avaliações por ano com 3 fotografias faz ~32 MB
-por ano — e cerca de **1 GB de tráfego por mês** só ele, se abrir a aplicação
-todos os dias. O plano gratuito tem 500 MB de base de dados e 5 GB de tráfego:
-**parte por volta do quinto cliente pagante**, e não por causa de "escala".
+O gratuito não serve para um produto vendido: **suspende ao fim de 7 dias sem
+atividade** e não tem cópias de segurança diárias. O Pro (~25 $/mês) é o chão.
 
-Some-se que os projetos gratuitos **suspendem ao fim de 7 dias sem atividade** e
-não têm cópias de segurança diárias — inaceitável num produto vendido.
-
-**A correção certa não é mudar de plano, é tirar as fotografias da base de
-dados** e pô-las no Supabase Storage com URL assinado e temporário: carregam a
-pedido em vez de em cada arranque, custam uma fração por GB, e fecham de caminho
-o "URLs temporários para ficheiros" da especificação.
+O que era o verdadeiro travão já foi corrigido: as fotografias estavam em
+base64 dentro da base de dados e o bloco viajava inteiro em cada abertura —
+~1 GB de tráfego por mês e por treinador, o que rebentava o plano gratuito por
+volta do **quinto cliente**. Agora carregam a pedido, do Storage.
 
 Variáveis em `.env.example`. Segredos ficam em `supabase secrets` e nas
 variáveis do Vercel. Os `price_...` são públicos; **`sk_...` e `whsec_...` nunca
@@ -317,8 +319,6 @@ existe de verdade.
 
 ### Falta, e é barato
 
-- **Fotografias para o Storage** — ver a secção 7. É a próxima coisa a fazer,
-  e não é só custo: é o que trava o crescimento
 - Deslocação automática ao arrastar exercícios para fora do ecrã — hoje o
   arrasto só chega ao que está visível; os botões de subir e descer cobrem o
   resto
@@ -359,7 +359,7 @@ Combinado por níveis, do mais barato ao mais caro:
 3. ~~Prescrição: métodos como lista, blocos, campos novos, duplicar e arrastar~~ **feito**
 4. ~~Segurança: dois fatores e fechar sessão em todo o lado~~ **feito**
    — falta correr a política `app_data_exige_aal2` no Supabase
-5. **Fotografias para o Storage** — custo e escala, ver secção 7
+5. ~~Fotografias para o Storage~~ **feito** — falta correr o SQL do balde
 6. Decisões de produto — ver secção 10
 
 ---

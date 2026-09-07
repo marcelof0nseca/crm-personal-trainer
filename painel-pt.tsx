@@ -509,8 +509,8 @@ function normalizarTreinos(raw) {
     // Grupos e categorias que o treinador criou, para lá dos de origem.
     gruposMusculares: Array.isArray(d.gruposMusculares) ? d.gruposMusculares : [],
     categorias: Array.isArray(d.categorias) ? d.categorias : [],
-    modelos: Array.isArray(d.modelos) ? d.modelos : [],
-    prescricoes: Array.isArray(d.prescricoes) ? d.prescricoes : [],
+    modelos: migrarTreinosParaLinhas(Array.isArray(d.modelos) ? d.modelos : []),
+    prescricoes: migrarTreinosParaLinhas(Array.isArray(d.prescricoes) ? d.prescricoes : []),
   };
   return { ...guardado, biblioteca: derivarBiblioteca(guardado) };
 }
@@ -553,6 +553,155 @@ const METODOS_TREINO = [
   'Até à falha', 'Pirâmide',
 ];
 
+/* ---------------------------- séries ----------------------------
+   Um exercício deixou de ser "3 séries de 10" e passou a ser uma lista de
+   linhas, cada uma com o seu tipo. É como um treinador escreve mesmo: a
+   primeira série de aproximação com 40 kg, a última até à falha com 55.
+
+   O tipo de cada linha decide os campos que aparecem. Mostrar dezoito campos
+   em todas as linhas era ilegível; mostrar só quatro não chegava para corrida
+   nem para cardio.
+   ----------------------------------------------------------------- */
+const CAMPO_SERIE = {
+  reps: ['Reps', '10'],
+  carga: ['Carga', '40 kg'],
+  tempo: ['Tempo', '40 s'],
+  duracao: ['Duração', '12 min'],
+  distancia: ['Distância', '400 m'],
+  velocidade: ['Velocidade', '10 km/h'],
+  ritmo: ['Ritmo', '5:30 /km'],
+  potencia: ['Potência', '180 W'],
+  inclinacao: ['Inclinação', '6%'],
+  cadencia: ['Cadência', '3-1-1'],
+  percentagem1rm: ['% 1RM', '75%'],
+};
+
+const TIPOS_SERIE = [
+  { id: 'reps_carga', label: 'Repetições e carga', campos: ['reps', 'carga'] },
+  { id: 'reps_carga_tempo', label: 'Repetições, carga e tempo', campos: ['reps', 'carga', 'tempo'] },
+  { id: 'reps_tempo', label: 'Repetições e tempo', campos: ['reps', 'tempo'] },
+  { id: 'reps_1rm', label: 'Repetições e % de 1RM', campos: ['reps', 'percentagem1rm'] },
+  { id: 'cadencia', label: 'Repetições, carga e cadência', campos: ['reps', 'carga', 'cadencia'] },
+  { id: 'tempo_inclinacao', label: 'Tempo e inclinação', campos: ['tempo', 'inclinacao'] },
+  { id: 'corrida', label: 'Corrida', campos: ['distancia', 'tempo', 'ritmo'] },
+  { id: 'cardio', label: 'Cardio', campos: ['duracao', 'velocidade', 'potencia'] },
+  { id: 'observacao', label: 'Só observação', campos: [] },
+];
+const TIPO_SERIE_OMISSAO = 'reps_carga';
+
+function tipoDeSerie(id) {
+  return TIPOS_SERIE.find((t) => t.id === id) || TIPOS_SERIE[0];
+}
+
+// Os métodos que precisam de números próprios. Escolher EMOM e não haver onde
+// pôr os minutos deixava o método a valer só como etiqueta.
+const CAMPOS_POR_METODO = {
+  'EMOM': [['minutos', 'Minutos', '12']],
+  'AMRAP': [['minutos', 'Minutos', '15']],
+  'Tabata': [['rondas', 'Rondas', '8'], ['trabalho', 'Trabalho (s)', '20'], ['pausa', 'Pausa (s)', '10']],
+  'Circuito': [['voltas', 'Voltas', '3'], ['pausaVolta', 'Pausa entre voltas (s)', '90']],
+  'Intervalado': [['esforco', 'Esforço (s)', '30'], ['recuperacao', 'Recuperação (s)', '60']],
+  'For time': [['limite', 'Tempo limite', '10 min']],
+  'Drop-set': [['quedas', 'Quedas', '2'], ['reducao', 'Redução por queda (%)', '20']],
+  'Rest-pause': [['pausas', 'Pausas', '3'], ['pausaSeg', 'Pausa (s)', '15']],
+  'Back-off': [['reducao', 'Redução (%)', '15']],
+  'Pirâmide': [['sentido', 'Sentido', 'crescente']],
+};
+
+function camposDoMetodo(metodo) {
+  return CAMPOS_POR_METODO[metodo] || [];
+}
+
+function novaLinhaSerie(anterior) {
+  // Copia a linha anterior: a segunda série quase nunca é diferente da
+  // primeira, e quando é, muda-se um campo em vez de escrever tudo.
+  if (anterior) return { ...anterior, id: uid() };
+  return { id: uid(), tipo: TIPO_SERIE_OMISSAO, reps: '10', carga: '', descanso: '90', rpe: '' };
+}
+
+// Exercícios de antes das linhas: "3 séries de 10" vira três linhas iguais.
+// Idempotente — quem já tem `linhas` passa ao lado.
+function migrarExercicioParaLinhas(ex) {
+  if (Array.isArray(ex.linhas)) return ex;
+  const quantas = Math.max(1, Math.min(30, parseInt(ex.series, 10) || 1));
+  const modelo = {
+    tipo: TIPO_SERIE_OMISSAO,
+    reps: ex.reps || '', carga: ex.carga || '', descanso: ex.descanso || '',
+    rpe: ex.rpe || '', rir: ex.rir || '', percentagem1rm: ex.percentagem1rm || '',
+    tempo: ex.tempo || '', duracao: ex.duracao || '', distancia: ex.distancia || '',
+    velocidade: ex.velocidade || '', ritmo: ex.ritmo || '', potencia: ex.potencia || '',
+    inclinacao: ex.inclinacao || '',
+  };
+  const linhas = Array.from({ length: quantas }, () => ({ id: uid(), ...modelo }));
+  const {
+    series, reps, carga, descanso, rpe, rir, percentagem1rm, tempo, duracao,
+    distancia, velocidade, ritmo, potencia, inclinacao, ...resto
+  } = ex;
+  return { ...resto, linhas };
+}
+
+// A1, A2, B1, B2... A letra vem da ordem por que os grupos aparecem no treino.
+// Um grupo com um exercício só não é supersérie nenhuma e não leva etiqueta —
+// pode acontecer depois de apagar o par.
+// Uma linha de série numa frase: "10 × 40 kg · RPE 8". É o que o aluno lê no
+// PDF, e por isso não leva rótulos que ele não precise de decifrar.
+function descreverLinha(linha) {
+  if (!linha) return '';
+  const tipo = tipoDeSerie(linha.tipo);
+  if (tipo.id === 'observacao') return linha.notas || '';
+  const partes = tipo.campos
+    .map((campo) => {
+      const valor = String(linha[campo] || '').trim();
+      if (!valor) return null;
+      if (campo === 'reps') return valor;
+      if (campo === 'carga') return `× ${valor}`;
+      return `${CAMPO_SERIE[campo][0]} ${valor}`;
+    })
+    .filter(Boolean);
+  if (linha.rpe) partes.push(`RPE ${linha.rpe}`);
+  if (linha.rir) partes.push(`RIR ${linha.rir}`);
+  return partes.join(' · ');
+}
+
+// O método com os números que ele levar: "Tabata (8 rondas, 20 s / 10 s)".
+function descreverMetodo(ex) {
+  if (!ex.metodo) return '';
+  const campos = camposDoMetodo(ex.metodo);
+  const params = ex.metodoParams || {};
+  const valores = campos
+    .map(([campo, rotulo]) => (params[campo] ? `${rotulo.toLowerCase()}: ${params[campo]}` : null))
+    .filter(Boolean);
+  return valores.length ? `${ex.metodo} (${valores.join(', ')})` : ex.metodo;
+}
+
+function etiquetasDeGrupo(exercicios) {
+  const letras = {};
+  const quantos = {};
+  (exercicios || []).forEach((e) => {
+    if (!e.grupo) return;
+    if (!letras[e.grupo]) letras[e.grupo] = String.fromCharCode(65 + Object.keys(letras).length);
+    quantos[e.grupo] = (quantos[e.grupo] || 0) + 1;
+  });
+  const usados = {};
+  const saida = {};
+  (exercicios || []).forEach((e) => {
+    if (!e.grupo || quantos[e.grupo] < 2) return;
+    usados[e.grupo] = (usados[e.grupo] || 0) + 1;
+    saida[e.id] = `${letras[e.grupo]}${usados[e.grupo]}`;
+  });
+  return saida;
+}
+
+function migrarTreinosParaLinhas(lista) {
+  return (lista || []).map((p) => ({
+    ...p,
+    treinos: (p.treinos || []).map((t) => ({
+      ...t,
+      exercicios: (t.exercicios || []).map(migrarExercicioParaLinhas),
+    })),
+  }));
+}
+
 // O que se preenche quase sempre.
 const CAMPOS_BASE = [
   ['series', 'Séries', '3'],
@@ -561,20 +710,12 @@ const CAMPOS_BASE = [
   ['descanso', 'Descanso (s)', '90'],
 ];
 
-// O resto. Fica escondido até ser preciso: onze campos à frente de toda a gente
-// tornavam ilegível a ficha de quem só quer séries e repetições.
+// O que é do exercício e não de cada série. Carga, repetições, tempo, RPE e
+// companhia mudam de série para série e por isso vivem nas linhas — tê-los
+// aqui também era pedir o mesmo número em dois sítios.
 const CAMPOS_EXTRA = [
-  ['percentagem1rm', '% de 1RM', '75%'],
-  ['rpe', 'RPE', '8'],
-  ['rir', 'RIR', '2'],
-  ['tempo', 'Tempo sob tensão', '40 s'],
-  ['duracao', 'Duração', '12 min'],
-  ['distancia', 'Distância', '400 m'],
-  ['velocidade', 'Velocidade', '10 km/h'],
-  ['ritmo', 'Ritmo', '5:30 /km'],
-  ['potencia', 'Potência', '180 W'],
-  ['inclinacao', 'Inclinação', '6%'],
-  ['alternativa', 'Alternativa (casa)', 'Agachamento livre'],
+  ['alternativa', 'Alternativa em casa', 'Agachamento livre'],
+  ['equipamentoAlt', 'Se não houver equipamento', 'Elástico em vez de polia'],
 ];
 
 function extrasPreenchidos(ex) {
@@ -599,7 +740,8 @@ function novoExercicioTreino(exercicio) {
     exercicioId: exercicio ? exercicio.id : null,
     nome: exercicio ? exercicio.nome : '',
     bloco: BLOCO_OMISSAO,
-    series: '3', reps: '10', carga: '', descanso: '90', metodo: '', notas: '',
+    metodo: '', metodoParams: {}, notas: '', grupo: '',
+    linhas: [novaLinhaSerie(null), novaLinhaSerie(null), novaLinhaSerie(null)],
   };
 }
 
@@ -5690,7 +5832,88 @@ function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEdi
 }
 
 // Uma linha de exercicio dentro de um treino.
-function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, onSubir, onDescer, primeiro, ultimo, aoPegar, aArrastar }) {
+// Uma linha de série. O tipo manda nos campos: mudar para "Corrida" troca
+// repetições e carga por distância, tempo e ritmo, sem perder o que já lá
+// estava — quem volta atrás encontra os valores como os deixou.
+function LinhaSerie({ linha, numero, onMudar, onRemover, onNovaLinha, unica }) {
+  const tipo = tipoDeSerie(linha.tipo);
+  return (
+    <div className="flex items-end gap-2 flex-wrap" style={{ paddingBottom: 2 }}>
+      <span className="font-mono text-2xs text-faint nowrap" style={{ width: 18, paddingBottom: 9 }}>{numero}</span>
+
+      <div className="flex flex-col gap-1" style={{ minWidth: 132, flex: '1 1 132px' }}>
+        {numero === 1 && <span className="text-2xs font-body text-faint">Tipo</span>}
+        <select
+          value={tipo.id}
+          onChange={(e) => onMudar({ ...linha, tipo: e.target.value })}
+          aria-label={`Tipo da série ${numero}`}
+          className="input-field"
+          style={{ fontSize: 13 }}
+        >
+          {TIPOS_SERIE.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+        </select>
+      </div>
+
+      {tipo.campos.map((campo) => {
+        const [rotulo, exemplo] = CAMPO_SERIE[campo];
+        return (
+          <div key={campo} className="flex flex-col gap-1" style={{ minWidth: 78, flex: '1 1 78px' }}>
+            {numero === 1 && <span className="text-2xs font-body text-faint">{rotulo}</span>}
+            <input
+              value={linha[campo] || ''}
+              onChange={(e) => onMudar({ ...linha, [campo]: e.target.value })}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onNovaLinha(); } }}
+              aria-label={`${rotulo} da série ${numero}`}
+              className="input-field"
+              placeholder={exemplo}
+              style={{ fontSize: 13 }}
+            />
+          </div>
+        );
+      })}
+
+      <div className="flex flex-col gap-1" style={{ minWidth: 72, flex: '0 1 72px' }}>
+        {numero === 1 && <span className="text-2xs font-body text-faint">Descanso</span>}
+        <input
+          value={linha.descanso || ''}
+          onChange={(e) => onMudar({ ...linha, descanso: e.target.value })}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onNovaLinha(); } }}
+          aria-label={`Descanso da série ${numero}`}
+          className="input-field"
+          placeholder="90 s"
+          style={{ fontSize: 13 }}
+        />
+      </div>
+
+      <div className="flex flex-col gap-1" style={{ minWidth: 58, flex: '0 1 58px' }}>
+        {numero === 1 && <span className="text-2xs font-body text-faint">RPE</span>}
+        <input
+          value={linha.rpe || ''}
+          onChange={(e) => onMudar({ ...linha, rpe: e.target.value })}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onNovaLinha(); } }}
+          aria-label={`RPE da série ${numero}`}
+          className="input-field"
+          placeholder="8"
+          style={{ fontSize: 13 }}
+        />
+      </div>
+
+      <button
+        type="button"
+        onClick={onRemover}
+        disabled={unica}
+        className="p-1.5 rounded btn-surface disabled:opacity-30 flex-shrink-0"
+        aria-label={`Remover série ${numero}`}
+        title={unica ? 'Um exercício tem de ter pelo menos uma série' : 'Remover série'}
+        style={{ marginBottom: 1 }}
+      >
+        <X size={13} className="text-muted" style={{ display: 'block' }} />
+      </button>
+    </div>
+  );
+}
+
+function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, onSubir, onDescer, primeiro, ultimo, aoPegar, aArrastar, selecionado, onSelecionar, etiquetaGrupo }) {
   const daBiblioteca = biblioteca.find((b) => b.id === ex.exercicioId);
   const naLista = METODOS_TREINO.includes(ex.metodo);
   // Guarda-se se está em modo livre em vez de o deduzir do texto: apagar o que
@@ -5698,11 +5921,24 @@ function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, 
   const [metodoLivre, setMetodoLivre] = useState(Boolean(ex.metodo) && !naLista);
   const [maisCampos, setMaisCampos] = useState(false);
   const extras = extrasPreenchidos(ex);
+  const linhas = Array.isArray(ex.linhas) && ex.linhas.length ? ex.linhas : [novaLinhaSerie(null)];
+  const camposMetodo = camposDoMetodo(ex.metodo);
+  const paramsMetodo = ex.metodoParams || {};
+
+  // Entrar numa linha acrescenta outra por baixo, com os mesmos valores.
+  // Escrever um treino é repetir a mesma série a mudar um número.
+  function acrescentarLinha(depoisDe) {
+    const nova = novaLinhaSerie(linhas[depoisDe] || linhas[linhas.length - 1]);
+    const seguintes = [...linhas];
+    seguintes.splice(depoisDe + 1, 0, nova);
+    onMudar({ ...ex, linhas: seguintes });
+  }
 
   function mudarMetodo(valor) {
     if (valor === '__livre') { setMetodoLivre(true); return; }
     setMetodoLivre(false);
-    onMudar({ ...ex, metodo: valor });
+    // Os números do método anterior não servem ao novo: um EMOM não tem quedas.
+    onMudar({ ...ex, metodo: valor, metodoParams: {} });
   }
 
   return (
@@ -5717,6 +5953,13 @@ function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, 
     >
       <div className="flex items-start justify-between gap-2 min-w-0">
         <div className="flex items-start gap-1.5 min-w-0">
+          <input
+            type="checkbox"
+            checked={selecionado}
+            onChange={onSelecionar}
+            aria-label={`Selecionar ${ex.nome || 'exercício'} para combinar`}
+            style={{ accentColor: 'var(--brass)', marginTop: 5, flexShrink: 0 }}
+          />
           {/* Irmão dos outros botões, nunca dentro do cartão clicável: aninhar
               botões é ARIA inválido. `touch-action: none` senão o telemóvel
               interpreta o arrasto como deslocação da página. */}
@@ -5731,7 +5974,12 @@ function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, 
             <GripVertical size={14} className="text-faint" style={{ display: 'block' }} />
           </button>
           <div className="min-w-0">
-            <div className="text-sm font-body text-primary truncate" style={{ fontWeight: 500 }}>{ex.nome || 'Exercício'}</div>
+            <div className="text-sm font-body text-primary truncate" style={{ fontWeight: 500 }}>
+              {etiquetaGrupo && (
+                <span className="font-mono text-2xs mr-1.5" style={{ color: 'var(--brass)' }}>{etiquetaGrupo}</span>
+              )}
+              {ex.nome || 'Exercício'}
+            </div>
             {daBiblioteca && (
               <div className="text-2xs font-body text-faint truncate">{daBiblioteca.grupo}{daBiblioteca.equipamento ? ' · ' + daBiblioteca.equipamento : ''}</div>
             )}
@@ -5745,12 +5993,21 @@ function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, 
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {CAMPOS_BASE.map(([campo, rotulo, exemplo]) => (
-          <FormField key={campo} label={rotulo}>
-            <input value={ex[campo] || ''} onChange={(e) => onMudar({ ...ex, [campo]: e.target.value })} className="input-field" placeholder={exemplo} />
-          </FormField>
+      <div className="flex flex-col gap-1.5">
+        {linhas.map((linha, i) => (
+          <LinhaSerie
+            key={linha.id}
+            linha={linha}
+            numero={i + 1}
+            unica={linhas.length === 1}
+            onMudar={(nova) => onMudar({ ...ex, linhas: linhas.map((l) => (l.id === linha.id ? nova : l)) })}
+            onRemover={() => onMudar({ ...ex, linhas: linhas.filter((l) => l.id !== linha.id) })}
+            onNovaLinha={() => acrescentarLinha(i)}
+          />
         ))}
+        <button type="button" onClick={() => acrescentarLinha(linhas.length - 1)} className="btn btn-ghost self-start" style={{ fontSize: 11 }}>
+          <Plus size={13} /> Acrescentar série
+        </button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -5789,12 +6046,30 @@ function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, 
         </div>
       </div>
 
+      {camposMetodo.length > 0 && (
+        <div className="rounded-lg border border-hair p-2.5 flex flex-col gap-2" style={{ backgroundColor: 'var(--wash)' }}>
+          <span className="text-2xs uppercase tracking-wide font-mono text-faint">{ex.metodo}</span>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {camposMetodo.map(([campo, rotulo, exemplo]) => (
+              <FormField key={campo} label={rotulo}>
+                <input
+                  value={paramsMetodo[campo] || ''}
+                  onChange={(e) => onMudar({ ...ex, metodoParams: { ...paramsMetodo, [campo]: e.target.value } })}
+                  className="input-field"
+                  placeholder={exemplo}
+                />
+              </FormField>
+            ))}
+          </div>
+        </div>
+      )}
+
       <FormField label="Notas (opcional)">
         <input value={ex.notas || ''} onChange={(e) => onMudar({ ...ex, notas: e.target.value })} className="input-field" placeholder="Ex.: cadência 3-1-1" />
       </FormField>
 
       {maisCampos ? (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {CAMPOS_EXTRA.map(([campo, rotulo, exemplo]) => (
             <FormField key={campo} label={rotulo}>
               <input value={ex[campo] || ''} onChange={(e) => onMudar({ ...ex, [campo]: e.target.value })} className="input-field" placeholder={exemplo} />
@@ -5864,6 +6139,7 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
   const biblioteca = treinos.biblioteca;
   const [picker, setPicker] = useState(null); // id do treino a receber o exercicio
   const [confirmar, setConfirmar] = useState(false);
+  const [selecao, setSelecao] = useState([]);
   const { arrasto, pegar } = useArrastarExercicio(
     (treinoId, de, para) => reordenarExercicio(treinoId, de, para),
   );
@@ -5892,6 +6168,32 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
     // para o mandar para o fim da lista.
     lista.splice(i + 1, 0, { ...ex, id: uid() });
     mudarTreino(treinoId, { ...t, exercicios: lista });
+  }
+
+  // Combinar: os escolhidos passam a partilhar um grupo e ficam encostados uns
+  // aos outros, porque uma supersérie que não seja seguida não é supersérie.
+  // Ganham etiqueta A1, A2, A3 na ficha e no PDF.
+  function combinarSelecionados(treinoId) {
+    const t = prescricao.treinos.find((x) => x.id === treinoId);
+    const escolhidos = t.exercicios.filter((e) => selecao.includes(e.id));
+    if (escolhidos.length < 2) return;
+    const grupo = uid();
+    const primeiroIndice = t.exercicios.findIndex((e) => selecao.includes(e.id));
+    const resto = t.exercicios.filter((e) => !selecao.includes(e.id));
+    const marcados = escolhidos.map((e) => ({ ...e, grupo }));
+    const lista = [...resto];
+    lista.splice(Math.min(primeiroIndice, resto.length), 0, ...marcados);
+    mudarTreino(treinoId, { ...t, exercicios: lista });
+    setSelecao([]);
+  }
+
+  function separarSelecionados(treinoId) {
+    const t = prescricao.treinos.find((x) => x.id === treinoId);
+    mudarTreino(treinoId, {
+      ...t,
+      exercicios: t.exercicios.map((e) => (selecao.includes(e.id) ? { ...e, grupo: '' } : e)),
+    });
+    setSelecao([]);
   }
 
   function duplicarTreino(t) {
@@ -5981,11 +6283,14 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
             <EmptyState icon={Dumbbell} message="Sem exercícios neste treino." />
           ) : (
             <div className="flex flex-col gap-2">
-              {t.exercicios.map((ex, i) => (
+              {t.exercicios.map((ex, i, todos) => (
                 <ExercicioRow
                   key={ex.id}
                   ex={ex}
                   indice={i}
+                  etiquetaGrupo={etiquetasDeGrupo(todos)[ex.id]}
+                  selecionado={selecao.includes(ex.id)}
+                  onSelecionar={() => setSelecao((s) => (s.includes(ex.id) ? s.filter((x) => x !== ex.id) : [...s, ex.id]))}
                   biblioteca={biblioteca}
                   primeiro={i === 0}
                   ultimo={i === t.exercicios.length - 1}
@@ -6000,6 +6305,36 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
               ))}
             </div>
           )}
+
+          {(() => {
+            const nesteTreino = t.exercicios.filter((e) => selecao.includes(e.id));
+            if (nesteTreino.length === 0) return null;
+            const jaAgrupados = nesteTreino.filter((e) => e.grupo).length;
+            return (
+              <div className="flex items-center gap-2 flex-wrap px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--brass)', backgroundColor: 'var(--brass-soft)' }}>
+                <span className="text-xs font-body text-primary">
+                  {plural(nesteTreino.length, 'exercício selecionado', 'exercícios selecionados')}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => combinarSelecionados(t.id)}
+                  disabled={nesteTreino.length < 2}
+                  className="btn btn-primary disabled:opacity-40"
+                  style={{ fontSize: 11 }}
+                >
+                  Combinar em supersérie
+                </button>
+                {jaAgrupados > 0 && (
+                  <button type="button" onClick={() => separarSelecionados(t.id)} className="btn btn-ghost" style={{ fontSize: 11 }}>
+                    Separar
+                  </button>
+                )}
+                <button type="button" onClick={() => setSelecao([])} className="text-2xs font-body link-sky ml-auto">
+                  Limpar seleção
+                </button>
+              </div>
+            );
+          })()}
 
           <button type="button" onClick={() => setPicker(t.id)} className="btn btn-ghost self-start" style={{ fontSize: 12 }}>
             <Plus size={14} /> Acrescentar exercício
@@ -6406,16 +6741,15 @@ function TreinoPrintDoc({ student, prescricao, biblioteca, trainerName, userEmai
           ) : (
             // Agrupado por bloco e pela ordem por que se treina, não pela ordem
             // por que foi escrito. Com um bloco só, o cabeçalho é ruído: omite-se.
-            agruparPorBloco(t.exercicios).map(([bloco, doBloco], bi, todos) => (
+            (() => { const etiquetas = etiquetasDeGrupo(t.exercicios); return agruparPorBloco(t.exercicios).map(([bloco, doBloco], bi, todos) => (
               <div key={bloco} style={{ marginTop: bi === 0 ? 0 : 8 }}>
                 {todos.length > 1 && <div className="print-bloco">{bloco}</div>}
                 <table className="print-table">
                   <thead>
                     <tr>
                       <th>Exercício</th>
-                      <th className="num">Séries</th>
-                      <th className="num">Reps</th>
-                      <th className="num">Carga</th>
+                      <th className="num">Série</th>
+                      <th>Prescrição</th>
                       <th className="num">Descanso</th>
                     </tr>
                   </thead>
@@ -6424,25 +6758,31 @@ function TreinoPrintDoc({ student, prescricao, biblioteca, trainerName, userEmai
                       const daBiblioteca = biblioteca.find((b) => b.id === ex.exercicioId);
                       // As instrucoes vivem na biblioteca: o treinador escreve uma
                       // vez e saem em todos os treinos onde usar o exercicio.
-                      const extra = extrasPreenchidos(ex).map(([campo, rotulo]) => `${rotulo}: ${ex[campo]}`);
-                      const linhas = [ex.metodo, ...extra, ex.notas, daBiblioteca && daBiblioteca.instrucoes].filter(Boolean);
-                      return (
-                        <tr key={ex.id}>
-                          <td>
-                            <strong>{ex.nome}</strong>
-                            {linhas.length > 0 && <div className="print-ex-nota">{linhas.join(' · ')}</div>}
-                          </td>
-                          <td className="num">{ex.series || '—'}</td>
-                          <td className="num">{ex.reps || '—'}</td>
-                          <td className="num">{ex.carga || '—'}</td>
-                          <td className="num">{ex.descanso ? ex.descanso + ' s' : '—'}</td>
+                      const cabecalho = [
+                        descreverMetodo(ex),
+                        ...extrasPreenchidos(ex).map(([campo, rotulo]) => `${rotulo}: ${ex[campo]}`),
+                        ex.notas,
+                        daBiblioteca && daBiblioteca.instrucoes,
+                      ].filter(Boolean);
+                      const series = Array.isArray(ex.linhas) && ex.linhas.length ? ex.linhas : [null];
+                      return series.map((linha, i) => (
+                        <tr key={linha ? linha.id : ex.id}>
+                          {i === 0 && (
+                            <td rowSpan={series.length}>
+                              <strong>{etiquetas[ex.id] ? `${etiquetas[ex.id]} · ` : ''}{ex.nome}</strong>
+                              {cabecalho.length > 0 && <div className="print-ex-nota">{cabecalho.join(' · ')}</div>}
+                            </td>
+                          )}
+                          <td className="num">{i + 1}</td>
+                          <td>{linha ? (descreverLinha(linha) || '—') : '—'}</td>
+                          <td className="num">{linha && linha.descanso ? linha.descanso : '—'}</td>
                         </tr>
-                      );
+                      ));
                     })}
                   </tbody>
                 </table>
               </div>
-            ))
+            )); })()
           )}
           {t.notas ? <div className="print-notes" style={{ marginTop: 6 }}>{t.notas}</div> : null}
         </PrintSection>

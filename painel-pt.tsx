@@ -8,6 +8,7 @@ import {
   Camera, ArrowLeft, LineChart as LineChartIcon, Tag,
   Coffee, Dumbbell, UtensilsCrossed, Stethoscope, Gift, CreditCard, Mail, CircleUser, KeyRound, ShieldCheck,
   RefreshCcw, Printer, Pencil, Copy, ClipboardPaste, GripVertical, Bell, Archive, BookMarked,
+  Sun, Moon, Monitor,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
@@ -56,22 +57,32 @@ const STATUS_OPTIONS = [
   { id: 'cancelado', label: 'Cancelado', color: '#5C5C5C' },
 ];
 
-// Recharts recebe estilos como objetos JS, por isso não lê as variáveis CSS.
-// Manter aqui evita que os gráficos fiquem dessincronizados da paleta.
+// O Recharts recebe estilos como objetos JS, mas tanto os estilos em linha como
+// os atributos de apresentação do SVG resolvem `var()`. Escrito assim, os
+// gráficos mudam de tema sozinhos, sem um segundo objeto para manter em dia.
 const CHART = {
   tooltip: {
-    background: '#1B1E24', border: '1px solid #363C45', borderRadius: 10,
-    color: '#F2F4F7', boxShadow: '0 6px 16px -6px rgba(0,0,0,0.6)', fontSize: 12,
+    background: 'var(--bg-elevated)', border: '1px solid var(--border-strong)', borderRadius: 10,
+    color: 'var(--text-primary)', boxShadow: 'var(--shadow-md)', fontSize: 12,
   },
   // O Recharts usa preto por omissão no rótulo do tooltip e um cursor cinzento
   // claro — ilegíveis sobre fundo escuro. Definidos explicitamente.
-  tooltipLabel: { color: '#F2F4F7', fontWeight: 600, marginBottom: 4 },
-  tooltipItem: { color: '#A0A6B0', padding: 0 },
-  cursor: { fill: 'rgba(255,255,255,0.06)' },
-  legend: { fontSize: 11, color: '#A0A6B0' },
-  tick: { fill: '#7C838F', fontSize: 11 },
-  grid: '#262A31',
+  tooltipLabel: { color: 'var(--text-primary)', fontWeight: 600, marginBottom: 4 },
+  tooltipItem: { color: 'var(--text-muted)', padding: 0 },
+  cursor: { fill: 'var(--chart-cursor)' },
+  legend: { fontSize: 11, color: 'var(--text-muted)' },
+  tick: { fill: 'var(--text-faint)', fontSize: 11 },
+  grid: 'var(--border-hair)',
 };
+
+// As cores de tipo de evento, de estado e de categoria foram escolhidas para
+// fundo preto: sobre branco, várias descem abaixo de 3:1 e deixam de se ler.
+// Como preenchimento (bolinhas, fatias de gráfico) não há problema -- o que
+// precisa de correção é o texto e os ícones. No tema escuro isto devolve a cor
+// intacta, porque a mistura é de 0%.
+function acentoTexto(hex) {
+  return `color-mix(in srgb, ${hex}, var(--acc-mix) var(--acc-amt))`;
+}
 
 const STUDENT_COLORS = ['#5DA9E9', '#C77DFF', '#4EC5D4', '#EF88AD', '#7EC4CF', '#8FA6C2', '#A78BFA', '#7FB3B3', '#6FCF97', '#E8735A'];
 const PLAN_TYPES = ['1x por semana', '2x por semana', '3x por semana', '4x por semana', '5x por semana', 'Personalizado'];
@@ -997,7 +1008,113 @@ async function readSubscriptionStatus() {
   };
 }
 
+/* ============================== TEMA ============================== */
+
+// A preferência fica no armazenamento local e não nas definições da conta, de
+// propósito: é do aparelho, não da pessoa. O mesmo treinador quer o escuro no
+// telemóvel de noite e o claro no portátil dentro do ginásio. E aqui aplica-se
+// antes de haver sessão, o que evita o clarão no arranque.
+const TEMA_CHAVE = 'ptmanager:tema';
+
+const TEMAS = [
+  { id: 'auto', label: 'Automático', hint: 'Segue o sistema', icon: Monitor },
+  { id: 'claro', label: 'Claro', hint: 'Para salas com luz', icon: Sun },
+  { id: 'escuro', label: 'Escuro', hint: 'O de sempre', icon: Moon },
+];
+
+function lerTemaGuardado() {
+  try {
+    const guardado = window.localStorage.getItem(TEMA_CHAVE);
+    return TEMAS.some((t) => t.id === guardado) ? guardado : 'auto';
+  } catch (e) {
+    return 'auto';
+  }
+}
+
+// Em "auto" tira-se o atributo e quem decide é a media query do CSS, que já
+// correu antes deste ficheiro sequer ser lido.
+function aplicarTema(pref) {
+  if (typeof document === 'undefined') return;
+  if (pref === 'auto') document.documentElement.removeAttribute('data-tema');
+  else document.documentElement.setAttribute('data-tema', pref);
+  try { window.localStorage.setItem(TEMA_CHAVE, pref); } catch (e) { /* janela privada */ }
+}
+
+function sistemaPedeClaro() {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-color-scheme: light)').matches;
+}
+
+// Aplicado no arranque, fora do React: quem escolheu claro com o sistema em
+// escuro veria a aplicação preta durante um instante.
+if (typeof window !== 'undefined') aplicarTema(lerTemaGuardado());
+
+function useTema() {
+  const [tema, setTema] = useState(lerTemaGuardado);
+  const [claroNoSistema, setClaroNoSistema] = useState(sistemaPedeClaro);
+
+  useEffect(() => { aplicarTema(tema); }, [tema]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const mq = window.matchMedia('(prefers-color-scheme: light)');
+    const ouvir = (e) => setClaroNoSistema(e.matches);
+    mq.addEventListener('change', ouvir);
+    return () => mq.removeEventListener('change', ouvir);
+  }, []);
+
+  const resolvido = tema === 'auto' ? (claroNoSistema ? 'claro' : 'escuro') : tema;
+  // O botão do cabeçalho passa a uma escolha explícita, e é sempre o contrário
+  // do que está no ecrã — mesmo quando se estava em automático.
+  const alternar = () => setTema(resolvido === 'claro' ? 'escuro' : 'claro');
+
+  return { tema, setTema, resolvido, alternar };
+}
+
 /* ============================== GLOBAL STYLES ============================== */
+
+// O tema claro escrito uma vez e aplicado em três sítios: quando o sistema
+// pede claro e o utilizador não escolheu nada, e quando ele escolhe claro de
+// propósito. Duplicar o bloco à mão era garantia de os dois dessincronizarem.
+//
+// As cores de acento descem de luminosidade: o turquesa #1EA6B4 sobre branco
+// dá 2,6:1, reprova para texto. #10808C dá 4,8:1.
+const TOKENS_CLAROS = `
+        color-scheme: light;
+        --bg-base: #EEF1F5;
+        --bg-surface: #FFFFFF;
+        --bg-elevated: #FFFFFF;
+        --bg-inset: #E4E9EF;
+        --border-hair: #DCE2EA;
+        --border-strong: #BFC9D4;
+        --text-primary: #101720;
+        --text-muted: #515C6B;
+        --text-faint: #6F7B8A;
+        --on-accent: #FFFFFF;
+        --brass: #10808C;
+        --brass-soft: rgba(16, 128, 140, 0.11);
+        --rust: #B23A31;
+        --rust-soft: rgba(178, 58, 49, 0.10);
+        --gold: #8A5D0A;
+        --gold-soft: rgba(138, 93, 10, 0.12);
+        --slate-acc: #64707E;
+        --sky: #1B7A87;
+        /* Sombras a azul-ardósia, não a preto: preto puro sobre branco suja. */
+        --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.07);
+        --shadow-md: 0 6px 16px -6px rgba(16, 24, 40, 0.16);
+        --shadow-lg: 0 20px 48px -16px rgba(16, 24, 40, 0.22);
+        --shadow-drag: 0 10px 18px rgba(16, 24, 40, 0.22);
+        --overlay: rgba(16, 24, 40, 0.42);
+        --overlay-strong: rgba(16, 24, 40, 0.52);
+        --wash: rgba(16, 24, 40, 0.045);
+        --wash-strong: rgba(16, 24, 40, 0.07);
+        --chart-cursor: rgba(16, 24, 40, 0.05);
+        /* As cores de tipo de evento e de estado são claras de origem, pensadas
+           para fundo preto. Sobre branco escurecem 32% para o texto e os ícones
+           continuarem legíveis; ver \`acentoTexto\`. */
+        --acc-mix: #000000;
+        --acc-amt: 32%;
+`;
 
 function GlobalStyles() {
   return (
@@ -1029,8 +1146,32 @@ function GlobalStyles() {
         --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
         --shadow-md: 0 6px 16px -6px rgba(0, 0, 0, 0.6);
         --shadow-lg: 0 20px 48px -16px rgba(0, 0, 0, 0.72);
+        --shadow-drag: 0 10px 18px rgba(0, 0, 0, 0.45);
+        --overlay: rgba(0, 0, 0, 0.72);
+        --overlay-strong: rgba(0, 0, 0, 0.78);
+        --wash: rgba(255, 255, 255, 0.04);
+        --wash-strong: rgba(255, 255, 255, 0.06);
+        --chart-cursor: rgba(255, 255, 255, 0.06);
+        --acc-mix: #FFFFFF;
+        --acc-amt: 0%;
         --dur: 160ms;
         --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+      }
+
+      /* Sem escolha feita, manda o sistema. Corre antes do JavaScript, por isso
+         quem tem o telemóvel em claro nunca vê o clarão escuro no arranque --
+         e a CSP não deixa pôr um script inline no index.html para o resolver. */
+      @media (prefers-color-scheme: light) {
+        :root:not([data-tema="escuro"]) {${TOKENS_CLAROS}        }
+      }
+      :root[data-tema="claro"] {${TOKENS_CLAROS}      }
+
+      /* O Recharts pinta o rótulo da legenda com a cor da própria série, em
+         estilo em linha. Várias dessas cores foram escolhidas para fundo preto
+         e desbotam sobre branco -- o quadradinho ao lado já diz qual é a série,
+         o texto só tem de se ler. Fora da impressão, que tem a sua paleta. */
+      @media screen {
+        .recharts-legend-item-text { color: var(--text-muted) !important; }
       }
 
       * { box-sizing: border-box; }
@@ -1375,7 +1516,7 @@ function Modal({ title, onClose, children, onBack }) {
   return (
     <div
       className="fixed inset-0 flex items-end sm:items-center justify-center animate-in px-0 sm:px-4"
-      style={{ backgroundColor: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(3px)', zIndex: 40 }}
+      style={{ backgroundColor: 'var(--overlay)', backdropFilter: 'blur(3px)', zIndex: 40 }}
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -1412,7 +1553,7 @@ function ConfirmDialog({ title, message, onConfirm, onCancel, confirmLabel = 'El
   }, [onCancel]);
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center px-4 animate-in" style={{ backgroundColor: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(3px)', zIndex: 50 }} onClick={onCancel} role="alertdialog" aria-modal="true" aria-label={title}>
+    <div className="fixed inset-0 flex items-center justify-center px-4 animate-in" style={{ backgroundColor: 'var(--overlay-strong)', backdropFilter: 'blur(3px)', zIndex: 50 }} onClick={onCancel} role="alertdialog" aria-modal="true" aria-label={title}>
       <div onClick={(e) => e.stopPropagation()} className="border border-hair rounded-2xl w-full max-w-sm p-5" style={{ backgroundColor: 'var(--bg-surface)', boxShadow: 'var(--shadow-lg)' }}>
         <h3 className="font-display font-semibold text-base text-primary mb-2">{title}</h3>
         <p className="text-sm text-muted font-body mb-5">{message}</p>
@@ -1439,7 +1580,7 @@ function Toast({ toast }) {
 function EmptyState({ message, cta, onCta, icon: Icon = Info, hint }) {
   return (
     <div className="flex flex-col items-center justify-center text-center py-12 px-4">
-      <span className="rounded-xl p-3 mb-3.5" style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-hair)' }}>
+      <span className="rounded-xl p-3 mb-3.5" style={{ backgroundColor: 'var(--wash)', border: '1px solid var(--border-hair)' }}>
         <Icon size={22} className="text-faint" style={{ display: 'block' }} />
       </span>
       <p className="text-sm text-primary font-body max-w-xs font-medium">{message}</p>
@@ -1968,6 +2109,7 @@ function ChangePasswordModal({ email, onClose, onDone }) {
 
 const SETTINGS_SECTIONS = [
   { id: 'conta', label: 'Conta', icon: CircleUser },
+  { id: 'aparencia', label: 'Aparência', icon: Sun },
   { id: 'agenda', label: 'Agenda', icon: CalendarDays },
   { id: 'subscricao', label: 'Subscrição', icon: CreditCard },
   { id: 'dados', label: 'Dados e privacidade', icon: ShieldCheck },
@@ -2008,6 +2150,7 @@ function SettingsModal({
   user, subscription, students, sessions, finances, photos, customCategories,
   onClose, onSignOut, onRefreshSubscription, onChangePassword, onReset, onRestore,
   trainerName, onSaveTrainerName, definicoes, onSaveHorario, onSaveLembretes, permissaoNotificacoes,
+  tema, onMudarTema, temaResolvido,
 }) {
   const [section, setSection] = useState('conta');
   const [nome, setNome] = useState(trainerName || '');
@@ -2080,7 +2223,7 @@ function SettingsModal({
   return (
     <div
       className="fixed inset-0 flex items-stretch sm:items-center justify-center animate-in p-0 sm:p-4"
-      style={{ backgroundColor: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(3px)', zIndex: 40 }}
+      style={{ backgroundColor: 'var(--overlay)', backdropFilter: 'blur(3px)', zIndex: 40 }}
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -2204,6 +2347,51 @@ function SettingsModal({
                   )}
                 </div>
               </>
+            )}
+
+            {section === 'aparencia' && (
+              <SettingsBlock
+                title="Tema"
+                description="Fica guardado neste aparelho. Pode ter o telemóvel em escuro e o computador em claro."
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {TEMAS.map((t) => {
+                    const TemaIcon = t.icon;
+                    const ativo = tema === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => onMudarTema(t.id)}
+                        aria-pressed={ativo}
+                        className="flex items-center gap-2.5 px-3 py-3 rounded-lg border text-left btn-surface min-w-0"
+                        style={{
+                          borderColor: ativo ? 'var(--brass)' : 'var(--border-hair)',
+                          backgroundColor: ativo ? 'var(--brass-soft)' : 'var(--bg-elevated)',
+                        }}
+                      >
+                        <TemaIcon size={16} className="flex-shrink-0" style={{ color: ativo ? 'var(--brass)' : 'var(--text-faint)' }} />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-body text-primary truncate">{t.label}</span>
+                          <span className="block text-2xs font-body text-faint truncate">{t.hint}</span>
+                        </span>
+                        {ativo && <Check size={14} className="text-brass flex-shrink-0 ml-auto" />}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <p className="text-xs font-body text-faint">
+                  {tema === 'auto'
+                    ? `Neste momento o sistema está em ${temaResolvido === 'claro' ? 'claro' : 'escuro'}.`
+                    : 'A escolha manual ignora o sistema até voltar a Automático.'}
+                </p>
+
+                <p className="text-xs font-body text-muted">
+                  Os documentos impressos e os PDF saem sempre a preto sobre branco,
+                  seja qual for o tema — poupa tinta e é o que o aluno espera receber.
+                </p>
+              </SettingsBlock>
             )}
 
             {section === 'agenda' && (
@@ -2558,7 +2746,7 @@ function AlertChip({ icon: Icon, label, count, accent }) {
   const active = Number(count) > 0;
   return (
     <div className="card p-3 flex items-center gap-2.5 min-w-0" style={{ borderColor: active ? `${hex}59` : 'var(--border-hair)' }}>
-      <div className="p-2 rounded-lg flex-shrink-0" style={{ backgroundColor: active ? `${hex}24` : 'rgba(255,255,255,0.04)' }}>
+      <div className="p-2 rounded-lg flex-shrink-0" style={{ backgroundColor: active ? `color-mix(in srgb, ${hex} 16%, transparent)` : 'var(--wash)' }}>
         <Icon size={15} style={{ color: active ? hex : 'var(--text-faint)', display: 'block' }} />
       </div>
       <div className="min-w-0">
@@ -2856,7 +3044,7 @@ function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, custom
         zIndex: aArrastar ? 40 : 'auto',
         opacity: aArrastar ? 0.92 : 1,
         pointerEvents: aArrastar ? 'none' : 'auto',
-        filter: aArrastar ? 'drop-shadow(0 10px 18px rgba(0,0,0,0.45))' : 'none',
+        filter: aArrastar ? 'drop-shadow(var(--shadow-drag))' : 'none',
       }}
     >
       {onMoveTo && (
@@ -2899,8 +3087,8 @@ function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, custom
         <div className="flex flex-col gap-1 min-w-0">
           <div className="flex items-center gap-1.5 min-w-0">
             <span className="font-mono text-2xs text-muted nowrap">{session.startTime}</span>
-            <span className="rounded p-0.5 flex-shrink-0" style={{ backgroundColor: `${type.color}22` }}>
-              <TypeIcon size={10} style={{ color: type.color, display: 'block' }} />
+            <span className="rounded p-0.5 flex-shrink-0" style={{ backgroundColor: `color-mix(in srgb, ${type.color} 15%, transparent)` }}>
+              <TypeIcon size={10} style={{ color: acentoTexto(type.color), display: 'block' }} />
             </span>
             <span className="flex-1" />
             {!isEvento && (
@@ -2925,7 +3113,7 @@ function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, custom
           >
             {isEvento ? type.label : (student?.name || 'Aluno removido')}
           </div>
-          <span className="badge self-start" style={{ color: statusInfo?.color, backgroundColor: `${statusInfo?.color}1F` }}>
+          <span className="badge self-start" style={{ color: acentoTexto(statusInfo?.color), backgroundColor: `color-mix(in srgb, ${statusInfo?.color} 14%, transparent)` }}>
             {statusInfo?.label}
           </span>
         </div>
@@ -2935,8 +3123,8 @@ function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, custom
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5 mb-1 min-w-0">
                 <span className="font-mono text-2xs text-muted nowrap">{session.startTime}</span>
-                <span className="rounded p-0.5 flex-shrink-0" style={{ backgroundColor: `${type.color}22` }}>
-                  <TypeIcon size={10} style={{ color: type.color, display: 'block' }} />
+                <span className="rounded p-0.5 flex-shrink-0" style={{ backgroundColor: `color-mix(in srgb, ${type.color} 15%, transparent)` }}>
+                  <TypeIcon size={10} style={{ color: acentoTexto(type.color), display: 'block' }} />
                 </span>
                 {!isEvento && <span className="text-2xs font-body text-faint truncate">{type.label}</span>}
               </div>
@@ -2963,7 +3151,7 @@ function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, custom
               </div>
             )}
           </div>
-          <span className="badge mt-1.5" style={{ color: statusInfo?.color, backgroundColor: `${statusInfo?.color}1F` }}>
+          <span className="badge mt-1.5" style={{ color: acentoTexto(statusInfo?.color), backgroundColor: `color-mix(in srgb, ${statusInfo?.color} 14%, transparent)` }}>
             {statusInfo?.label}
           </span>
         </>
@@ -2975,9 +3163,10 @@ function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, custom
 
 /* ============================== HEADER + NAV ============================== */
 
-function Header({ onOpenSettings }) {
+function Header({ onOpenSettings, temaResolvido, onAlternarTema }) {
   const now = new Date();
   const dateLabel = `${DAY_NAMES[now.getDay()]}, ${now.getDate()} de ${MONTH_NAMES[now.getMonth()]}`;
+  const vaiParaClaro = temaResolvido === 'escuro';
   return (
     <header className="border-b border-hair" style={{ backgroundColor: 'var(--bg-surface)' }}>
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
@@ -2987,6 +3176,17 @@ function Header({ onOpenSettings }) {
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
           <span className="text-xs font-body text-faint hidden sm:inline">{dateLabel}</span>
+          <button
+            onClick={onAlternarTema}
+            type="button"
+            className="p-2 rounded-lg btn-surface border border-transparent"
+            aria-label={vaiParaClaro ? 'Mudar para o tema claro' : 'Mudar para o tema escuro'}
+            title={vaiParaClaro ? 'Tema claro' : 'Tema escuro'}
+          >
+            {vaiParaClaro
+              ? <Sun size={17} className="text-muted" style={{ display: 'block' }} />
+              : <Moon size={17} className="text-muted" style={{ display: 'block' }} />}
+          </button>
           <button onClick={onOpenSettings} type="button" className="p-2 rounded-lg btn-surface border border-transparent" aria-label="Definições" title="Definições">
             <Settings size={17} className="text-muted" style={{ display: 'block' }} />
           </button>
@@ -3769,7 +3969,7 @@ function StudentsView({ students, sessions, onEdit, onNew }) {
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                    {!s.active && <span className="badge" style={{ backgroundColor: 'rgba(255,255,255,0.06)', color: 'var(--text-faint)' }}>Inativo</span>}
+                    {!s.active && <span className="badge" style={{ backgroundColor: 'var(--wash-strong)', color: 'var(--text-faint)' }}>Inativo</span>}
                     {pf > 0 && (
                       <span className="badge" style={{ backgroundColor: 'var(--rust-soft)', color: 'var(--rust)' }}>
                         <UserX size={10} />{pf} {pf > 1 ? 'faltas' : 'falta'}
@@ -4135,7 +4335,7 @@ function SessionFormModal({ session, students, defaultDate, reposicaoDe, customC
                   const active = form.type === t.id;
                   return (
                     <button key={t.id} type="button" onClick={() => set('type', t.id)} className="flex items-center gap-2 px-3 py-2 rounded-lg border text-left" style={{ borderColor: active ? t.color : 'var(--border-hair)', backgroundColor: active ? `${t.color}22` : 'var(--bg-base)' }}>
-                      <Icon size={14} style={{ color: t.color, flexShrink: 0 }} />
+                      <Icon size={14} style={{ color: acentoTexto(t.color), flexShrink: 0 }} />
                       <span className="text-xs font-body text-primary">{t.label}</span>
                     </button>
                   );
@@ -5533,7 +5733,7 @@ function FaltasDoAluno({ studentId, sessions, onOpenSession, onAgendarReposicao 
                 {f.faltaJustificada && (
                   <span className="badge" style={{ backgroundColor: 'var(--brass-soft)', color: 'var(--brass)' }}>Justificada</span>
                 )}
-                <span className="badge" style={{ backgroundColor: `${estado.color}1F`, color: estado.color }}>{estado.label}</span>
+                <span className="badge" style={{ backgroundColor: `color-mix(in srgb, ${estado.color} 14%, transparent)`, color: acentoTexto(estado.color) }}>{estado.label}</span>
               </span>
             </div>
             {f.faltaObs && <div className="text-2xs font-body text-faint">{f.faltaObs}</div>}
@@ -5959,7 +6159,7 @@ function AdminView() {
                   >
                     <span className="text-sm font-body text-primary truncate" title={a.email}>{a.email}</span>
                     <span className="badge flex-shrink-0" style={{
-                      backgroundColor: a.tipo === 'inatividade' ? 'rgba(255,255,255,0.05)' : 'var(--rust-soft)',
+                      backgroundColor: a.tipo === 'inatividade' ? 'var(--wash)' : 'var(--rust-soft)',
                       color: a.tipo === 'inatividade' ? 'var(--text-faint)' : 'var(--rust)',
                     }}>{a.detalhe}{a.data ? ` · ${fmtDateLong(a.data)}` : ''}</span>
                   </div>
@@ -5998,7 +6198,7 @@ function AdminView() {
                     <div key={c.userId} className="card p-4 flex flex-col gap-2.5">
                       <div className="flex items-center justify-between gap-2 min-w-0">
                         <span className="font-body text-sm text-primary truncate" title={c.email}>{c.email}</span>
-                        <span className="badge flex-shrink-0" style={{ backgroundColor: `${est.color}1F`, color: est.color }}>{est.label}</span>
+                        <span className="badge flex-shrink-0" style={{ backgroundColor: `color-mix(in srgb, ${est.color} 14%, transparent)`, color: acentoTexto(est.color) }}>{est.label}</span>
                       </div>
                       {/* Duas colunas com quatro campos: no telemóvel a regra global
                           empurra grid-cols-3 para 2, o que deixaria uma linha órfã. */}
@@ -6042,7 +6242,7 @@ function AdminView() {
                             <span className="block truncate max-w-[220px] text-primary" title={c.email}>{c.email}</span>
                           </td>
                           <td className="px-3 py-2.5 whitespace-nowrap">
-                            <span className="badge" style={{ backgroundColor: `${est.color}1F`, color: est.color }}>{est.label}</span>
+                            <span className="badge" style={{ backgroundColor: `color-mix(in srgb, ${est.color} 14%, transparent)`, color: acentoTexto(est.color) }}>{est.label}</span>
                           </td>
                           <td className="px-3 py-2.5 text-muted whitespace-nowrap">{nomePlano(c.plano)}</td>
                           <td className="px-3 py-2.5 font-mono text-primary whitespace-nowrap">{c.valor != null ? currency(c.valor) : '—'}</td>
@@ -6091,7 +6291,7 @@ function AdminView() {
                         <span className="text-2xs font-mono text-faint nowrap">{nomePlano(e.from_tier)} → {nomePlano(e.to_tier)}</span>
                       )}
                       {e.amount != null && <span className="font-mono text-xs text-muted nowrap">{currency(e.amount)}</span>}
-                      <span className="badge" style={{ backgroundColor: `${tipo.color}1F`, color: tipo.color }}>{tipo.label}</span>
+                      <span className="badge" style={{ backgroundColor: `color-mix(in srgb, ${tipo.color} 14%, transparent)`, color: acentoTexto(tipo.color) }}>{tipo.label}</span>
                     </span>
                   </div>
                 );
@@ -6126,7 +6326,7 @@ function TransactionCard({ tx, onOpen, onQuickComplete, customCategories }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 mb-0.5 min-w-0">
           <span className="font-mono text-2xs text-muted nowrap">{fmtDateBR(new Date(`${tx.date}T00:00:00`))}</span>
-          <span className="text-2xs font-body px-1.5 py-0.5 rounded truncate" style={{ backgroundColor: `${cat.color}22`, color: cat.color }}>{cat.label}</span>
+          <span className="text-2xs font-body px-1.5 py-0.5 rounded truncate" style={{ backgroundColor: `color-mix(in srgb, ${cat.color} 15%, transparent)`, color: acentoTexto(cat.color) }}>{cat.label}</span>
           {isAuto && (
             <span className="badge flex-shrink-0" style={{ backgroundColor: 'var(--brass-soft)', color: 'var(--brass)' }}>Automático</span>
           )}
@@ -6340,6 +6540,7 @@ function FinancesView({ finances, students, monthCursor, setMonthCursor, onOpenT
 /* ============================== APP ROOT ============================== */
 
 function AppInner() {
+  const { tema, setTema, resolvido: temaResolvido, alternar: alternarTema } = useTema();
   const [loading, setLoading] = useState(true);
   const [authReady, setAuthReady] = useState(!supabaseConfigured);
   const [subscriptionReady, setSubscriptionReady] = useState(!supabaseConfigured);
@@ -7137,7 +7338,7 @@ function AppInner() {
 
   return (
     <div className="min-h-screen bg-base flex flex-col">
-      <Header onOpenSettings={() => setSettingsOpen(true)} />
+      <Header onOpenSettings={() => setSettingsOpen(true)} temaResolvido={temaResolvido} onAlternarTema={alternarTema} />
       <NavTabs view={view} setView={setView} isAdmin={isAdmin} />
       <main className="flex-1 pb-10 pb-nav">
         {/* Os treinos vivem dentro do aluno e nao na barra de navegacao: quando
@@ -7297,6 +7498,9 @@ function AppInner() {
       )}
       {settingsOpen && (
         <SettingsModal
+          tema={tema}
+          onMudarTema={setTema}
+          temaResolvido={temaResolvido}
           user={user}
           subscription={subscription}
           students={students}

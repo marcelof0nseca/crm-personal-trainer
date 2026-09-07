@@ -102,6 +102,14 @@ Consequências que decidem quase tudo:
   da aplicação não ter de saber disto — em modo local é mesmo a imagem, com
   conta ligada é o endereço assinado. Uma fotografia antiga com `dataUri` e sem
   `path` ainda aparece: a migração é preguiçosa e segura de interromper.
+- **Um exercício de treino é uma lista de linhas, não "3 séries de 10".**
+  `ex.linhas` é a fonte de verdade; cada linha tem um `tipo` que decide os
+  campos (`TIPOS_SERIE`). Os campos antigos (`series`, `reps`, `carga`,
+  `descanso`, `rpe`…) foram para dentro das linhas, e
+  `migrarExercicioParaLinhas` converte quem ainda os tenha — é idempotente e
+  corre em `normalizarTreinos`. O método pode levar números próprios em
+  `ex.metodoParams` (`CAMPOS_POR_METODO`), e `ex.grupo` liga os exercícios de
+  uma supersérie, que ganham etiqueta A1/A2 por `etiquetasDeGrupo`.
 - **A biblioteca de exercícios é a exceção: não é gravada.** Vive no código e só
   as diferenças vão para a base de dados — `bibliotecaExtra` (criados),
   `bibliotecaEdicoes` (alterados), `bibliotecaOcultos` (apagados).
@@ -369,9 +377,7 @@ Combinado por níveis, do mais barato ao mais caro:
    — falta correr a política `app_data_exige_aal2` no Supabase
 5. ~~Fotografias para o Storage~~ **feito** — falta correr o SQL do balde
 6. ~~Avaliações: perímetros, cintura-anca, metas, comparação~~ **feito**
-7. **Séries individuais** por exercício, com tipo de série (reps+carga,
-   reps+tempo, tempo+inclinação, corrida, cardio, cadência), campos que mudam
-   conforme o método escolhido, e combinar exercícios em supersérie
+7. ~~Séries individuais, campos por método, combinar em supersérie~~ **feito**
 8. **Agenda:** alocar aluno num horário livre (hoje `switchKind` impede-o em
    edição), célula inteira colorida por tipo, créditos de reposição com
    validade, motivo e quem concedeu, vários intervalos por dia, copiar horário

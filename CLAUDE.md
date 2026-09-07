@@ -46,7 +46,7 @@ O que ele faz na aplicação, todos os dias:
 | **Agenda** | Dia · Semana · Mês · Lista. Marcar, arrastar, copiar, horários livres |
 | **Faltas** | Faltas, direito a reposição, créditos ligados à aula de origem |
 | **Alunos** | Fichas, plano, preço, cor de identificação. **Os treinos vivem aqui dentro** |
-| **Avaliações** | Dobras cutâneas, % massa gorda, perímetros, fotografias, evolução |
+| **Avaliações** | Dobras (5 protocolos), bioimpedância, 14 perímetros, cintura-anca, metas, fotografias, evolução, PDF timbrado |
 | **Finanças** | Entradas e saídas, categorias, IVA, pendências |
 
 Mais um separador **Admin**, só visível ao dono da aplicação.
@@ -350,6 +350,14 @@ têm instruções em texto, que imprimem.
 
 ---
 
+## 10b. Regra que a especificação impõe e é fácil esquecer
+
+**A aplicação assinala, nunca diagnostica.** As faixas de referência da OMS para
+a cintura e a relação cintura-anca são apresentadas como faixas, com a ressalva
+à vista, e nunca como veredicto. O mesmo vale para o que vier da anamnese e do
+PAR-Q. E as cores dessas faixas não usam vermelho — aqui o vermelho é erro, e
+uma medida fora da faixa não é um erro de ninguém.
+
 ## 11. O que vem a seguir
 
 Combinado por níveis, do mais barato ao mais caro:
@@ -360,7 +368,26 @@ Combinado por níveis, do mais barato ao mais caro:
 4. ~~Segurança: dois fatores e fechar sessão em todo o lado~~ **feito**
    — falta correr a política `app_data_exige_aal2` no Supabase
 5. ~~Fotografias para o Storage~~ **feito** — falta correr o SQL do balde
-6. Decisões de produto — ver secção 10
+6. ~~Avaliações: perímetros, cintura-anca, metas, comparação~~ **feito**
+7. **Séries individuais** por exercício, com tipo de série (reps+carga,
+   reps+tempo, tempo+inclinação, corrida, cardio, cadência), campos que mudam
+   conforme o método escolhido, e combinar exercícios em supersérie
+8. **Agenda:** alocar aluno num horário livre (hoje `switchKind` impede-o em
+   edição), célula inteira colorida por tipo, créditos de reposição com
+   validade, motivo e quem concedeu, vários intervalos por dia, copiar horário
+   para outros dias, mover vários eventos, duração do slot configurável
+9. **Timbre completo:** logótipo, contactos, nº profissional, nº de página,
+   aviso de confidencialidade, escolher secções, pré-visualizar
+10. **Versões da avaliação:** rascunho, revisões, quem editou, comparar,
+    restaurar, motivo, autosave
+11. **Biblioteca:** PT-PT/PT-BR/EN e sinónimos (o catálogo de origem tinha
+    `name_en`, que o gerador hoje deita fora), progressões, regressões,
+    substituições, pastas, favoritos
+12. **Anamnese, PAR-Q e consentimentos** — construtor de formulários
+13. **Ficha 360º** com linha temporal pesquisável
+14. **Progresso e relatórios** — só o que existe sem área do aluno
+15. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
+16. Decisões de produto — ver secção 10
 
 ---
 

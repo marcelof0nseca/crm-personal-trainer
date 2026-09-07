@@ -43,7 +43,11 @@ exige alterar esse `check` e correr o SQL no painel do Supabase.**
 Consequências a ter presentes:
 
 - Não há consultas ao conteúdo. Filtrar é sempre em memória.
-- Cada gravação reescreve o bloco inteiro.
+- Cada gravação reescreve o bloco inteiro. **Por isso cada bloco leva um carimbo
+  de versão:** `readStoredValue` guarda o `updated_at` que veio, e o `update` só
+  passa se o servidor ainda estiver nessa data. Se não estiver, `writeStoredValue`
+  lança `ConflitoDeGravacao` e a aplicação oferece recarregar — em vez de apagar
+  o que outro dispositivo gravou. Ao trocar de conta, `esquecerVersoes()`.
 - **As avaliações físicas são sessões da agenda** (`type: 'avaliacao'` + campos
   `assess*`), não uma entidade própria. Editar avaliações toca na agenda.
 - As fotografias são `data:` URI dentro do bloco `fotos`. Não usar para vídeo.
@@ -103,6 +107,14 @@ sobre um cartão clicável são **irmãos**, não filhos.
   exercícios mostra 60 e diz quantos ficaram de fora. A pesquisa é sobre um
   campo `busca` pré-calculado sem acentos — normalizar 2 076 nomes a cada tecla
   custava tempo, e sem isso escrever "biceps" não encontrava "Bíceps".
+- **O tema não é só o fundo.** Cores fixas em `rgba` ou hexadecimal dentro do
+  JSX partem no tema claro. Sombras, sobreposições e lavagens são tokens; o
+  objeto `CHART` passa `var()` (os estilos em linha e os atributos do SVG
+  resolvem-nos); e as cores de tipo, estado e categoria, pensadas para fundo
+  preto, passam por `acentoTexto()` quando são texto ou ícone.
+- **Ações num aviso leem de uma referência, não do estado do render.** O
+  "Desfazer" de uma movimentação pode ser clicado depois de outra gravação —
+  daí o `sessionsRef`.
 
 ## Infraestrutura
 

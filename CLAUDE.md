@@ -17,7 +17,7 @@ saber por esta ordem:
 
 1. **A aplicação está viva e a ser vendida** em `ptmanagerapp.com`. Não é um
    protótipo. Não partir nada.
-2. **Quase tudo está num ficheiro:** `painel-pt.tsx`, ~7 900 linhas. É
+2. **Quase tudo está num ficheiro:** `painel-pt.tsx`, ~9 900 linhas. É
    deliberado. Procure por nome de função com `grep`, não abra o ficheiro
    inteiro.
 3. **O modelo de dados não é relacional** e isso decide quase todas as decisões
@@ -61,7 +61,7 @@ técnica — é uma decisão de produto, e condiciona metade do que se pode ofer
 
 | Ficheiro | |
 |---|---|
-| `painel-pt.tsx` | **A aplicação quase toda** (~7 900 linhas): componentes, helpers, modelo de dados, `AppInner` |
+| `painel-pt.tsx` | **A aplicação quase toda** (~9 900 linhas): componentes, helpers, modelo de dados, `AppInner` |
 | `src/components/LandingPage.tsx` | Página pública de vendas |
 | `src/components/LegalDocs.tsx` | Termos e política de privacidade. **Contém declarações legais** |
 | `src/components/Turnstile.tsx` | CAPTCHA do registo |
@@ -110,6 +110,16 @@ Consequências que decidem quase tudo:
   corre em `normalizarTreinos`. O método pode levar números próprios em
   `ex.metodoParams` (`CAMPOS_POR_METODO`), e `ex.grupo` liga os exercícios de
   uma supersérie, que ganham etiqueta A1/A2 por `etiquetasDeGrupo`.
+- **O crédito de reposição é a falta.** Não há entidade "crédito": a sessão
+  com `status: 'falta'` leva `faltaPrecisaReposicao`, `faltaCreditoValidade`,
+  `faltaCreditoPor`, `faltaCreditoEm` e `faltaCreditoLog` (o registo de
+  auditoria), e liga-se à aula de reposição pelos dois sentidos —
+  `reposicaoSessionId` na falta, `reposicaoDeSessionId` na reposição. **O
+  estado nunca é gravado:** `reposicaoEstadoDe` deriva-o da reposição ligada e
+  da validade, para não haver dois valores a dessincronizar. A regra por
+  omissão (gerar automático, validade em dias) vive em `definicoes.reposicao` e
+  só se aplica na altura de conceder — mudar a regra não encurta prazos já
+  dados.
 - **A biblioteca de exercícios é a exceção: não é gravada.** Vive no código e só
   as diferenças vão para a base de dados — `bibliotecaExtra` (criados),
   `bibliotecaEdicoes` (alterados), `bibliotecaOcultos` (apagados).
@@ -315,8 +325,8 @@ existe de verdade.
 
 | Área | |
 |---|---|
-| **Agenda** | Dia, semana, mês, lista · procura e filtros · horário de abertura por dia com exceções · horários livres em lote · arrastar com confirmação e desfazer · copiar/colar · recorrência com "só esta / toda a série" · **aviso de conflito** |
-| **Faltas** | Estados, direito a reposição, crédito ligado à aula de origem |
+| **Agenda** | Dia, semana, mês, lista · procura e filtros · horário de abertura por dia com exceções · horários livres em lote · arrastar com confirmação e desfazer · **selecionar e mover várias de uma vez** · copiar/colar · recorrência com "só esta / toda a série" · **aviso de conflito** |
+| **Faltas** | Estados, direito a reposição, crédito ligado à aula de origem · **validade do crédito, estado "Expirada" e registo de auditoria** (quem concedeu, quando, o que aconteceu desde então) |
 | **Prescrição** | Treinos A/B/C, 2 076 exercícios, modelos, arquivo, PDF timbrado agrupado por bloco. Blocos, métodos como lista, 15 campos por exercício, duplicar, arrastar para reordenar |
 | **Avaliações** | Dobras, % massa gorda, perímetros, fotografias, gráfico de evolução, PDF |
 | **Finanças** | Entradas e saídas, categorias, IVA, taxa do ginásio, pendências |
@@ -378,10 +388,9 @@ Combinado por níveis, do mais barato ao mais caro:
 5. ~~Fotografias para o Storage~~ **feito** — falta correr o SQL do balde
 6. ~~Avaliações: perímetros, cintura-anca, metas, comparação~~ **feito**
 7. ~~Séries individuais, campos por método, combinar em supersérie~~ **feito**
-8. **Agenda:** alocar aluno num horário livre (hoje `switchKind` impede-o em
-   edição), célula inteira colorida por tipo, créditos de reposição com
-   validade, motivo e quem concedeu, vários intervalos por dia, copiar horário
-   para outros dias, mover vários eventos, duração do slot configurável
+8. ~~Agenda: aluno no horário livre, célula colorida, vários intervalos por
+   dia, copiar horário, duração do slot, créditos com validade e auditoria,
+   mover vários eventos~~ **feito**
 9. **Timbre completo:** logótipo, contactos, nº profissional, nº de página,
    aviso de confidencialidade, escolher secções, pré-visualizar
 10. **Versões da avaliação:** rascunho, revisões, quem editou, comparar,

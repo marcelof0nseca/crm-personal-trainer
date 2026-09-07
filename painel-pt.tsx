@@ -295,9 +295,62 @@ const BIA_FIELDS = [
   { id: 'assessMetabolicAge', label: 'Idade Metabólica (anos)' },
 ];
 
+// Perímetros, em centímetros. Faltavam por inteiro — nem cintura havia, e sem
+// cintura não há relação cintura-anca, que é das medidas mais usadas numa
+// avaliação. Os pares são separados em direito e esquerdo de propósito: a
+// assimetria é informação, e somá-los apagava-a.
+const PERIMETRO_FIELDS = [
+  { id: 'assessPerimNeck', label: 'Pescoço' },
+  { id: 'assessPerimShoulder', label: 'Ombros' },
+  { id: 'assessPerimChest', label: 'Peito' },
+  { id: 'assessPerimWaist', label: 'Cintura' },
+  { id: 'assessPerimAbdomen', label: 'Abdómen' },
+  { id: 'assessPerimHip', label: 'Anca' },
+  { id: 'assessPerimArmR', label: 'Braço dto.' },
+  { id: 'assessPerimArmL', label: 'Braço esq.' },
+  { id: 'assessPerimForearmR', label: 'Antebraço dto.' },
+  { id: 'assessPerimForearmL', label: 'Antebraço esq.' },
+  { id: 'assessPerimThighR', label: 'Coxa dta.' },
+  { id: 'assessPerimThighL', label: 'Coxa esq.' },
+  { id: 'assessPerimCalfR', label: 'Gémeo dto.' },
+  { id: 'assessPerimCalfL', label: 'Gémeo esq.' },
+];
+
+// Referências da Organização Mundial de Saúde. São faixas de referência para o
+// treinador ler, nunca um diagnóstico — a aplicação assinala, não conclui.
+// Verde, âmbar e vermelho seria a leitura óbvia, mas nesta aplicação o vermelho
+// é erro. Aqui não há erro nenhum: há uma medida e uma faixa.
+const CORES_REFERENCIA = { baixo: '#5FBFA0', medio: '#F2A65A', alto: '#D6764A' };
+
+function referenciaCintura(cm, sexo) {
+  const v = Number(cm);
+  if (!Number.isFinite(v) || v <= 0) return null;
+  const limites = sexo === 'F' ? [80, 88] : [94, 102];
+  if (v < limites[0]) return { nivel: 'baixo', texto: 'Dentro da referência' };
+  if (v < limites[1]) return { nivel: 'medio', texto: 'Acima da referência' };
+  return { nivel: 'alto', texto: 'Bastante acima da referência' };
+}
+
+function relacaoCinturaAnca(cintura, anca, sexo) {
+  const c = Number(cintura);
+  const a = Number(anca);
+  if (!Number.isFinite(c) || !Number.isFinite(a) || c <= 0 || a <= 0) return null;
+  const valor = c / a;
+  const limites = sexo === 'F' ? [0.80, 0.85] : [0.90, 1.00];
+  const nivel = valor < limites[0] ? 'baixo' : (valor < limites[1] ? 'medio' : 'alto');
+  return {
+    valor,
+    nivel,
+    texto: nivel === 'baixo' ? 'Dentro da referência'
+      : (nivel === 'medio' ? 'Acima da referência' : 'Bastante acima da referência'),
+  };
+}
+
 const EMPTY_ASSESS_FIELDS = {
   assessMethod: 'bioimpedancia', assessAge: '', assessProtocol: 'jp7',
   assessWeight: '', assessBodyFat: '',
+  assessGoalWeight: '', assessGoalBodyFat: '', assessGoalNotes: '',
+  ...Object.fromEntries(PERIMETRO_FIELDS.map((p) => [p.id, ''])),
   assessMuscleMassPct: '', assessSkeletalMuscleKg: '', assessFatMassKg: '', assessLeanMassKg: '',
   assessBodyWater: '', assessProteinPct: '', assessMineralsKg: '', assessBoneMass: '',
   assessVisceralFat: '', assessObesityDegree: '', assessBMR: '', assessMetabolicAge: '',
@@ -3385,6 +3438,27 @@ function AssessmentFields({ form, set, studentHeight, studentSex }) {
   const sexKey = studentSex === 'F' ? 'F' : 'M';
   const activeSites = protocol.sites[sexKey];
   const foldResult = form.assessMethod === 'dobras' ? calcFoldBodyFat(form, studentSex) : null;
+  const refCintura = referenciaCintura(form.assessPerimWaist, studentSex);
+  const rcq = relacaoCinturaAnca(form.assessPerimWaist, form.assessPerimHip, studentSex);
+
+  // Quanto falta para a meta. A percentagem de gordura pode vir das dobras ou
+  // da bioimpedância, conforme o método escolhido.
+  const gorduraAtual = form.assessMethod === 'dobras' ? foldResult : Number(form.assessBodyFat);
+  const faltaParaMeta = [
+    { rotulo: 'Peso', atual: Number(form.assessWeight), alvo: Number(form.assessGoalWeight), unidade: 'kg', casas: 1 },
+    { rotulo: '% gordura', atual: Number(gorduraAtual), alvo: Number(form.assessGoalBodyFat), unidade: '%', casas: 1 },
+  ].filter((m) => Number.isFinite(m.atual) && m.atual > 0 && Number.isFinite(m.alvo) && m.alvo > 0)
+    .map((m) => {
+      const dif = m.atual - m.alvo;
+      const atingida = Math.abs(dif) < 0.05;
+      return {
+        ...m,
+        atingida,
+        texto: atingida
+          ? 'Meta atingida'
+          : `Faltam ${Math.abs(dif).toLocaleString('pt-PT', { minimumFractionDigits: m.casas, maximumFractionDigits: m.casas })} ${m.unidade}`,
+      };
+    });
 
   return (
     <div className="flex flex-col gap-3">
@@ -3453,6 +3527,69 @@ function AssessmentFields({ form, set, studentHeight, studentSex }) {
           </div>
         </div>
       )}
+
+      <div className="bg-elevated rounded-lg p-3 border border-hair flex flex-col gap-3">
+        <div className="text-2xs uppercase tracking-wide text-faint font-mono">Perímetros (cm)</div>
+        <div className="grid grid-cols-2 gap-3">
+          {PERIMETRO_FIELDS.map((p) => (
+            <FormField key={p.id} label={p.label}>
+              <input type="number" inputMode="decimal" min="0" step="0.1" value={form[p.id] || ''} onChange={(e) => set(p.id, e.target.value)} className="input-field" placeholder="0,0" />
+            </FormField>
+          ))}
+        </div>
+
+        {(refCintura || rcq) && (
+          <div className="flex flex-col gap-2">
+            {refCintura && (
+              <div className="flex items-center justify-between gap-3 text-sm font-body px-3 py-2.5 rounded-lg" style={{ backgroundColor: 'var(--wash)' }}>
+                <span className="text-muted min-w-0">Cintura</span>
+                <span className="flex items-center gap-2 flex-shrink-0">
+                  <span className="font-mono font-semibold text-primary">{Number(form.assessPerimWaist).toLocaleString('pt-PT', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} cm</span>
+                  <span className="badge" style={{ color: acentoTexto(CORES_REFERENCIA[refCintura.nivel]), backgroundColor: `color-mix(in srgb, ${CORES_REFERENCIA[refCintura.nivel]} 14%, transparent)` }}>{refCintura.texto}</span>
+                </span>
+              </div>
+            )}
+            {rcq && (
+              <div className="flex items-center justify-between gap-3 text-sm font-body px-3 py-2.5 rounded-lg" style={{ backgroundColor: 'var(--wash)' }}>
+                <span className="text-muted min-w-0">Relação cintura-anca</span>
+                <span className="flex items-center gap-2 flex-shrink-0">
+                  <span className="font-mono font-semibold text-primary">{rcq.valor.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="badge" style={{ color: acentoTexto(CORES_REFERENCIA[rcq.nivel]), backgroundColor: `color-mix(in srgb, ${CORES_REFERENCIA[rcq.nivel]} 14%, transparent)` }}>{rcq.texto}</span>
+                </span>
+              </div>
+            )}
+            <p className="text-2xs font-body text-faint">
+              Faixas de referência da Organização Mundial de Saúde, para leitura do
+              profissional. Não são um diagnóstico.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-elevated rounded-lg p-3 border border-hair flex flex-col gap-3">
+        <div className="text-2xs uppercase tracking-wide text-faint font-mono">Metas</div>
+        <div className="grid grid-cols-2 gap-3">
+          <FormField label="Peso alvo (kg)">
+            <input type="number" inputMode="decimal" min="0" step="0.1" value={form.assessGoalWeight || ''} onChange={(e) => set('assessGoalWeight', e.target.value)} className="input-field" placeholder="0,0" />
+          </FormField>
+          <FormField label="% gordura alvo">
+            <input type="number" inputMode="decimal" min="0" max="100" step="0.1" value={form.assessGoalBodyFat || ''} onChange={(e) => set('assessGoalBodyFat', e.target.value)} className="input-field" placeholder="0,0" />
+          </FormField>
+        </div>
+        {faltaParaMeta.length > 0 && (
+          <div className="flex flex-col gap-1">
+            {faltaParaMeta.map((m) => (
+              <div key={m.rotulo} className="flex items-center justify-between gap-3 text-sm font-body px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--wash)' }}>
+                <span className="text-muted">{m.rotulo}</span>
+                <span className="font-mono font-semibold" style={{ color: m.atingida ? 'var(--brass)' : 'var(--text-primary)' }}>{m.texto}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <FormField label="Objetivo em palavras (opcional)">
+          <input value={form.assessGoalNotes || ''} onChange={(e) => set('assessGoalNotes', e.target.value)} className="input-field" placeholder="Ex.: perder 4 kg até ao verão, sem perder força" />
+        </FormField>
+      </div>
 
       <FormField label="Observações da avaliação">
         <textarea value={form.assessNotes || ''} onChange={(e) => set('assessNotes', e.target.value)} className="input-field" rows={2} placeholder="Evolução, orientações, observações..." />
@@ -6336,6 +6473,52 @@ function AssessmentPrintDoc({ student, assessment, historico, photosById, traine
   const sitesUsados = isDobras && protocolo ? protocolo.sites[sexKey] : [];
   const somaDobras = sitesUsados.reduce((soma, id) => soma + (parseFloat(a[id]) || 0), 0);
   const fotos = (a.photoIds || []).map((id) => photosById[id]).filter(Boolean);
+  const perimetrosPreenchidos = PERIMETRO_FIELDS.filter((p) => parseFloat(a[p.id]) > 0);
+  const refCintura = referenciaCintura(a.assessPerimWaist, student.sex);
+  const rcq = relacaoCinturaAnca(a.assessPerimWaist, a.assessPerimHip, student.sex);
+
+  const metas = [
+    { rotulo: 'Peso alvo', alvo: parseFloat(a.assessGoalWeight), atual: peso, unidade: ' kg' },
+    { rotulo: '% gordura alvo', alvo: parseFloat(a.assessGoalBodyFat), atual: gordura, unidade: '%' },
+  ].filter((m) => m.alvo > 0).map((m) => {
+    const dif = Number.isFinite(m.atual) && m.atual != null ? m.atual - m.alvo : null;
+    const falta = dif == null ? '' : (Math.abs(dif) < 0.05
+      ? ' — atingida'
+      : ` — faltam ${Math.abs(dif).toLocaleString('pt-PT', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}${m.unidade}`);
+    return { rotulo: m.rotulo, texto: `${m.alvo.toLocaleString('pt-PT', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}${m.unidade}${falta}` };
+  });
+
+  // A avaliação imediatamente anterior a esta, para a comparação. O histórico
+  // vem ordenado; a anterior é a que tem data mais recente antes desta.
+  const anterior = (historico || [])
+    .filter((h) => h.id !== a.id && h.date < a.date)
+    .sort((x, y) => y.date.localeCompare(x.date))[0] || null;
+
+  const comparacao = !anterior ? [] : [
+    { rotulo: 'Peso', unidade: ' kg', casas: 1, antes: parseFloat(anterior.assessWeight), agora: peso },
+    {
+      rotulo: '% gordura',
+      unidade: '%',
+      casas: 1,
+      antes: anterior.assessMethod === 'dobras' ? calcFoldBodyFat(anterior, student.sex) : parseFloat(anterior.assessBodyFat),
+      agora: gordura,
+    },
+    ...PERIMETRO_FIELDS.map((p) => ({
+      rotulo: p.label, unidade: ' cm', casas: 1,
+      antes: parseFloat(anterior[p.id]), agora: parseFloat(a[p.id]),
+    })),
+  ].filter((c) => Number.isFinite(c.antes) && c.antes > 0 && Number.isFinite(c.agora) && c.agora > 0)
+    .map((c) => {
+      const dif = c.agora - c.antes;
+      const fmt = (v) => v.toLocaleString('pt-PT', { minimumFractionDigits: c.casas, maximumFractionDigits: c.casas }) + c.unidade;
+      return {
+        rotulo: c.rotulo,
+        antes: fmt(c.antes),
+        agora: fmt(c.agora),
+        // O sinal é o que interessa ler de relance; sem ele a coluna não diz nada.
+        diferenca: `${dif > 0 ? '+' : dif < 0 ? '−' : ''}${fmt(Math.abs(dif))}`,
+      };
+    });
 
   return (
     <>
@@ -6387,6 +6570,58 @@ function AssessmentPrintDoc({ student, assessment, historico, photosById, traine
             <PrintField label="Massa magra" value={massaMagraKg != null ? `${nPT(massaMagraKg)} kg` : null} />
             <PrintField label="IMC" value={bmi != null ? nPT(bmi) : null} />
           </dl>
+        </PrintSection>
+      )}
+
+      {perimetrosPreenchidos.length > 0 && (
+        <PrintSection title="Perímetros">
+          <dl className="print-grid">
+            {perimetrosPreenchidos.map((p) => (
+              <PrintField key={p.id} label={p.label} value={printValue(a[p.id], 'cm')} />
+            ))}
+          </dl>
+          {(refCintura || rcq) && (
+            <div className="print-notes" style={{ marginTop: 6 }}>
+              {rcq ? `Relação cintura-anca: ${rcq.valor.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} — ${rcq.texto.toLowerCase()}. ` : ''}
+              {refCintura ? `Cintura: ${refCintura.texto.toLowerCase()}. ` : ''}
+              Faixas de referência da Organização Mundial de Saúde, para leitura do
+              profissional. Não constituem diagnóstico.
+            </div>
+          )}
+        </PrintSection>
+      )}
+
+      {metas.length > 0 && (
+        <PrintSection title="Metas">
+          <dl className="print-grid">
+            {metas.map((m) => <PrintField key={m.rotulo} label={m.rotulo} value={m.texto} />)}
+          </dl>
+          {a.assessGoalNotes ? <div className="print-notes" style={{ marginTop: 6 }}>{a.assessGoalNotes}</div> : null}
+        </PrintSection>
+      )}
+
+      {comparacao.length > 0 && (
+        <PrintSection title={`Comparação com a avaliação de ${fmtDateLong(`${anterior.date}T00:00:00`)}`}>
+          <table className="print-table">
+            <thead>
+              <tr>
+                <th>Medida</th>
+                <th className="num">Anterior</th>
+                <th className="num">Agora</th>
+                <th className="num">Diferença</th>
+              </tr>
+            </thead>
+            <tbody>
+              {comparacao.map((c) => (
+                <tr key={c.rotulo}>
+                  <td>{c.rotulo}</td>
+                  <td className="num">{c.antes}</td>
+                  <td className="num">{c.agora}</td>
+                  <td className="num">{c.diferenca}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </PrintSection>
       )}
 

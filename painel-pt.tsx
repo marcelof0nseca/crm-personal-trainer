@@ -7322,7 +7322,7 @@ function AssessmentComparisonChart({ assessments }) {
     gordura: a.assessMethod === 'dobras' ? null : (parseFloat(a.assessBodyFat) || null),
   })), [assessments]);
 
-  if (data.length < 2) return <EmptyState message="Registre pelo menos 2 avaliações para ver a evolução em gráfico." />;
+  if (data.length < 2) return <EmptyState message="Registe pelo menos 2 avaliações para ver a evolução em gráfico." />;
 
   return (
     <ErrorBoundary compact>

@@ -126,30 +126,58 @@ const EMPTY_CUSTOM_CATEGORIES = { expense: [], income: [], planTypes: [], sessio
 // Horario de funcionamento por dia da semana (0 = domingo, como Date.getDay()).
 // `aberto: false` fecha o dia inteiro. As excecoes por data sobrepoem-se ao dia
 // da semana, para feriados e folgas pontuais.
+// Cada dia tem uma lista de intervalos, e nao um so par de horas: quem para
+// para almocar trabalha das 7 as 13 e das 15 as 21, e um unico intervalo
+// obrigava a marcar como aberto o meio do dia em que nao esta la.
+const DURACOES_SLOT = [15, 30, 45, 60, 90];
+
 const EMPTY_DEFINICOES = {
   horarios: {
-    0: { aberto: false, inicio: '09:00', fim: '13:00' },
-    1: { aberto: true, inicio: '07:00', fim: '21:00' },
-    2: { aberto: true, inicio: '07:00', fim: '21:00' },
-    3: { aberto: true, inicio: '07:00', fim: '21:00' },
-    4: { aberto: true, inicio: '07:00', fim: '21:00' },
-    5: { aberto: true, inicio: '07:00', fim: '21:00' },
-    6: { aberto: true, inicio: '09:00', fim: '13:00' },
+    0: { aberto: false, intervalos: [{ inicio: '09:00', fim: '13:00' }] },
+    1: { aberto: true, intervalos: [{ inicio: '07:00', fim: '21:00' }] },
+    2: { aberto: true, intervalos: [{ inicio: '07:00', fim: '21:00' }] },
+    3: { aberto: true, intervalos: [{ inicio: '07:00', fim: '21:00' }] },
+    4: { aberto: true, intervalos: [{ inicio: '07:00', fim: '21:00' }] },
+    5: { aberto: true, intervalos: [{ inicio: '07:00', fim: '21:00' }] },
+    6: { aberto: true, intervalos: [{ inicio: '09:00', fim: '13:00' }] },
   },
   excecoes: {},          // { '2026-12-25': { aberto: false } }
   lembretes: { ativos: false, minutosAntes: 15 },
+  duracaoSlot: 60,
 };
+
+// Aceita o formato antigo, de um par de horas por dia, e converte-o.
+function normalizarDiaDeHorario(bruto, omissao) {
+  const d = bruto && typeof bruto === 'object' ? bruto : {};
+  let intervalos = Array.isArray(d.intervalos) ? d.intervalos : null;
+  if (!intervalos && d.inicio && d.fim) intervalos = [{ inicio: d.inicio, fim: d.fim }];
+  if (!intervalos || intervalos.length === 0) intervalos = omissao.intervalos;
+  return {
+    aberto: d.aberto === undefined ? omissao.aberto : Boolean(d.aberto),
+    intervalos: intervalos
+      .filter((i) => i && i.inicio && i.fim && i.fim > i.inicio)
+      .map((i) => ({ inicio: i.inicio, fim: i.fim }))
+      .sort((a, b) => a.inicio.localeCompare(b.inicio)),
+  };
+}
 
 function normalizarDefinicoes(raw) {
   const d = raw && typeof raw === 'object' ? raw : {};
   const horarios = {};
   for (let i = 0; i < 7; i += 1) {
-    horarios[i] = { ...EMPTY_DEFINICOES.horarios[i], ...((d.horarios || {})[i] || {}) };
+    horarios[i] = normalizarDiaDeHorario((d.horarios || {})[i], EMPTY_DEFINICOES.horarios[i]);
+    if (horarios[i].intervalos.length === 0) horarios[i].intervalos = EMPTY_DEFINICOES.horarios[i].intervalos;
   }
+  const excecoesBrutas = d.excecoes && typeof d.excecoes === 'object' ? d.excecoes : {};
+  const excecoes = {};
+  Object.entries(excecoesBrutas).forEach(([iso, valor]) => {
+    excecoes[iso] = normalizarDiaDeHorario(valor, EMPTY_DEFINICOES.horarios[1]);
+  });
   return {
     horarios,
-    excecoes: d.excecoes && typeof d.excecoes === 'object' ? d.excecoes : {},
+    excecoes,
     lembretes: { ...EMPTY_DEFINICOES.lembretes, ...(d.lembretes || {}) },
+    duracaoSlot: DURACOES_SLOT.includes(Number(d.duracaoSlot)) ? Number(d.duracaoSlot) : 60,
   };
 }
 
@@ -157,13 +185,20 @@ function normalizarDefinicoes(raw) {
 function horarioDoDia(definicoes, iso) {
   const base = definicoes.horarios[new Date(`${iso}T00:00:00`).getDay()] || EMPTY_DEFINICOES.horarios[1];
   const excecao = definicoes.excecoes[iso];
-  return excecao ? { ...base, ...excecao } : base;
+  return excecao || base;
+}
+
+// Resumo legivel: "07:00–13:00 · 15:00–21:00".
+function textoDoHorario(h) {
+  if (!h || !h.aberto) return 'Fechado';
+  return (h.intervalos || []).map((i) => `${i.inicio}–${i.fim}`).join(' · ');
 }
 
 function dentroDoHorario(definicoes, iso, startTime, endTime) {
   const h = horarioDoDia(definicoes, iso);
   if (!h.aberto) return false;
-  return startTime >= h.inicio && (endTime || startTime) <= h.fim;
+  const fim = endTime || startTime;
+  return (h.intervalos || []).some((i) => startTime >= i.inicio && fim <= i.fim);
 }
 
 const DIAS_SEMANA = [
@@ -1564,6 +1599,9 @@ const TOKENS_CLAROS = `
            continuarem legíveis; ver \`acentoTexto\`. */
         --acc-mix: #000000;
         --acc-amt: 32%;
+        /* Sobre branco, uma cor clara a 13% e quase branco: o claro precisa de
+           mais tinta do que o escuro para a celula se ler de relance. */
+        --celula-tinta: 26%;
 `;
 
 function GlobalStyles() {
@@ -1604,6 +1642,7 @@ function GlobalStyles() {
         --chart-cursor: rgba(255, 255, 255, 0.06);
         --acc-mix: #FFFFFF;
         --acc-amt: 0%;
+        --celula-tinta: 15%;
         --dur: 160ms;
         --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
       }
@@ -2862,6 +2901,7 @@ function SettingsModal({
   user, subscription, students, sessions, finances, photos, customCategories,
   onClose, onSignOut, onRefreshSubscription, onChangePassword, onReset, onRestore,
   trainerName, onSaveTrainerName, definicoes, onSaveHorario, onSaveLembretes, permissaoNotificacoes,
+  onCopiarHorario, onRestaurarHorario, onSaveDuracaoSlot,
   tema, onMudarTema, temaResolvido, onToast, onSignOutGlobal,
 }) {
   const [section, setSection] = useState('conta');
@@ -3138,27 +3178,104 @@ function SettingsModal({
                   <div className="flex flex-col">
                     {DIAS_SEMANA.map((d) => {
                       const h = definicoes.horarios[d.id];
+                      const intervalos = h.intervalos || [];
+                      function mudarIntervalo(i, campo, valor) {
+                        onSaveHorario(d.id, {
+                          intervalos: intervalos.map((x, k) => (k === i ? { ...x, [campo]: valor } : x)),
+                        });
+                      }
                       return (
-                        <div key={d.id} className="flex items-center gap-2 py-2 border-b border-hair flex-wrap">
-                          <label className="flex items-center gap-2 text-sm font-body text-primary" style={{ minWidth: 116 }}>
-                            <input
-                              type="checkbox"
-                              checked={h.aberto}
-                              onChange={(e) => onSaveHorario(d.id, { aberto: e.target.checked })}
-                              style={{ accentColor: 'var(--brass)' }}
-                            />
-                            {d.label}
-                          </label>
-                          <div className="flex items-center gap-1.5 flex-1" style={{ minWidth: 190, opacity: h.aberto ? 1 : 0.45 }}>
-                            <input type="time" value={h.inicio} disabled={!h.aberto} aria-label={`Abertura de ${d.label}`}
-                              onChange={(e) => onSaveHorario(d.id, { inicio: e.target.value })}
-                              className="input-field" style={{ flex: 1 }} />
-                            <span className="text-faint text-xs font-body flex-shrink-0">até</span>
-                            <input type="time" value={h.fim} disabled={!h.aberto} aria-label={`Fecho de ${d.label}`}
-                              onChange={(e) => onSaveHorario(d.id, { fim: e.target.value })}
-                              className="input-field" style={{ flex: 1 }} />
+                        <div key={d.id} className="flex flex-col gap-2 py-2.5 border-b border-hair">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <label className="flex items-center gap-2 text-sm font-body text-primary" style={{ minWidth: 116 }}>
+                              <input
+                                type="checkbox"
+                                checked={h.aberto}
+                                onChange={(e) => onSaveHorario(d.id, { aberto: e.target.checked })}
+                                style={{ accentColor: 'var(--brass)' }}
+                              />
+                              {d.label}
+                            </label>
+                            {h.aberto && (
+                              <button
+                                type="button"
+                                onClick={() => onCopiarHorario(d.id)}
+                                className="text-2xs font-body link-sky ml-auto"
+                              >
+                                Copiar para os outros dias
+                              </button>
+                            )}
                           </div>
+
+                          {h.aberto && intervalos.map((intervalo, i) => (
+                            <div key={i} className="flex items-center gap-1.5 flex-wrap" style={{ paddingLeft: 24 }}>
+                              <input type="time" value={intervalo.inicio} aria-label={`Abertura de ${d.label}, intervalo ${i + 1}`}
+                                onChange={(e) => mudarIntervalo(i, 'inicio', e.target.value)}
+                                className="input-field" style={{ flex: '1 1 96px', minWidth: 96 }} />
+                              <span className="text-faint text-xs font-body flex-shrink-0">até</span>
+                              <input type="time" value={intervalo.fim} aria-label={`Fecho de ${d.label}, intervalo ${i + 1}`}
+                                onChange={(e) => mudarIntervalo(i, 'fim', e.target.value)}
+                                className="input-field" style={{ flex: '1 1 96px', minWidth: 96 }} />
+                              <button
+                                type="button"
+                                onClick={() => onSaveHorario(d.id, { intervalos: intervalos.filter((_, k) => k !== i) })}
+                                disabled={intervalos.length === 1}
+                                className="p-1.5 rounded btn-surface disabled:opacity-30 flex-shrink-0"
+                                aria-label={`Remover intervalo ${i + 1} de ${d.label}`}
+                                title={intervalos.length === 1 ? 'Feche o dia em vez de tirar o único intervalo' : 'Remover intervalo'}
+                              >
+                                <X size={13} className="text-muted" style={{ display: 'block' }} />
+                              </button>
+                            </div>
+                          ))}
+
+                          {h.aberto && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const ultimo = intervalos[intervalos.length - 1];
+                                const inicio = ultimo ? horaDe(Math.min(23 * 60, minutosDe(ultimo.fim) + 120)) : '15:00';
+                                onSaveHorario(d.id, { intervalos: [...intervalos, { inicio, fim: horaDe(minutosDe(inicio) + 240) }] });
+                              }}
+                              className="btn btn-ghost self-start"
+                              style={{ fontSize: 11, marginLeft: 24 }}
+                            >
+                              <Plus size={12} /> Acrescentar intervalo
+                            </button>
+                          )}
                         </div>
+                      );
+                    })}
+                  </div>
+
+                  <button type="button" onClick={onRestaurarHorario} className="btn btn-ghost self-start" style={{ fontSize: 12 }}>
+                    <RotateCcw size={14} /> Restaurar o horário de origem
+                  </button>
+                </SettingsBlock>
+
+                <SettingsBlock
+                  title="Duração dos horários livres"
+                  description="É a medida usada por “Libertar horários da semana”. Muda quantos intervalos cabem dentro do horário de funcionamento."
+                >
+                  <div className="flex gap-2 flex-wrap">
+                    {DURACOES_SLOT.map((min) => {
+                      const ativo = (definicoes.duracaoSlot || 60) === min;
+                      return (
+                        <button
+                          key={min}
+                          type="button"
+                          onClick={() => onSaveDuracaoSlot(min)}
+                          aria-pressed={ativo}
+                          className="px-3 py-2 rounded-lg border text-sm font-body nowrap"
+                          style={{
+                            borderColor: ativo ? 'var(--brass)' : 'var(--border-hair)',
+                            backgroundColor: ativo ? 'var(--brass-soft)' : 'var(--bg-elevated)',
+                            color: ativo ? 'var(--brass)' : 'var(--text-muted)',
+                            fontWeight: ativo ? 600 : 400,
+                          }}
+                        >
+                          {min} min
+                        </button>
                       );
                     })}
                   </div>
@@ -3907,7 +4024,10 @@ function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, custom
       // React avisa. O retorno do arrasto vem do realce da coluna e da sombra,
       // que ja chegam.
       style={{
-        backgroundColor: 'var(--bg-elevated)',
+        // A célula inteira leva a cor, não só a tira da esquerda: de relance,
+        // a agenda passa a dizer-se pelas cores. A mistura é com `transparent`
+        // para funcionar por cima do fundo, seja ele claro ou escuro.
+        backgroundColor: `color-mix(in srgb, ${color} var(--celula-tinta), var(--bg-elevated))`,
         borderStyle: isEvento ? 'dashed solid solid dashed' : 'solid',
         borderLeftWidth: '3px',
         borderLeftColor: color,
@@ -4489,7 +4609,7 @@ function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSess
           <div className="text-2xs uppercase tracking-wide text-muted font-body nowrap">{compact ? DAY_SHORT[date.getDay()] : DAY_NAMES[date.getDay()]}</div>
           <div className={`font-display font-medium text-lg nowrap ${isToday ? 'text-brass' : 'text-primary'}`}>{fmtDateBR(date)}</div>
           {horario && (
-            <div className="text-2xs font-mono text-faint nowrap">{fechado ? 'Fechado' : `${horario.inicio}–${horario.fim}`}</div>
+            <div className="text-2xs font-mono text-faint nowrap">{textoDoHorario(horario)}</div>
           )}
         </div>
         <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -4734,10 +4854,13 @@ function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession
       const h = horarioDoDia(definicoes, iso);
       if (!h.aberto) continue;
       const doDia = sessions.filter((x) => x.date === iso);
-      for (let m = minutosDe(h.inicio); m + 60 <= minutosDe(h.fim); m += 60) {
-        const faixa = { date: iso, startTime: horaDe(m), endTime: horaDe(m + 60) };
-        if (doDia.some((x) => sessoesChocam(x, faixa))) continue;
-        novos.push(faixa);
+      const passo = definicoes.duracaoSlot || 60;
+      for (const intervalo of h.intervalos || []) {
+        for (let m = minutosDe(intervalo.inicio); m + passo <= minutosDe(intervalo.fim); m += passo) {
+          const faixa = { date: iso, startTime: horaDe(m), endTime: horaDe(m + passo) };
+          if (doDia.some((x) => sessoesChocam(x, faixa))) continue;
+          novos.push(faixa);
+        }
       }
     }
     return novos;
@@ -5273,8 +5396,13 @@ function SessionFormModal({ session, students, sessions, defaultDate, reposicaoD
   // Lista do select por ordem alfabética portuguesa (não pela ordem de registo).
   const sortedStudents = useMemo(() => [...students].sort((a, b) => byNamePt(a.name, b.name)), [students]);
 
+  // Um horário livre existe para ser ocupado: passá-lo a aula é o caso normal,
+  // e era o único que a edição não deixava fazer. Só nesse sentido — passar uma
+  // aula marcada a evento apagava a ligação ao aluno sem o dizer.
+  const eHorarioLivre = isEdit && isEvento && form.type === 'horario_livre';
+
   function switchKind(kind) {
-    if (isEdit || kind === form.kind) return;
+    if ((isEdit && !(eHorarioLivre && kind === 'aula')) || kind === form.kind) return;
     setForm((f) => ({
       ...f,
       kind,
@@ -5587,10 +5715,21 @@ function SessionFormModal({ session, students, sessions, defaultDate, reposicaoD
             <span>
               {horarioDoDiaEscolhido && !horarioDoDiaEscolhido.aberto
                 ? 'Este dia está marcado como fechado no seu horário de funcionamento.'
-                : `Fora do horário de funcionamento deste dia (${horarioDoDiaEscolhido?.inicio}–${horarioDoDiaEscolhido?.fim}).`}
+                : `Fora do horário de funcionamento deste dia (${textoDoHorario(horarioDoDiaEscolhido)}).`}
               {' '}Pode guardar à mesma.
             </span>
           </div>
+        )}
+
+        {eHorarioLivre && (
+          <button
+            type="button"
+            onClick={() => switchKind('aula')}
+            className="btn btn-primary self-start"
+            style={{ fontSize: 12 }}
+          >
+            <UserPlus size={14} /> Marcar um aluno neste horário
+          </button>
         )}
 
         {conflitos.length > 0 && (
@@ -8875,6 +9014,33 @@ function AppInner() {
     });
   }
 
+  // Copia os intervalos deste dia para os outros que estão abertos. Não abre
+  // dias fechados: fechar o domingo é uma decisão, e copiar por cima dela
+  // seria fazer o contrário do que ele pediu.
+  function copiarHorarioParaOutrosDias(diaId) {
+    const origem = definicoes.horarios[diaId];
+    const horarios = { ...definicoes.horarios };
+    let copiados = 0;
+    DIAS_SEMANA.forEach((d) => {
+      if (d.id === diaId || !horarios[d.id].aberto) return;
+      horarios[d.id] = { ...horarios[d.id], intervalos: origem.intervalos.map((i) => ({ ...i })) };
+      copiados += 1;
+    });
+    persistDefinicoes({ ...definicoes, horarios });
+    showToast(copiados
+      ? `Horário copiado para ${plural(copiados, 'dia aberto', 'dias abertos')}.`
+      : 'Não há outros dias abertos para copiar.');
+  }
+
+  function restaurarHorario() {
+    persistDefinicoes({ ...definicoes, horarios: normalizarDefinicoes(null).horarios });
+    showToast('Horário de origem reposto.');
+  }
+
+  function saveDuracaoSlot(minutos) {
+    persistDefinicoes({ ...definicoes, duracaoSlot: minutos });
+  }
+
   async function saveLembretes(mudanca) {
     const proximo = { ...definicoes.lembretes, ...mudanca };
     // Pedir a permissao no momento em que se liga a opcao, e nao ao arrancar:
@@ -9243,6 +9409,9 @@ function AppInner() {
           onSaveTrainerName={saveTrainerName}
           definicoes={definicoes}
           onSaveHorario={saveHorario}
+          onCopiarHorario={copiarHorarioParaOutrosDias}
+          onRestaurarHorario={restaurarHorario}
+          onSaveDuracaoSlot={saveDuracaoSlot}
           onSaveLembretes={saveLembretes}
           permissaoNotificacoes={permissaoNotificacoes}
         />

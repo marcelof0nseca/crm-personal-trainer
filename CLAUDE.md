@@ -300,8 +300,8 @@ existe de verdade.
   resto
 - Atalhos de teclado no construtor
 
-**A linha do exercício desenha os campos a partir de  e
-** — acrescentar um campo é estender uma lista, mais o PDF.
+**A linha do exercício desenha os campos a partir de `CAMPOS_BASE` e
+`CAMPOS_EXTRA`** — acrescentar um campo é estender uma lista, mais o PDF.
 
 ### Não é tarefa, é decisão de produto
 

@@ -952,6 +952,20 @@ function statusLabel(type, status) {
   return status === 'concluido' ? 'Pago' : 'Pendente';
 }
 
+// A cópia promete conter as fotografias, e tem de continuar a contê-las: com
+// os ficheiros no balde, o bloco só tem caminhos, que fora daqui não valem
+// nada. Vão-se buscar os bytes antes de escrever o ficheiro.
+async function fotosComImagem(photos) {
+  if (!supabaseConfigured) return photos;
+  const saida = [];
+  for (const p of photos || []) {
+    if (p.dataUri || !p.path) { saida.push(p); continue; }
+    const dataUri = await lerFotoDoBalde(p.path);
+    saida.push(dataUri ? { ...p, dataUri } : p);
+  }
+  return saida;
+}
+
 function downloadBackup(students, sessions, finances, photos, customCategories) {
   const data = { exportedAt: new Date().toISOString(), alunos: students, agenda: sessions, financas: finances, fotos: photos, categorias: customCategories };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1021,6 +1035,72 @@ async function validarCodigoMfa(factorId, codigo) {
     factorId, challengeId: desafio.id, code: codigo.replace(/\s/g, ''),
   });
   if (error) throw error;
+}
+
+/* ========================= FOTOGRAFIAS NO STORAGE =========================
+   Viviam em base64 dentro do bloco `fotos`, que era lido inteiro em cada
+   abertura da aplicação. Agora o bloco guarda só `{ id, path, createdAt }` e
+   os ficheiros ficam no balde privado, carregados a pedido.
+
+   Sem conta ligada (modo local), nada disto existe: as fotografias continuam
+   como `data:` URI, que é o que o localStorage sabe guardar.
+   ========================================================================== */
+const BALDE_FOTOS = 'fotos';
+// Oito horas: chega para um dia de trabalho sem ter de voltar a assinar, e é
+// curto que baste para um endereço que escape não servir de muito.
+const VALIDADE_URL_FOTO = 60 * 60 * 8;
+
+function dataUriParaBlob(dataUri) {
+  const [cabecalho, base64] = String(dataUri).split(',');
+  const tipo = (cabecalho.match(/data:([^;]+)/) || [])[1] || 'image/jpeg';
+  const binario = atob(base64);
+  const bytes = new Uint8Array(binario.length);
+  for (let i = 0; i < binario.length; i += 1) bytes[i] = binario.charCodeAt(i);
+  return new Blob([bytes], { type: tipo });
+}
+
+function blobParaDataUri(blob) {
+  return new Promise((resolve, reject) => {
+    const leitor = new FileReader();
+    leitor.onload = () => resolve(leitor.result);
+    leitor.onerror = reject;
+    leitor.readAsDataURL(blob);
+  });
+}
+
+async function guardarFotoNoBalde(userId, id, dataUri) {
+  const caminho = `${userId}/${id}.jpg`;
+  const { error } = await supabase.storage
+    .from(BALDE_FOTOS)
+    .upload(caminho, dataUriParaBlob(dataUri), { contentType: 'image/jpeg', upsert: true });
+  if (error) throw error;
+  return caminho;
+}
+
+// Um pedido só para todas: é o `<img>` que depois puxa cada imagem, e só as que
+// aparecem no ecrã.
+async function assinarFotos(caminhos) {
+  if (!supabase || caminhos.length === 0) return {};
+  const { data, error } = await supabase.storage
+    .from(BALDE_FOTOS)
+    .createSignedUrls(caminhos, VALIDADE_URL_FOTO);
+  if (error || !data) return {};
+  const porCaminho = {};
+  data.forEach((r) => { if (r.signedUrl && !r.error) porCaminho[r.path] = r.signedUrl; });
+  return porCaminho;
+}
+
+async function apagarFotosDoBalde(caminhos) {
+  if (!supabase || caminhos.length === 0) return;
+  await supabase.storage.from(BALDE_FOTOS).remove(caminhos).catch(() => null);
+}
+
+// Traz de volta os bytes, para a cópia de segurança continuar a ser um ficheiro
+// que se abre sozinho.
+async function lerFotoDoBalde(caminho) {
+  const { data, error } = await supabase.storage.from(BALDE_FOTOS).download(caminho);
+  if (error || !data) return null;
+  return blobParaDataUri(data);
 }
 
 function browserStorageAvailable() {
@@ -2581,6 +2661,7 @@ function SettingsModal({
   const [pendingRestore, setPendingRestore] = useState(null);
   const [restoreError, setRestoreError] = useState('');
   const [legalDoc, setLegalDoc] = useState(null);
+  const [backupBusy, setBackupBusy] = useState(false);
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -3046,8 +3127,21 @@ function SettingsModal({
 
                 <SettingsBlock title="Cópia de segurança" description="Transfira um ficheiro com alunos, aulas, avaliações, finanças e fotos. Pode restaurá-lo aqui se precisar.">
                   <div className="flex gap-2 flex-wrap">
-                    <button onClick={() => downloadBackup(students, sessions, finances, photos, customCategories)} type="button" className="btn btn-primary" style={{ fontSize: 12 }}>
-                      <Download size={14} /> Exportar backup
+                    <button
+                      onClick={async () => {
+                        setBackupBusy(true);
+                        try {
+                          downloadBackup(students, sessions, finances, await fotosComImagem(photos), customCategories);
+                        } finally { setBackupBusy(false); }
+                      }}
+                      type="button"
+                      disabled={backupBusy}
+                      className="btn btn-primary"
+                      style={{ fontSize: 12 }}
+                    >
+                      {backupBusy
+                        ? <><Loader2 size={14} className="spin" /> A juntar as fotos...</>
+                        : <><Download size={14} /> Exportar backup</>}
                     </button>
                     <button onClick={() => fileRef.current?.click()} type="button" className="btn btn-ghost" style={{ fontSize: 12 }}>
                       <Upload size={14} /> Restaurar backup
@@ -6085,10 +6179,30 @@ function PrintHost({ job, onDone, children }) {
     // window.print() nao bloqueia, e desmontar a folha cedo demais imprimiria
     // uma pagina em branco. A folha esta fora do ecra, nao custa nada esperar.
     const rede = setTimeout(fechar, 60000);
+    // As fotografias já não são `data:` URI: vêm do balde e podem ainda estar a
+    // caminho. Imprimir antes de chegarem dava uma folha com molduras vazias.
+    // Cinco segundos de tecto — mais vale sair sem uma imagem do que não sair.
+    function esperarImagens() {
+      const folha = document.querySelector('.print-root');
+      const imagens = folha ? [...folha.querySelectorAll('img')] : [];
+      const emFalta = imagens.filter((img) => !img.complete);
+      if (emFalta.length === 0) return Promise.resolve();
+      return Promise.race([
+        Promise.all(emFalta.map((img) => new Promise((resolve) => {
+          img.addEventListener('load', resolve, { once: true });
+          img.addEventListener('error', resolve, { once: true });
+        }))),
+        new Promise((resolve) => { setTimeout(resolve, 5000); }),
+      ]);
+    }
+
     // Dois frames antes de abrir a caixa: o primeiro aplica o estado, o segundo
     // garante que a folha ja foi pintada. Sem isto sai uma pagina em branco.
     const id = requestAnimationFrame(() => requestAnimationFrame(() => {
-      try { window.print(); } catch (e) { fechar(); }
+      esperarImagens().then(() => {
+        if (terminado) return;
+        try { window.print(); } catch (e) { fechar(); }
+      });
     }));
     return () => {
       terminado = true;
@@ -7406,6 +7520,8 @@ function AppInner() {
   const [conflito, setConflito] = useState(null);
   const [movimentoDesfazivel, setMovimentoDesfazivel] = useState(null);
   const [mfaPendente, setMfaPendente] = useState(false);
+  // Endereços assinados das fotografias que estão no balde, por id.
+  const [urlsDeFotos, setUrlsDeFotos] = useState({});
   const [agendaFiltro, setAgendaFiltro] = useState(FILTRO_AGENDA_VAZIO);
   const [dayCursor, setDayCursor] = useState(() => new Date());
   const [permissaoNotificacoes, setPermissaoNotificacoes] = useState(
@@ -7608,7 +7724,9 @@ function AppInner() {
     }
 
     setFinances(Array.isArray(fi) ? fi : []);
-    setPhotos(Array.isArray(ph) ? ph : []);
+    const fotosCarregadas = Array.isArray(ph) ? ph : [];
+    setPhotos(fotosCarregadas);
+    photosRef.current = fotosCarregadas;
     setCustomCategories({ ...EMPTY_CUSTOM_CATEGORIES, ...(cc || {}) });
     setDefinicoes(normalizarDefinicoes(df));
     // Escreve a migração de imediato em vez de esperar pela próxima gravação:
@@ -7622,6 +7740,9 @@ function AppInner() {
       try { await writeStoredValue('treinos', JSON.stringify(serializarTreinos(treinosNorm))); } catch (e) { /* fica para a próxima gravação */ }
     }
     setLoading(false);
+    // Depois de a aplicação abrir, não antes: subir fotografias antigas pode
+    // demorar e não há razão para o treinador esperar por isso.
+    migrarFotosParaBalde(fotosCarregadas);
   }
 
   function clearLoadedData() {
@@ -7636,6 +7757,9 @@ function AppInner() {
     setCustomCategories(EMPTY_CUSTOM_CATEGORIES);
     setDefinicoes(normalizarDefinicoes(null));
     setTreinos(EMPTY_TREINOS);
+    // Os endereços assinados são da conta anterior e expiram; guardá-los só
+    // serviria para mostrar fotografias de outra pessoa a carregar em erro.
+    setUrlsDeFotos({});
   }
 
   async function refreshSubscription() {
@@ -7708,10 +7832,56 @@ function AppInner() {
     if (!storageOk) return;
     await gravarBloco('financas', JSON.stringify(next), 'Erro ao guardar. Tente novamente.');
   }
+  const photosRef = useRef([]);
+  useEffect(() => { photosRef.current = photos; }, [photos]);
+
   async function persistPhotos(next) {
     setPhotos(next);
     if (!storageOk) return;
     await gravarBloco('fotos', JSON.stringify(next), 'Erro ao guardar fotos — experimente imagens mais pequenas.');
+  }
+
+  // Assina os endereços das fotografias que estão no balde. As já assinadas não
+  // voltam a pedir, e é um pedido só para todas — o peso está nas imagens, e
+  // essas o browser vai buscar só quando aparecem no ecrã.
+  useEffect(() => {
+    if (!supabaseConfigured) return undefined;
+    const porAssinar = photos.filter((p) => p.path && !urlsDeFotos[p.id]);
+    if (porAssinar.length === 0) return undefined;
+    let cancelado = false;
+    assinarFotos(porAssinar.map((p) => p.path)).then((porCaminho) => {
+      if (cancelado) return;
+      const novos = {};
+      porAssinar.forEach((p) => { if (porCaminho[p.path]) novos[p.id] = porCaminho[p.path]; });
+      if (Object.keys(novos).length) setUrlsDeFotos((u) => ({ ...u, ...novos }));
+    });
+    return () => { cancelado = true; };
+  }, [photos]);
+
+  // Fotografias antigas, guardadas em base64 dentro do bloco, sobem para o
+  // balde uma vez. Corre em segundo plano para não atrasar a abertura, e é
+  // seguro parar a meio: quem já tem caminho não volta a subir, e quem ainda
+  // tem `dataUri` continua a aparecer no ecrã na mesma.
+  async function migrarFotosParaBalde(lista) {
+    if (!supabaseConfigured) return;
+    const antigas = (lista || []).filter((p) => p.dataUri && !p.path);
+    if (antigas.length === 0) return;
+    const userId = await currentSupabaseUserId();
+    if (!userId) return;
+
+    showToast(`A mover ${plural(antigas.length, 'fotografia', 'fotografias')} para o armazenamento...`);
+    const movidas = new Map();
+    for (const foto of antigas) {
+      try {
+        const path = await guardarFotoNoBalde(userId, foto.id, foto.dataUri);
+        movidas.set(foto.id, { id: foto.id, path, createdAt: foto.createdAt });
+      } catch (e) { /* fica para a próxima abertura */ }
+    }
+    if (movidas.size === 0) return;
+    // A partir da referência: pode ter entrado uma fotografia nova enquanto isto
+    // corria, e essa não pode desaparecer.
+    await persistPhotos(photosRef.current.map((p) => movidas.get(p.id) || p));
+    showToast(`${plural(movidas.size, 'fotografia movida', 'fotografias movidas')}.`);
   }
 
   // Aceita uma funcao do valor atual, e nao um objeto ja montado. Criar um
@@ -7788,18 +7958,47 @@ function AppInner() {
 
   async function uploadPhotos(fileList) {
     const files = Array.from(fileList || []);
-    const newPhotos = [];
+    const novas = [];
+    const assinaturas = {};
+    const userId = supabaseConfigured ? await currentSupabaseUserId() : null;
+
     for (const file of files) {
       try {
         const dataUri = await resizePhoto(file, 700, 0.72);
-        newPhotos.push({ id: uid(), dataUri, createdAt: new Date().toISOString() });
-      } catch (e) { showToast('Não foi possível processar uma das fotos.', 'error'); }
+        const id = uid();
+        if (userId) {
+          // Sobe primeiro, só depois entra na lista: se a subida falhar, não
+          // fica uma fotografia registada que não existe em lado nenhum.
+          const path = await guardarFotoNoBalde(userId, id, dataUri);
+          novas.push({ id, path, createdAt: new Date().toISOString() });
+          assinaturas[id] = dataUri;   // mostra já a que acabou de escolher
+        } else {
+          novas.push({ id, dataUri, createdAt: new Date().toISOString() });
+        }
+      } catch (e) {
+        showToast('Não foi possível guardar uma das fotos.', 'error');
+      }
     }
-    if (newPhotos.length > 0) await persistPhotos([...photos, ...newPhotos]);
-    return newPhotos.map((p) => p.id);
+
+    if (novas.length > 0) {
+      if (Object.keys(assinaturas).length) setUrlsDeFotos((u) => ({ ...u, ...assinaturas }));
+      await persistPhotos([...photos, ...novas]);
+    }
+    return novas.map((p) => p.id);
   }
-  function removePhoto(id) { persistPhotos(photos.filter((p) => p.id !== id)); }
-  const photosById = useMemo(() => Object.fromEntries(photos.map((p) => [p.id, p])), [photos]);
+
+  function removePhoto(id) {
+    const foto = photos.find((p) => p.id === id);
+    if (foto && foto.path) apagarFotosDoBalde([foto.path]);
+    persistPhotos(photos.filter((p) => p.id !== id));
+  }
+
+  // O resto da aplicação continua a ler `dataUri`. Em modo local é mesmo a
+  // imagem; com conta ligada é o endereço assinado, que o browser vai buscar
+  // só quando a imagem aparecer no ecrã.
+  const photosById = useMemo(() => Object.fromEntries(
+    photos.map((p) => [p.id, p.dataUri ? p : { ...p, dataUri: urlsDeFotos[p.id] || '' }]),
+  ), [photos, urlsDeFotos]);
 
   function saveStudent(student) {
     const exists = students.some((s) => s.id === student.id);
@@ -8227,6 +8426,10 @@ function AppInner() {
       setStudents([]); setSessions([]); setFinances([]); setPhotos([]); setCustomCategories(EMPTY_CUSTOM_CATEGORIES); showToast('Dados apagados.'); setSettingsOpen(false); return;
     }
     try {
+      // Os ficheiros primeiro: apagar só o bloco deixava as fotografias no
+      // balde, a ocupar espaço e — pior — a existir depois de o utilizador
+      // pedir para as apagar.
+      await apagarFotosDoBalde(photos.filter((p) => p.path).map((p) => p.path));
       await writeStoredValue('alunos', JSON.stringify([]));
       await writeStoredValue('agenda', JSON.stringify([]));
       await writeStoredValue('financas', JSON.stringify([]));

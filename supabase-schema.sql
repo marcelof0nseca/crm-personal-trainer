@@ -106,6 +106,65 @@ using (
   )
 );
 
+/* ========================= FOTOGRAFIAS NO STORAGE =========================
+   As fotografias de progresso viviam dentro do `app_data`, em base64. O bloco
+   `fotos` era lido inteiro em cada abertura da aplicação: ~90 kB por
+   fotografia, ~1 GB de tráfego por mês e por treinador. Aqui só fica o
+   caminho; os ficheiros vivem no balde, carregam a pedido e por URL assinado
+   com prazo.
+
+   Balde privado. Sem isto, qualquer pessoa com o endereço via fotografias
+   corporais de terceiros -- categoria especial do RGPD.
+   ========================================================================== */
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('fotos', 'fotos', false, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update
+  set public = false,
+      file_size_limit = 5242880,
+      allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp'];
+
+-- O primeiro segmento do caminho é o id do dono: `<user_id>/<foto_id>.jpg`.
+-- É o que impede um treinador de chegar às fotografias de outro.
+drop policy if exists "fotos_ler_proprias" on storage.objects;
+create policy "fotos_ler_proprias"
+on storage.objects for select to authenticated
+using (bucket_id = 'fotos' and (storage.foldername(name))[1] = (select auth.uid()::text));
+
+drop policy if exists "fotos_carregar_proprias" on storage.objects;
+create policy "fotos_carregar_proprias"
+on storage.objects for insert to authenticated
+with check (bucket_id = 'fotos' and (storage.foldername(name))[1] = (select auth.uid()::text));
+
+drop policy if exists "fotos_substituir_proprias" on storage.objects;
+create policy "fotos_substituir_proprias"
+on storage.objects for update to authenticated
+using (bucket_id = 'fotos' and (storage.foldername(name))[1] = (select auth.uid()::text));
+
+drop policy if exists "fotos_apagar_proprias" on storage.objects;
+create policy "fotos_apagar_proprias"
+on storage.objects for delete to authenticated
+using (bucket_id = 'fotos' and (storage.foldername(name))[1] = (select auth.uid()::text));
+
+-- Dois fatores também aqui: não faria sentido trancar as medidas e deixar as
+-- fotografias à porta aberta.
+drop policy if exists "fotos_exige_aal2" on storage.objects;
+create policy "fotos_exige_aal2"
+on storage.objects
+as restrictive
+to authenticated
+using (
+  bucket_id <> 'fotos'
+  or array[(select auth.jwt() ->> 'aal')] <@ (
+    select case
+      when count(id) > 0 then array['aal2']
+      else array['aal1', 'aal2']
+    end
+    from auth.mfa_factors
+    where auth.mfa_factors.user_id = (select auth.uid())
+      and auth.mfa_factors.status = 'verified'
+  )
+);
+
 alter table public.personal_subscriptions enable row level security;
 
 grant select on public.personal_subscriptions to authenticated;

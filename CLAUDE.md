@@ -120,6 +120,12 @@ Consequências que decidem quase tudo:
   omissão (gerar automático, validade em dias) vive em `definicoes.reposicao` e
   só se aplica na altura de conceder — mudar a regra não encurta prazos já
   dados.
+- **O timbre vive em `definicoes.timbre`**, e o logótipo lá dentro como `data:`
+  URI — ao contrário das fotografias, que foram para o Storage. É um só,
+  pequeno, e tem de estar carregado no instante em que a folha imprime. As
+  secções de cada documento (`timbre.seccoes`) são reconstruídas ao ler a
+  partir de `SECCOES_AVALIACAO` / `SECCOES_TREINO`, para uma secção nova
+  aparecer ligada a quem já tinha timbre gravado.
 - **A biblioteca de exercícios é a exceção: não é gravada.** Vive no código e só
   as diferenças vão para a base de dados — `bibliotecaExtra` (criados),
   `bibliotecaEdicoes` (alterados), `bibliotecaOcultos` (apagados).
@@ -227,6 +233,14 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   impressão usam dimensões fixas — o `ResponsiveContainer` mede zero fora do
   ecrã. **Os PDF saem sempre a preto sobre branco, seja qual for o tema.**
 - **`fmtDateBR` devolve `dd/mm` sem ano.** Serve na agenda, não em documentos.
+- **Não há como numerar páginas em CSS de impressão.** `counter(page)` só vive
+  nas *page margin boxes*, que o Chrome não suporta. Quem numera é a opção
+  «Cabeçalhos e rodapés» da caixa de impressão, e as definições dizem-no ao
+  utilizador. O que se consegue repetir em todas as folhas é um elemento
+  `position: fixed` — é assim que sai o aviso de confidencialidade.
+- **As regras da folha vivem em `regrasDaFolha(prefixo)`**, emitidas duas
+  vezes: dentro de `@media print` e dentro de `.print-previa`. Escrever uma
+  regra só num dos sítios faz a pré-visualização mentir sobre o papel.
 - **Funções escritas e nunca chamadas.** Já aconteceu com `sessoesChocam`, que
   esteve meses no ficheiro sem ninguém a invocar. Antes de escrever uma
   utilidade, `grep` para ver se já existe.
@@ -329,6 +343,7 @@ existe de verdade.
 | **Faltas** | Estados, direito a reposição, crédito ligado à aula de origem · **validade do crédito, estado "Expirada" e registo de auditoria** (quem concedeu, quando, o que aconteceu desde então) |
 | **Prescrição** | Treinos A/B/C, 2 076 exercícios, modelos, arquivo, PDF timbrado agrupado por bloco. Blocos, métodos como lista, 15 campos por exercício, duplicar, arrastar para reordenar |
 | **Avaliações** | Dobras, % massa gorda, perímetros, fotografias, gráfico de evolução, PDF |
+| **Documentos** | Timbre com logótipo próprio, estúdio, nº profissional e contactos · aviso de confidencialidade em todas as folhas · escolher que secções saem · **pré-visualizar antes de imprimir** · abrir o e-mail para o aluno |
 | **Finanças** | Entradas e saídas, categorias, IVA, taxa do ginásio, pendências |
 | **Pagamentos** | Stripe: mensal/trimestral/anual, cartão, Apple Pay, Google Pay, MB WAY, webhook, portal de faturação, meses grátis |
 | **Segurança** | Auth, RLS por utilizador, Turnstile, termos e política em pt-PT, dados na UE, exportação e apagamento |
@@ -391,8 +406,9 @@ Combinado por níveis, do mais barato ao mais caro:
 8. ~~Agenda: aluno no horário livre, célula colorida, vários intervalos por
    dia, copiar horário, duração do slot, créditos com validade e auditoria,
    mover vários eventos~~ **feito**
-9. **Timbre completo:** logótipo, contactos, nº profissional, nº de página,
-   aviso de confidencialidade, escolher secções, pré-visualizar
+9. ~~Timbre completo: logótipo, contactos, nº profissional, aviso de
+   confidencialidade, escolher secções, pré-visualizar~~ **feito**
+   — a numeração das páginas é do browser, não da aplicação (ver secção 6)
 10. **Versões da avaliação:** rascunho, revisões, quem editou, comparar,
     restaurar, motivo, autosave
 11. **Biblioteca:** PT-PT/PT-BR/EN e sinónimos (o catálogo de origem tinha

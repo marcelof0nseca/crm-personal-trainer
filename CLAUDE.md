@@ -83,7 +83,8 @@ Sem router — a navegação é estado (`view`). Sem gestor de estado externo.
 `(user_id, data_key)`, com um vetor JSON inteiro por linha:
 
 ```
-alunos · agenda · financas · fotos · categorias · definicoes · treinos
+alunos · agenda · financas · fotos · categorias · definicoes · treinos ·
+formularios
 ```
 
 As chaves são limitadas por um `check` em `supabase-schema.sql`. **Uma chave
@@ -132,6 +133,15 @@ Consequências que decidem quase tudo:
   secções de cada documento (`timbre.seccoes`) são reconstruídas ao ler a
   partir de `SECCOES_AVALIACAO` / `SECCOES_TREINO`, para uma secção nova
   aparecer ligada a quem já tinha timbre gravado.
+- **Os formulários de saúde vivem em `formularios`** — `modelos` (os que o
+  treinador criou) e `respostas`. Os três de origem (PAR-Q, anamnese,
+  consentimentos) estão no código, como a biblioteca: não se gravam e não se
+  editam, duplicam-se. **A redação do PAR-Q não se mexe** — reescrito deixa de
+  ser o instrumento. Preencher de novo acrescenta uma resposta, nunca
+  substitui: um consentimento assinado no ano passado vale pelo que foi
+  assinado nessa altura. **As assinaturas são imagens no bloco `fotos`** e no
+  balde do Storage, lidas por `photosById` (nunca por `urlsDeFotos`, que está
+  vazio em modo local).
 - **A biblioteca de exercícios é a exceção: não é gravada.** Vive no código e só
   as diferenças vão para a base de dados — `bibliotecaExtra` (criados),
   `bibliotecaEdicoes` (alterados), `bibliotecaOcultos` (apagados).
@@ -344,7 +354,11 @@ consola, zero transbordo horizontal.
 
 Duas armadilhas de teste já apanhadas:
 - CSS `uppercase` faz o `innerText` devolver maiúsculas — regex sensível a
-  maiúsculas falha.
+  maiúsculas falha. **Já custou tempo três vezes:** comparar sempre em
+  minúsculas o texto de títulos de secção e de rótulos.
+- **O rato do Playwright usa coordenadas da janela.** Um elemento abaixo da
+  dobra dentro de um modal com scroll não recebe nada: `scrollIntoViewIfNeeded()`
+  antes de ler o `boundingBox()`.
 - `fullPage: true` redimensiona a viewport e reinicia a animação do Recharts:
   parece que o gráfico está vazio quando não está.
 
@@ -368,6 +382,7 @@ existe de verdade.
 | **Documentos** | Timbre com logótipo próprio, estúdio, nº profissional e contactos · aviso de confidencialidade em todas as folhas · escolher que secções saem · **pré-visualizar antes de imprimir** · abrir o e-mail para o aluno |
 | **Finanças** | Entradas e saídas, categorias, IVA, taxa do ginásio, pendências |
 | **Pagamentos** | Stripe: mensal/trimestral/anual, cartão, Apple Pay, Google Pay, MB WAY, webhook, portal de faturação, meses grátis |
+| **Formulários** | PAR-Q, anamnese e consentimentos (treino, imagem, dados de saúde) · construtor próprio · assinatura desenhada · PDF timbrado · pontos a ter em conta, ditos como avisos |
 | **Segurança** | Auth, RLS por utilizador, Turnstile, termos e política em pt-PT, dados na UE, exportação e apagamento |
 | **Fiabilidade** | Gravação imediata, backup e restauro, **carimbo de versão contra perda silenciosa** |
 | **Admin** | Subscrições, receita, churn, alertas |
@@ -409,8 +424,9 @@ têm instruções em texto, que imprimem.
 
 **A aplicação assinala, nunca diagnostica.** As faixas de referência da OMS para
 a cintura e a relação cintura-anca são apresentadas como faixas, com a ressalva
-à vista, e nunca como veredicto. O mesmo vale para o que vier da anamnese e do
-PAR-Q. E as cores dessas faixas não usam vermelho — aqui o vermelho é erro, e
+à vista, e nunca como veredicto. O mesmo vale para o PAR-Q e para a anamnese: um
+«sim» levanta um **ponto a ter em conta**, com a ressalva escrita ao lado, no
+ecrã e no PDF — nunca um impedimento, uma aptidão ou uma autorização médica. E as cores dessas faixas não usam vermelho — aqui o vermelho é erro, e
 uma medida fora da faixa não é um erro de ninguém.
 
 ## 11. O que vem a seguir
@@ -438,7 +454,8 @@ Combinado por níveis, do mais barato ao mais caro:
     — **menos os nomes ingleses dos 2076**: o catálogo MFIT já não está no
     disco e com ele foi-se o `name_en`. Se voltar a aparecer, o gerador pode
     passar a guardá-lo
-12. **Anamnese, PAR-Q e consentimentos** — construtor de formulários
+12. ~~Anamnese, PAR-Q e consentimentos — construtor de formulários~~ **feito**
+    — **falta correr o SQL do schema** para a chave `formularios`
 13. **Ficha 360º** com linha temporal pesquisável
 14. **Progresso e relatórios** — só o que existe sem área do aluno
 15. **IA** — decisão do dono do produto, não tarefa. Ver secção 10

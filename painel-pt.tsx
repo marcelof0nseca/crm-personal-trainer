@@ -8,7 +8,7 @@ import {
   Camera, ArrowLeft, LineChart as LineChartIcon, Tag,
   Coffee, Dumbbell, UtensilsCrossed, Stethoscope, Gift, CreditCard, Mail, CircleUser, KeyRound, ShieldCheck,
   RefreshCcw, Printer, Pencil, Copy, ClipboardPaste, GripVertical, Bell, Archive, BookMarked,
-  Sun, Moon, Monitor, Send, ImagePlus, Eye, History,
+  Sun, Moon, Monitor, Send, ImagePlus, Eye, History, Star,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
@@ -559,6 +559,103 @@ function chaveBusca(nome) {
   return String(nome || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 }
 
+// Quem aprendeu a profissão no Brasil, ou por vídeos em inglês, procura pelas
+// palavras que sabe. Em vez de guardar um segundo e um terceiro nome para cada
+// um dos 2076 exercícios, traduz-se **o que foi escrito na caixa de procura** —
+// é uma frase por tecla, contra 2076 índices a mais na memória.
+//
+// Os pares pt-BR são os mesmos do gerador (scripts/gerar-exercicios.mjs), lidos
+// ao contrário. Um termo novo acrescenta-se aos dois sítios.
+const TERMOS_ESTRANGEIROS = [
+  // português do Brasil
+  ['panturrilha', 'gemeos'], ['panturrilhas', 'gemeos'],
+  ['esteira', 'passadeira'],
+  ['quadriceps', 'quadricipites'],
+  ['posterior de coxa', 'isquiotibiais'], ['posteriores de coxa', 'isquiotibiais'],
+  ['caneleira', 'tornozeleira'], ['caneleiras', 'tornozeleiras'],
+  ['suicidio', 'vaivem'],
+  ['trote', 'corrida lenta'],
+  ['halter', 'haltere'],
+  ['polia', 'cabo'],
+  ['agachamento livre', 'agachamento'],
+  // inglês de ginásio. Não é o catálogo: são as palavras que aparecem em
+  // qualquer vídeo de treino.
+  ['squat', 'agachamento'],
+  ['deadlift', 'levantamento terra'],
+  ['bench press', 'supino'],
+  ['bench', 'supino'],
+  ['press', 'pressao'],
+  ['overhead press', 'desenvolvimento'],
+  ['shoulder press', 'desenvolvimento'],
+  ['row', 'remada'],
+  ['pulldown', 'puxada'],
+  ['pull down', 'puxada'],
+  ['pull up', 'elevacao'], ['pullup', 'elevacao'], ['chin up', 'elevacao'],
+  ['push up', 'flexao'], ['pushup', 'flexao'],
+  ['curl', 'rosca'],
+  ['triceps extension', 'extensao triceps'],
+  ['lunge', 'afundo'], ['lunges', 'afundo'],
+  ['plank', 'prancha'],
+  ['hip thrust', 'elevacao pelvica'],
+  ['glute bridge', 'ponte'],
+  ['calf raise', 'gemeos'], ['calf', 'gemeos'],
+  ['hamstring', 'isquiotibiais'], ['hamstrings', 'isquiotibiais'],
+  ['quad', 'quadricipites'], ['quads', 'quadricipites'],
+  ['glute', 'gluteo'], ['glutes', 'gluteos'],
+  ['chest', 'peito'],
+  ['back', 'costas'],
+  ['shoulder', 'ombro'], ['shoulders', 'ombros'],
+  ['biceps', 'biceps'],
+  ['abs', 'abdominal'], ['core', 'core'],
+  ['dumbbell', 'haltere'], ['dumbbells', 'halteres'],
+  ['barbell', 'barra'],
+  ['kettlebell', 'kettlebell'],
+  ['cable', 'cabo'],
+  ['machine', 'maquina'],
+  ['band', 'faixa elastica'], ['resistance band', 'faixa elastica'],
+  ['treadmill', 'passadeira'],
+  ['rowing', 'remo'],
+  ['jump rope', 'corda'], ['skipping', 'corda'],
+  ['leg press', 'prensa'],
+  ['leg extension', 'extensao de pernas'],
+  ['leg curl', 'flexao de pernas'],
+  ['lat', 'dorsal'], ['lats', 'dorsais'],
+  ['fly', 'crucifixo'], ['flye', 'crucifixo'], ['flyes', 'crucifixo'],
+  ['dip', 'paralelas'], ['dips', 'paralelas'],
+  ['burpee', 'burpee'],
+  ['crunch', 'abdominal'],
+  ['sit up', 'abdominal'], ['situp', 'abdominal'],
+  ['mountain climber', 'escalador'],
+  ['thruster', 'thruster'],
+  ['clean', 'clean'],
+  ['snatch', 'arranque'],
+  ['warm up', 'aquecimento'],
+  ['stretch', 'alongamento'], ['stretching', 'alongamento'],
+]
+  // Do mais comprido para o mais curto: sem isto, "leg curl" nunca chegava a
+  // ser visto, porque "curl" já lhe tinha comido metade.
+  .sort((a, b) => b[0].length - a[0].length)
+  .map(([de, para]) => [new RegExp(`(?<![0-9a-z])${de.replace(/ /g, '\\s+')}(?![0-9a-z])`, 'g'), para]);
+
+// Traduz o termo procurado para as palavras que a biblioteca usa. Devolve
+// sempre as duas versões: quem escreve "press" pode estar mesmo à procura de
+// "leg press", que é como o exercício se chama em português.
+function termosDeBusca(texto) {
+  const base = chaveBusca(String(texto || '').trim());
+  if (!base) return [];
+  let traduzido = base;
+  TERMOS_ESTRANGEIROS.forEach(([re, por]) => { traduzido = traduzido.replace(re, por); });
+  return traduzido === base ? [base] : [base, traduzido];
+}
+
+// Um exercício corresponde se qualquer uma das leituras do termo bater no nome
+// ou nos sinónimos que o treinador lhe deu.
+function correspondeABusca(ex, termos) {
+  if (!termos.length) return true;
+  const alvo = ex.busca || chaveBusca(ex.nome);
+  return termos.some((t) => alvo.includes(t));
+}
+
 const BIBLIOTECA_BASE = EXERCICIOS_BASE.map(([nome, g, c, equipamento]) => ({
   id: idBase(nome),
   nome,
@@ -570,6 +667,12 @@ const BIBLIOTECA_BASE = EXERCICIOS_BASE.map(([nome, g, c, equipamento]) => ({
   busca: chaveBusca(nome),
 }));
 
+// O indice de procura de um exercicio: o nome mais os sinonimos que lhe deram.
+function indiceDeBusca(ex) {
+  const sin = Array.isArray(ex.sinonimos) ? ex.sinonimos : [];
+  return chaveBusca([ex.nome, ...sin].join(' '));
+}
+
 // Os que existiam antes de o catalogo entrar. So a migracao os usa.
 const IDS_LEGADO = NOMES_LEGADO.map(idBase);
 
@@ -578,11 +681,23 @@ const IDS_LEGADO = NOMES_LEGADO.map(idBase);
 // de exercicios que ja estao no codigo. Agora so viaja o que o treinador fez.
 const BIBLIOTECA_VERSAO = 3;
 
+// Ligacoes entre exercicios, escritas pelo treinador. Sao dele: o catalogo de
+// origem nao traz nada disto, e o que serve a um aluno de 60 anos nao e o que
+// serve a um atleta.
+const TIPOS_RELACAO = [
+  { id: 'progressoes', label: 'Progressões', ajuda: 'O passo seguinte, quando este já está fácil.' },
+  { id: 'regressoes', label: 'Regressões', ajuda: 'A versão mais simples, quando este ainda é demais.' },
+  { id: 'substituicoes', label: 'Substituições', ajuda: 'O que fazer quando falta o equipamento ou dói.' },
+];
+
 const EMPTY_TREINOS = {
   bibliotecaVersao: BIBLIOTECA_VERSAO,
   bibliotecaExtra: [],    // exercicios que o treinador criou
-  bibliotecaEdicoes: {},  // { [id de origem]: campos alterados } -- quase sempre so as instrucoes
+  bibliotecaEdicoes: {},  // { [id de origem]: campos alterados } -- sinonimos, pasta, instrucoes
   bibliotecaOcultos: [],  // ids de origem que ele apagou
+  bibliotecaFavoritos: [],// ids marcados com estrela
+  bibliotecaPastas: [],   // [{ id, nome }] -- separadores do treinador
+  bibliotecaRelacoes: {}, // { [id]: { progressoes: [], regressoes: [], substituicoes: [] } }
   gruposMusculares: [],
   categorias: [],
   // Programas guardados para reutilizar noutros alunos. Não pertencem a
@@ -594,6 +709,21 @@ const EMPTY_TREINOS = {
 
 function chaveNome(nome) {
   return String(nome || '').trim().toLowerCase();
+}
+
+// Grava as ligacoes de um exercicio, e apaga a entrada quando fica vazia: um
+// mapa cheio de listas vazias so faz crescer o bloco gravado.
+function comRelacoes(mapa, id, relacoes) {
+  const atual = { ...(mapa || {}) };
+  if (!relacoes) return atual;
+  const limpas = {};
+  TIPOS_RELACAO.forEach((t) => {
+    const ids = (relacoes[t.id] || []).filter(Boolean);
+    if (ids.length) limpas[t.id] = ids;
+  });
+  if (Object.keys(limpas).length) atual[id] = limpas;
+  else delete atual[id];
+  return atual;
 }
 
 // A biblioteca que o resto da aplicacao ve: a de origem, menos o que foi
@@ -611,9 +741,9 @@ function derivarBiblioteca(d) {
   BIBLIOTECA_BASE.forEach((ex) => {
     if (escondidos.has(ex.id)) return;
     const ed = edicoes[ex.id];
-    lista.push(ed ? { ...ex, ...ed, busca: chaveBusca(ed.nome || ex.nome) } : ex);
+    lista.push(ed ? { ...ex, ...ed, busca: indiceDeBusca({ ...ex, ...ed }) } : ex);
   });
-  extra.forEach((e) => lista.push({ ...e, base: false, busca: chaveBusca(e.nome) }));
+  extra.forEach((e) => lista.push({ ...e, base: false, busca: indiceDeBusca(e) }));
   // A lista de origem ja vem ordenada do gerador; so os acrescentados a
   // desalinham, e esses sao poucos.
   if (extra.length) lista.sort((a, b) => byNamePt(a.nome, b.nome));
@@ -681,6 +811,9 @@ function normalizarTreinos(raw) {
     bibliotecaExtra: Array.isArray(d.bibliotecaExtra) ? d.bibliotecaExtra : [],
     bibliotecaEdicoes: d.bibliotecaEdicoes && typeof d.bibliotecaEdicoes === 'object' ? d.bibliotecaEdicoes : {},
     bibliotecaOcultos: Array.isArray(d.bibliotecaOcultos) ? d.bibliotecaOcultos : [],
+    bibliotecaFavoritos: Array.isArray(d.bibliotecaFavoritos) ? d.bibliotecaFavoritos : [],
+    bibliotecaPastas: Array.isArray(d.bibliotecaPastas) ? d.bibliotecaPastas : [],
+    bibliotecaRelacoes: d.bibliotecaRelacoes && typeof d.bibliotecaRelacoes === 'object' ? d.bibliotecaRelacoes : {},
     // Grupos e categorias que o treinador criou, para lá dos de origem.
     gruposMusculares: Array.isArray(d.gruposMusculares) ? d.gruposMusculares : [],
     categorias: Array.isArray(d.categorias) ? d.categorias : [],
@@ -2020,6 +2153,7 @@ function GlobalStyles() {
       .text-rust { color: var(--rust); }
       .text-slate-acc { color: var(--slate-acc); }
       .text-sky { color: var(--sky); }
+      .text-gold { color: var(--gold); }
 
       .bg-inset { background-color: var(--bg-inset); }
       .border-strong { border-color: var(--border-strong); }
@@ -6399,26 +6533,150 @@ const LIMITE_LISTA_EXERCICIOS = 60;
 // Escolher um exercicio da biblioteca, criar, editar ou apagar -- tudo sem sair
 // do sitio. Editar importa mais do que parece: os exercicios de origem nascem
 // sem instrucoes, e sao as instrucoes que o aluno le no PDF.
-function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEditar, onApagar, onCriarGrupo, onCriarCategoria, onFechar }) {
+// Escolher exercícios ligados a outro, sem sair do formulário. É uma procura
+// pequena de propósito: quem está a ligar uma progressão já sabe o nome do que
+// procura, e um seletor completo dentro de outro seria uma casa de espelhos.
+function EscolherRelacionados({ biblioteca, exclui, escolhidos, onMudar }) {
+  const [procura, setProcura] = useState('');
+  const marcados = new Set(escolhidos);
+
+  const sugestoes = useMemo(() => {
+    const termos = termosDeBusca(procura);
+    if (!termos.length) return [];
+    return biblioteca
+      .filter((e) => e.id !== exclui && !marcados.has(e.id) && correspondeABusca(e, termos))
+      .slice(0, 6);
+  }, [biblioteca, procura, exclui, escolhidos]);
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {escolhidos.length > 0 && (
+        <div className="flex gap-1.5 flex-wrap">
+          {escolhidos.map((id) => {
+            const ex = biblioteca.find((e) => e.id === id);
+            return (
+              <span key={id} className="flex items-center gap-1 rounded-lg border border-hair px-2 py-1" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+                <span className="text-2xs font-body text-primary truncate" style={{ maxWidth: 180 }}>
+                  {ex ? ex.nome : 'Exercício removido'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onMudar(escolhidos.filter((x) => x !== id))}
+                  aria-label={`Desligar ${ex ? ex.nome : 'exercício'}`}
+                  className="p-0.5 rounded btn-surface flex-shrink-0"
+                >
+                  <X size={11} className="text-muted" style={{ display: 'block' }} />
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+      <input
+        value={procura}
+        onChange={(e) => setProcura(e.target.value)}
+        className="input-field"
+        style={{ fontSize: 13 }}
+        placeholder="Escreva para ligar um exercício..."
+      />
+      {sugestoes.length > 0 && (
+        <div className="flex flex-col gap-1">
+          {sugestoes.map((e) => (
+            <button
+              key={e.id}
+              type="button"
+              onClick={() => { onMudar([...escolhidos, e.id]); setProcura(''); }}
+              className="flex items-center justify-between gap-2 text-left px-2.5 py-1.5 rounded-lg border border-hair btn-surface min-w-0"
+              style={{ backgroundColor: 'var(--bg-elevated)' }}
+            >
+              <span className="text-2xs font-body text-primary truncate">{e.nome}</span>
+              <Plus size={12} className="text-brass flex-shrink-0" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// As alternativas de um exercício, no momento em que fazem falta: o aluno diz
+// que dói, ou a máquina está ocupada, e troca-se ali mesmo.
+function AlternativasModal({ exercicio, treinos, onTrocar, onClose }) {
+  const relacoes = (treinos.bibliotecaRelacoes || {})[exercicio.exercicioId] || {};
+  const biblioteca = treinos.biblioteca;
+  const blocos = TIPOS_RELACAO
+    .map((t) => ({ ...t, itens: (relacoes[t.id] || []).map((id) => biblioteca.find((e) => e.id === id)).filter(Boolean) }))
+    .filter((b) => b.itens.length > 0);
+
+  return (
+    <Modal title={`Alternativas a ${exercicio.nome}`} onClose={onClose}>
+      {blocos.length === 0 ? (
+        <EmptyState
+          icon={Shuffle}
+          message="Este exercício ainda não tem alternativas ligadas."
+          hint="Na biblioteca, ao editar um exercício, pode ligar-lhe progressões, regressões e substituições."
+        />
+      ) : (
+        <div className="flex flex-col gap-4">
+          {blocos.map((b) => (
+            <div key={b.id} className="flex flex-col gap-1.5">
+              <span className="text-2xs uppercase tracking-wide text-faint font-body">{b.label}</span>
+              <span className="text-2xs font-body text-faint">{b.ajuda}</span>
+              {b.itens.map((e) => (
+                <button
+                  key={e.id}
+                  type="button"
+                  onClick={() => { onTrocar(e); onClose(); }}
+                  className="flex items-center justify-between gap-2 text-left px-3 py-2.5 rounded-lg border border-hair btn-surface min-w-0"
+                  style={{ backgroundColor: 'var(--bg-elevated)' }}
+                >
+                  <span className="min-w-0">
+                    <span className="block text-sm font-body text-primary truncate">{e.nome}</span>
+                    <span className="block text-2xs font-body text-faint truncate">
+                      {[e.grupo, e.equipamento].filter(Boolean).join(' · ')}
+                    </span>
+                  </span>
+                  <Shuffle size={14} className="text-brass flex-shrink-0" />
+                </button>
+              ))}
+            </div>
+          ))}
+          <p className="text-2xs font-body text-faint">
+            Trocar mantém as séries e os números que já escreveu.
+          </p>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEditar, onApagar, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onFechar }) {
   const biblioteca = treinos.biblioteca;
   const grupos = gruposDe(treinos);
   const categorias = categoriasDe(treinos);
+  const pastas = treinos.bibliotecaPastas || [];
+  const favoritos = useMemo(() => new Set(treinos.bibliotecaFavoritos || []), [treinos.bibliotecaFavoritos]);
   const [procura, setProcura] = useState('');
   const [grupo, setGrupo] = useState('todos');
   const [categoria, setCategoria] = useState('todos');
+  // 'todos' | 'favoritos' | id de pasta
+  const [pasta, setPasta] = useState('todos');
   // null = a listar; 'novo' = a criar; objeto = a editar esse exercicio.
   const [emEdicao, setEmEdicao] = useState(null);
-  const [form, setForm] = useState({ nome: '', grupo: grupos[0], categoria: categorias[0], equipamento: '', instrucoes: '' });
+  const [form, setForm] = useState({ nome: '', grupo: grupos[0], categoria: categorias[0], equipamento: '', instrucoes: '', sinonimos: '', pasta: '' });
+  const [relacoes, setRelacoes] = useState({});
   const [aApagar, setAApagar] = useState(null);
 
-  // A biblioteca ja vem ordenada; filtrar preserva a ordem. A procura e sobre
-  // o nome sem acentos, senao escrever "biceps" nao encontrava "Bíceps".
+  // A biblioteca ja vem ordenada; filtrar preserva a ordem. A procura traduz o
+  // que foi escrito -- "panturrilha" ou "squat" encontram o exercicio em pt-PT.
   const filtrados = useMemo(() => {
-    const termo = chaveBusca(procura.trim());
+    const termos = termosDeBusca(procura);
     return biblioteca.filter((e) => (grupo === 'todos' || e.grupo === grupo)
       && (categoria === 'todos' || e.categoria === categoria)
-      && (!termo || (e.busca || chaveBusca(e.nome)).includes(termo)));
-  }, [biblioteca, procura, grupo, categoria]);
+      && (pasta === 'todos'
+        || (pasta === 'favoritos' ? favoritos.has(e.id) : e.pasta === pasta))
+      && correspondeABusca(e, termos));
+  }, [biblioteca, procura, grupo, categoria, pasta, favoritos]);
 
   // Sao mais de dois mil exercicios: desenhar todos punha milhares de nos no
   // ecra so para o treinador ler os primeiros. Mostra os primeiros e diz
@@ -6427,7 +6685,8 @@ function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEdi
   const escondidos = filtrados.length - visiveis.length;
 
   function abrirNovo() {
-    setForm({ nome: '', grupo: grupos[0], categoria: categorias[0], equipamento: '', instrucoes: '' });
+    setForm({ nome: '', grupo: grupos[0], categoria: categorias[0], equipamento: '', instrucoes: '', sinonimos: '', pasta: '' });
+    setRelacoes({});
     setEmEdicao('novo');
   }
   function abrirEdicao(ex) {
@@ -6437,18 +6696,27 @@ function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEdi
       categoria: ex.categoria || categorias[0],
       equipamento: ex.equipamento || '',
       instrucoes: ex.instrucoes || '',
+      // Os sinónimos vivem como lista, mas escrevem-se numa linha só.
+      sinonimos: (ex.sinonimos || []).join(', '),
+      pasta: ex.pasta || '',
     });
+    setRelacoes((treinos.bibliotecaRelacoes || {})[ex.id] || {});
     setEmEdicao(ex);
   }
   function gravar() {
-    const dados = { ...form, nome: form.nome.trim() };
+    const dados = {
+      ...form,
+      nome: form.nome.trim(),
+      sinonimos: form.sinonimos.split(',').map((x) => x.trim()).filter(Boolean),
+    };
     if (emEdicao === 'novo') {
-      onEscolher(onCriar(dados));
+      onEscolher(onCriar(dados, relacoes));
       return;
     }
-    onEditar({ ...emEdicao, ...dados });
+    onEditar({ ...emEdicao, ...dados }, relacoes);
     setEmEdicao(null);
   }
+  function mudarRelacao(tipo, ids) { setRelacoes((r) => ({ ...r, [tipo]: ids })); }
 
   const usos = aApagar ? usosDoExercicio(aApagar.id) : 0;
 
@@ -6474,6 +6742,17 @@ function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEdi
               </select>
             </div>
 
+            {/* Favoritos e pastas no mesmo seletor: são as duas maneiras de
+                dizer "só o que eu uso", e dois seletores separados para isso
+                seriam ruído dentro de um modal. */}
+            <select value={pasta} onChange={(e) => setPasta(e.target.value)} aria-label="Filtrar por pasta" className="input-field">
+              <option value="todos">Toda a biblioteca</option>
+              <option value="favoritos">
+                Só os favoritos ({(treinos.bibliotecaFavoritos || []).length})
+              </option>
+              {pastas.map((pa) => <option key={pa.id} value={pa.id}>{pa.nome}</option>)}
+            </select>
+
             <button type="button" onClick={abrirNovo} className="btn btn-ghost self-start" style={{ fontSize: 12 }}>
               <Plus size={14} /> Criar exercício novo
             </button>
@@ -6495,10 +6774,30 @@ function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEdi
                       <span className="min-w-0">
                         <span className="block text-sm font-body text-primary truncate">{e.nome}</span>
                         <span className="block text-2xs font-body text-faint truncate">
-                          {[e.grupo, e.categoria, e.equipamento].filter(Boolean).join(' · ')}{e.instrucoes ? ' · com instruções' : ''}
+                          {[
+                            e.grupo,
+                            e.categoria,
+                            e.equipamento,
+                            (pastas.find((pa) => pa.id === e.pasta) || {}).nome,
+                          ].filter(Boolean).join(' · ')}{e.instrucoes ? ' · com instruções' : ''}
                         </span>
                       </span>
                       <Plus size={15} className="text-brass flex-shrink-0" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onAlternarFavorito(e.id)}
+                      className="px-2 btn-surface flex-shrink-0"
+                      aria-label={(favoritos.has(e.id) ? 'Tirar dos favoritos: ' : 'Marcar como favorito: ') + e.nome}
+                      aria-pressed={favoritos.has(e.id)}
+                      title={favoritos.has(e.id) ? 'Nos favoritos' : 'Marcar como favorito'}
+                    >
+                      <Star
+                        size={14}
+                        className={favoritos.has(e.id) ? 'text-gold' : 'text-faint'}
+                        fill={favoritos.has(e.id) ? 'currentColor' : 'none'}
+                        style={{ display: 'block' }}
+                      />
                     </button>
                     <button type="button" onClick={() => abrirEdicao(e)} className="px-2 btn-surface flex-shrink-0" aria-label={'Editar ' + e.nome} title="Editar">
                       <Pencil size={14} className="text-muted" style={{ display: 'block' }} />
@@ -6551,6 +6850,50 @@ function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEdi
             <FormField label="Instruções (opcional)">
               <textarea value={form.instrucoes} onChange={(e) => setForm((n) => ({ ...n, instrucoes: e.target.value }))} className="input-field" rows={3} placeholder="Sai impresso no PDF do aluno, por baixo do exercício." />
             </FormField>
+
+            <FormField label="Outros nomes (opcional)">
+              <input
+                value={form.sinonimos}
+                onChange={(e) => setForm((n) => ({ ...n, sinonimos: e.target.value }))}
+                className="input-field"
+                placeholder="Ex.: supino reto, bench press"
+              />
+            </FormField>
+            <p className="text-2xs font-body text-faint" style={{ marginTop: -6 }}>
+              Separados por vírgulas. Servem só para o encontrar na procura — o
+              nome que sai no PDF do aluno é o de cima.
+            </p>
+
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-body text-muted">Pasta</span>
+              <select value={form.pasta} onChange={(e) => setForm((n) => ({ ...n, pasta: e.target.value }))} aria-label="Pasta" className="input-field">
+                <option value="">Sem pasta</option>
+                {pastas.map((pa) => <option key={pa.id} value={pa.id}>{pa.nome}</option>)}
+              </select>
+              <AddCategoryInline
+                label="Criar pasta"
+                placeholder="Ex.: Reabilitação do ombro"
+                onAdd={(nome) => { const nova = onCriarPasta(nome); if (nova) setForm((n) => ({ ...n, pasta: nova.id })); }}
+              />
+            </div>
+
+            {emEdicao !== 'novo' && (
+              <div className="flex flex-col gap-3 rounded-lg border border-hair p-3" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+                <span className="text-2xs uppercase tracking-wide text-faint font-body">Exercícios ligados</span>
+                {TIPOS_RELACAO.map((t) => (
+                  <div key={t.id} className="flex flex-col gap-1">
+                    <span className="text-xs font-body text-primary">{t.label}</span>
+                    <span className="text-2xs font-body text-faint">{t.ajuda}</span>
+                    <EscolherRelacionados
+                      biblioteca={biblioteca}
+                      exclui={emEdicao.id}
+                      escolhidos={relacoes[t.id] || []}
+                      onMudar={(ids) => mudarRelacao(t.id, ids)}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="flex gap-2 mobile-stack">
               <button type="button" onClick={() => setEmEdicao(null)} className="px-4 py-2.5 rounded-lg text-sm font-body border border-hair btn-surface text-muted">Voltar</button>
               <button
@@ -6664,7 +7007,7 @@ function LinhaSerie({ linha, numero, onMudar, onRemover, onNovaLinha, unica }) {
   );
 }
 
-function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, onSubir, onDescer, primeiro, ultimo, aoPegar, aArrastar, selecionado, onSelecionar, etiquetaGrupo }) {
+function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, onSubir, onDescer, onAlternativas, temAlternativas, primeiro, ultimo, aoPegar, aArrastar, selecionado, onSelecionar, etiquetaGrupo }) {
   const daBiblioteca = biblioteca.find((b) => b.id === ex.exercicioId);
   const naLista = METODOS_TREINO.includes(ex.metodo);
   // Guarda-se se está em modo livre em vez de o deduzir do texto: apagar o que
@@ -6739,6 +7082,9 @@ function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, 
         <div className="flex items-center gap-0.5 flex-shrink-0">
           <button type="button" onClick={onSubir} disabled={primeiro} className="p-1.5 rounded btn-surface disabled:opacity-30" aria-label="Subir exercício"><ChevronLeft size={14} className="text-muted" style={{ display: 'block', transform: 'rotate(90deg)' }} /></button>
           <button type="button" onClick={onDescer} disabled={ultimo} className="p-1.5 rounded btn-surface disabled:opacity-30" aria-label="Descer exercício"><ChevronRight size={14} className="text-muted" style={{ display: 'block', transform: 'rotate(90deg)' }} /></button>
+          {temAlternativas && (
+            <button type="button" onClick={onAlternativas} className="p-1.5 rounded btn-surface" aria-label={'Alternativas a ' + (ex.nome || 'exercício')} title="Alternativas"><Shuffle size={14} className="text-brass" style={{ display: 'block' }} /></button>
+          )}
           <button type="button" onClick={onDuplicar} className="p-1.5 rounded btn-surface" aria-label={'Duplicar ' + (ex.nome || 'exercício')} title="Duplicar"><Copy size={14} className="text-muted" style={{ display: 'block' }} /></button>
           <button type="button" onClick={onRemover} className="p-1.5 rounded btn-surface" aria-label="Remover exercício"><Trash2 size={14} className="text-rust" style={{ display: 'block' }} /></button>
         </div>
@@ -6886,10 +7232,31 @@ function useArrastarExercicio(onReordenar) {
 }
 
 // Construtor de um programa: cabecalho, treinos e exercicios.
-function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onArquivar, onGuardarModelo, onImprimir, onEliminar }) {
+function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivar, onGuardarModelo, onImprimir, onEliminar }) {
   const biblioteca = treinos.biblioteca;
   const [picker, setPicker] = useState(null); // id do treino a receber o exercicio
+  const [alternativas, setAlternativas] = useState(null); // { treinoId, ex }
   const [confirmar, setConfirmar] = useState(false);
+
+  // Só se oferece a troca quando há mesmo para onde trocar: um botão que abre
+  // uma caixa vazia é pior do que botão nenhum.
+  function temAlternativas(exercicioId) {
+    const r = (treinos.bibliotecaRelacoes || {})[exercicioId];
+    return Boolean(r && TIPOS_RELACAO.some((t) => (r[t.id] || []).length > 0));
+  }
+
+  // Trocar mantém as séries e os números: o que muda é o exercício, não o
+  // trabalho que já foi escrito para ele.
+  function trocarExercicio(treinoId, exAntigo, novo) {
+    const t = prescricao.treinos.find((x) => x.id === treinoId);
+    if (!t) return;
+    mudarTreino(treinoId, {
+      ...t,
+      exercicios: t.exercicios.map((x) => (x.id === exAntigo.id
+        ? { ...x, exercicioId: novo.id, nome: novo.nome }
+        : x)),
+    });
+  }
   const [selecao, setSelecao] = useState([]);
   const { arrasto, pegar } = useArrastarExercicio(
     (treinoId, de, para) => reordenarExercicio(treinoId, de, para),
@@ -7050,6 +7417,8 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
                   onSubir={() => mexerExercicio(t.id, i, -1)}
                   onDescer={() => mexerExercicio(t.id, i, 1)}
                   onDuplicar={() => duplicarExercicio(t.id, ex)}
+                  temAlternativas={temAlternativas(ex.exercicioId)}
+                  onAlternativas={() => setAlternativas({ treinoId: t.id, ex })}
                   onMudar={(novo) => mudarTreino(t.id, { ...t, exercicios: t.exercicios.map((x) => (x.id === ex.id ? novo : x)) })}
                   onRemover={() => mudarTreino(t.id, { ...t, exercicios: t.exercicios.filter((x) => x.id !== ex.id) })}
                 />
@@ -7102,6 +7471,15 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
         <Plus size={14} /> Acrescentar treino
       </button>
 
+      {alternativas && (
+        <AlternativasModal
+          exercicio={alternativas.ex}
+          treinos={treinos}
+          onClose={() => setAlternativas(null)}
+          onTrocar={(novo) => trocarExercicio(alternativas.treinoId, alternativas.ex, novo)}
+        />
+      )}
+
       {picker && (
         <BibliotecaPicker
           treinos={treinos}
@@ -7112,6 +7490,8 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
           onApagar={onApagarExercicio}
           onCriarGrupo={onCriarGrupo}
           onCriarCategoria={onCriarCategoria}
+          onAlternarFavorito={onAlternarFavorito}
+          onCriarPasta={onCriarPasta}
           onEscolher={(exercicio) => {
             const t = prescricao.treinos.find((x) => x.id === picker);
             mudarTreino(picker, { ...t, exercicios: [...t.exercicios, novoExercicioTreino(exercicio)] });
@@ -7148,7 +7528,7 @@ function LinhaPrograma({ p, onAbrir }) {
 }
 
 // Lista de programas de um aluno, e a porta de entrada para o construtor.
-function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, onEliminarPrescricao, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onArquivarPrescricao, onGuardarModelo, onCriarDeModelo, onApagarModelo, usosDoExercicio, onImprimir, onVoltar }) {
+function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, onEliminarPrescricao, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivarPrescricao, onGuardarModelo, onCriarDeModelo, onApagarModelo, usosDoExercicio, onImprimir, onVoltar }) {
   const [abertoId, setAbertoId] = useState(null);
   const [verArquivados, setVerArquivados] = useState(false);
   const [modeloAApagar, setModeloAApagar] = useState(null);
@@ -7184,6 +7564,8 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
           onApagarExercicio={onApagarExercicio}
           onCriarGrupo={onCriarGrupo}
           onCriarCategoria={onCriarCategoria}
+          onAlternarFavorito={onAlternarFavorito}
+          onCriarPasta={onCriarPasta}
           usosDoExercicio={usosDoExercicio}
           onEliminar={(id) => { setAbertoId(null); onEliminarPrescricao(id); }}
           onImprimir={() => onImprimir(aberta)}
@@ -10248,30 +10630,67 @@ function AppInner() {
   }
 
   // Devolve o exercicio criado para o chamador o poder acrescentar logo ao treino.
-  function criarExercicioBiblioteca(dados) {
+  function criarExercicioBiblioteca(dados, relacoes) {
     const exercicio = { id: uid(), base: false, instrucoes: '', ...dados };
-    persistTreinos((t) => ({ ...t, bibliotecaExtra: [...t.bibliotecaExtra, exercicio] }));
+    persistTreinos((t) => ({
+      ...t,
+      bibliotecaExtra: [...t.bibliotecaExtra, exercicio],
+      bibliotecaRelacoes: comRelacoes(t.bibliotecaRelacoes, exercicio.id, relacoes),
+    }));
     return exercicio;
   }
 
   // Editar um exercicio de origem nao guarda o exercicio inteiro: guarda so os
   // campos que mudaram. E o que permite ter 2076 na aplicacao e dois na base de
   // dados. Se a edicao repuser tudo como estava, a marca desaparece.
-  function editarExercicioBiblioteca(exercicio) {
+  function editarExercicioBiblioteca(exercicio, relacoes) {
     persistTreinos((t) => {
+      const comRel = comRelacoes(t.bibliotecaRelacoes, exercicio.id, relacoes);
       if (!ehExercicioBase(exercicio.id)) {
-        return { ...t, bibliotecaExtra: t.bibliotecaExtra.map((e) => (e.id === exercicio.id ? exercicio : e)) };
+        return {
+          ...t,
+          bibliotecaExtra: t.bibliotecaExtra.map((e) => (e.id === exercicio.id ? exercicio : e)),
+          bibliotecaRelacoes: comRel,
+        };
       }
       const origem = BIBLIOTECA_BASE.find((e) => e.id === exercicio.id);
       const mudanca = {};
-      ['nome', 'grupo', 'categoria', 'equipamento', 'instrucoes'].forEach((campo) => {
+      ['nome', 'grupo', 'categoria', 'equipamento', 'instrucoes', 'pasta'].forEach((campo) => {
         if ((exercicio[campo] || '') !== ((origem && origem[campo]) || '')) mudanca[campo] = exercicio[campo] || '';
       });
+      // Os sinónimos são uma lista: compara-se o texto, senão duas listas
+      // iguais mas de objetos diferentes marcavam o exercício como alterado.
+      const sinNovos = (exercicio.sinonimos || []).join('|');
+      if (sinNovos !== ((origem && origem.sinonimos) || []).join('|')) {
+        if (sinNovos) mudanca.sinonimos = exercicio.sinonimos;
+      }
       const edicoes = { ...t.bibliotecaEdicoes };
       if (Object.keys(mudanca).length) edicoes[exercicio.id] = mudanca;
       else delete edicoes[exercicio.id];
-      return { ...t, bibliotecaEdicoes: edicoes };
+      return { ...t, bibliotecaEdicoes: edicoes, bibliotecaRelacoes: comRel };
     });
+  }
+
+  // Estrela ligada ou desligada. É o filtro que interessa a quem usa quarenta
+  // exercícios dos dois mil que tem à frente.
+  function alternarFavorito(id) {
+    persistTreinos((t) => {
+      const atuais = t.bibliotecaFavoritos || [];
+      return {
+        ...t,
+        bibliotecaFavoritos: atuais.includes(id) ? atuais.filter((x) => x !== id) : [...atuais, id],
+      };
+    });
+  }
+
+  function criarPastaBiblioteca(nome) {
+    const limpo = String(nome || '').trim();
+    if (!limpo) return null;
+    const existente = (treinos.bibliotecaPastas || []).find((pa) => chaveNome(pa.nome) === chaveNome(limpo));
+    if (existente) return existente;
+    const pasta = { id: uid(), nome: limpo };
+    persistTreinos((t) => ({ ...t, bibliotecaPastas: [...(t.bibliotecaPastas || []), pasta] }));
+    return pasta;
   }
 
   // Grupos e categorias novos entram na lista propria do treinador, sem tocar
@@ -10703,6 +11122,8 @@ function AppInner() {
             onApagarExercicio={apagarExercicioBiblioteca}
             onCriarGrupo={criarGrupoMuscular}
             onCriarCategoria={criarCategoriaExercicio}
+            onAlternarFavorito={alternarFavorito}
+            onCriarPasta={criarPastaBiblioteca}
             onArquivarPrescricao={arquivarPrescricao}
             onGuardarModelo={guardarComoModelo}
             onCriarDeModelo={criarPrescricaoDeModelo}

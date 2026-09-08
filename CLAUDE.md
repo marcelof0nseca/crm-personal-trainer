@@ -272,6 +272,9 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
 - **As regras da folha vivem em `regrasDaFolha(prefixo)`**, emitidas duas
   vezes: dentro de `@media print` e dentro de `.print-previa`. Escrever uma
   regra só num dos sítios faz a pré-visualização mentir sobre o papel.
+- **Uma sub-vista tapa a navegação.** Treinos, formulários e ficha ocupam o
+  ecrã inteiro; `mudarVista` fecha-as antes de trocar de separador, senão
+  carregar em «Agenda» não fazia nada e a aplicação parecia encravada.
 - **Erro de leitura engolido = conta vazia.** `loadAll` distingue «não há
   dados» de «não consegui ler os dados» e levanta um aviso fixo no segundo
   caso. Sem isso, uma política mal escrita passou semanas sem dar sinal: o
@@ -393,6 +396,7 @@ existe de verdade.
 | **Documentos** | Timbre com logótipo próprio, estúdio, nº profissional e contactos · aviso de confidencialidade em todas as folhas · escolher que secções saem · **pré-visualizar antes de imprimir** · abrir o e-mail para o aluno |
 | **Finanças** | Entradas e saídas, categorias, IVA, taxa do ginásio, pendências |
 | **Pagamentos** | Stripe: mensal/trimestral/anual, cartão, Apple Pay, Google Pay, MB WAY, webhook, portal de faturação, meses grátis |
+| **Relatórios** | Relatório do período (atividade, ocupação da agenda, receita dos planos, lançamentos, tabela por aluno) e relatório de progresso do aluno (primeira vs última avaliação, com gráfico) · ambos timbrados |
 | **Ficha 360º** | Aulas, faltas, avaliações, treinos e formulários numa linha só, por aluno · procura livre sobre tudo · filtros por tipo e período · resumo com comparência e créditos · os pontos a ter em conta em cima |
 | **Formulários** | PAR-Q, anamnese e consentimentos (treino, imagem, dados de saúde) · construtor próprio · assinatura desenhada · PDF timbrado · pontos a ter em conta, ditos como avisos |
 | **Segurança** | Auth, RLS por utilizador, Turnstile, termos e política em pt-PT, dados na UE, exportação e apagamento |
@@ -470,7 +474,7 @@ Combinado por níveis, do mais barato ao mais caro:
     — **falta correr o SQL do schema** para a chave `formularios`
 13. ~~Ficha 360º com linha temporal pesquisável~~ **feito**
     — sem os pagamentos: uma transação não tem `studentId`
-14. **Progresso e relatórios** — só o que existe sem área do aluno
+14. ~~Progresso e relatórios — só o que existe sem área do aluno~~ **feito**
 15. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
 16. Decisões de produto — ver secção 10
 

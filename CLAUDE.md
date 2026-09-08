@@ -230,6 +230,21 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   objeto `CHART` passa `var()` (os estilos em linha e os atributos do SVG
   resolvem-nos); e as cores de tipo, estado e categoria, pensadas para fundo
   preto, passam por `acentoTexto()` quando são texto ou ícone.
+- **A procura da biblioteca traduz o termo, não o exercício.** `termosDeBusca`
+  aplica `TERMOS_ESTRANGEIROS` ao que foi escrito e devolve as duas leituras;
+  `correspondeABusca` compara com o índice do exercício (nome + sinónimos).
+  Guardar um segundo nome para cada um dos 2076 custaria memória sem ganhar
+  nada. **Os pares pt-BR são os mesmos de `SUBSTITUICOES` no gerador, lidos ao
+  contrário — um termo novo acrescenta-se aos dois sítios.**
+- **Este ficheiro é CRLF.** Um script que faça `texto.replace('
+', '
+')`
+  sobre uma cadeia que já tem `
+` produz `
+`, e **um único `` a
+  mais faz o git dar o ficheiro inteiro como reescrito** — 11 mil linhas de
+  diff por causa de um byte. Escrever sempre com `newline=''` e verificar o
+  `git diff --stat` antes de commitar.
 - **Listas de dois mil elementos não se desenham inteiras.** O seletor de
   exercícios mostra 60 e diz quantos ficaram de fora. A pesquisa usa um campo
   `busca` pré-calculado sem acentos — sem isso, escrever "biceps" não encontrava
@@ -348,6 +363,7 @@ existe de verdade.
 | **Agenda** | Dia, semana, mês, lista · procura e filtros · horário de abertura por dia com exceções · horários livres em lote · arrastar com confirmação e desfazer · **selecionar e mover várias de uma vez** · copiar/colar · recorrência com "só esta / toda a série" · **aviso de conflito** |
 | **Faltas** | Estados, direito a reposição, crédito ligado à aula de origem · **validade do crédito, estado "Expirada" e registo de auditoria** (quem concedeu, quando, o que aconteceu desde então) |
 | **Prescrição** | Treinos A/B/C, 2 076 exercícios, modelos, arquivo, PDF timbrado agrupado por bloco. Blocos, métodos como lista, 15 campos por exercício, duplicar, arrastar para reordenar |
+| **Biblioteca** | Procura que traduz o termo escrito (pt-BR e inglês de ginásio) · sinónimos por exercício · favoritos · pastas · progressões, regressões e substituições, com **troca de exercício num clique dentro do treino** |
 | **Avaliações** | Dobras, % massa gorda, perímetros, fotografias, gráfico de evolução, PDF · **rascunho e final, autosave, revisões com motivo, comparar e repor** |
 | **Documentos** | Timbre com logótipo próprio, estúdio, nº profissional e contactos · aviso de confidencialidade em todas as folhas · escolher que secções saem · **pré-visualizar antes de imprimir** · abrir o e-mail para o aluno |
 | **Finanças** | Entradas e saídas, categorias, IVA, taxa do ginásio, pendências |
@@ -417,9 +433,11 @@ Combinado por níveis, do mais barato ao mais caro:
    — a numeração das páginas é do browser, não da aplicação (ver secção 6)
 10. ~~Versões da avaliação: rascunho, revisões, quem editou, comparar,
     restaurar, motivo, autosave~~ **feito**
-11. **Biblioteca:** PT-PT/PT-BR/EN e sinónimos (o catálogo de origem tinha
-    `name_en`, que o gerador hoje deita fora), progressões, regressões,
-    substituições, pastas, favoritos
+11. ~~Biblioteca: procura em pt-BR e inglês, sinónimos, progressões,
+    regressões, substituições, pastas, favoritos~~ **feito**
+    — **menos os nomes ingleses dos 2076**: o catálogo MFIT já não está no
+    disco e com ele foi-se o `name_en`. Se voltar a aparecer, o gerador pode
+    passar a guardá-lo
 12. **Anamnese, PAR-Q e consentimentos** — construtor de formulários
 13. **Ficha 360º** com linha temporal pesquisável
 14. **Progresso e relatórios** — só o que existe sem área do aluno

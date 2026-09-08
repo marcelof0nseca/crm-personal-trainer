@@ -1943,6 +1943,30 @@ async function currentSupabaseUserId() {
 // o `updated_at` já existia na tabela e só não era lido.
 const versoesConhecidas = new Map();
 
+// Uma gravação que falha tem de dizer porquê. "Tente novamente" quando repetir
+// nunca vai resultar -- porque a conta não tem acesso, ou porque falta correr
+// um SQL -- manda o utilizador bater na mesma parede às cegas.
+function descreverErroDeGravacao(e) {
+  const codigo = (e && e.code) || '';
+  const texto = String((e && e.message) || '').toLowerCase();
+
+  if (codigo === '42501' || texto.includes('row-level security') || texto.includes('violates row-level')) {
+    return 'Esta conta não tem acesso aos dados na nuvem. Normalmente é a subscrição que não está ativa. Nada ficou guardado.';
+  }
+  if (codigo === '23514' || texto.includes('check constraint')) {
+    return 'A base de dados não aceita este tipo de dados. Falta correr o SQL do schema no Supabase. Nada ficou guardado.';
+  }
+  if (codigo === 'PGRST301' || texto.includes('jwt') || texto.includes('expired')) {
+    return 'A sessão expirou. Volte a entrar para guardar.';
+  }
+  // O `fetch` a falhar não traz código nenhum: é rede, ou o projeto Supabase
+  // suspenso por inatividade (o plano gratuito faz isso ao fim de 7 dias).
+  if (texto.includes('fetch') || texto.includes('network') || texto.includes('load failed')) {
+    return 'Não foi possível falar com o servidor. Nada ficou guardado.';
+  }
+  return `Erro ao guardar${codigo ? ` (${codigo})` : ''}. Nada ficou guardado.`;
+}
+
 class ConflitoDeGravacao extends Error {
   constructor(key) {
     super('Os dados foram alterados noutro sítio.');
@@ -11210,19 +11234,22 @@ function AppInner() {
   // Separa "não deu para gravar" de "outro dispositivo mexeu nisto primeiro".
   // O segundo caso não é um erro de rede: é trabalho de outra sessão que seria
   // apagado se continuássemos. Mostra-se e pára-se.
-  async function gravarBloco(chave, texto, mensagemDeErro) {
+  async function gravarBloco(chave, texto, oQueE) {
     try {
       await writeStoredValue(chave, texto);
     } catch (e) {
-      if (e && e.name === 'ConflitoDeGravacao') setConflito(chave);
-      else showToast(mensagemDeErro, 'error');
+      if (e && e.name === 'ConflitoDeGravacao') { setConflito(chave); return; }
+      // O erro do servidor vai inteiro para a consola: é o que permite
+      // perceber o que se passou sem ter de adivinhar.
+      console.error(`[PTMANAGER] falhou a gravar "${chave}"`, e);
+      showToast(`${oQueE}: ${descreverErroDeGravacao(e)}`, 'error');
     }
   }
 
   async function persistStudents(next) {
     setStudents(next);
     if (!storageOk) { showToast('Dados salvos apenas nesta sessão (armazenamento indisponível).'); return; }
-    await gravarBloco('alunos', JSON.stringify(next), 'Erro ao guardar. Tente novamente.');
+    await gravarBloco('alunos', JSON.stringify(next), 'Aluno');
   }
   // Pergunta-se o nível a cada troca de utilizador. Quem não tem dois fatores
   // nunca chega a ver o ecrã do código: `faltaSegundoFator` dá falso.
@@ -11250,12 +11277,12 @@ function AppInner() {
   async function persistSessions(next) {
     setSessions(next);
     if (!storageOk) return;
-    await gravarBloco('agenda', JSON.stringify(next), 'Erro ao guardar. Tente novamente.');
+    await gravarBloco('agenda', JSON.stringify(next), 'Agenda');
   }
   async function persistFinances(next) {
     setFinances(next);
     if (!storageOk) return;
-    await gravarBloco('financas', JSON.stringify(next), 'Erro ao guardar. Tente novamente.');
+    await gravarBloco('financas', JSON.stringify(next), 'Finanças');
   }
   const photosRef = useRef([]);
   useEffect(() => { photosRef.current = photos; }, [photos]);
@@ -11263,7 +11290,7 @@ function AppInner() {
   async function persistPhotos(next) {
     setPhotos(next);
     if (!storageOk) return;
-    await gravarBloco('fotos', JSON.stringify(next), 'Erro ao guardar fotos — experimente imagens mais pequenas.');
+    await gravarBloco('fotos', JSON.stringify(next), 'Fotografias');
   }
 
   // Assina os endereços das fotografias que estão no balde. As já assinadas não
@@ -11322,15 +11349,14 @@ function AppInner() {
     treinosRef.current = normalizado;
     setTreinos(normalizado);
     if (!storageOk) return;
-    await gravarBloco('treinos', JSON.stringify(serializarTreinos(normalizado)), 'Erro ao guardar os treinos.');
+    await gravarBloco('treinos', JSON.stringify(serializarTreinos(normalizado)), 'Treinos');
   }
 
   async function persistFormularios(next) {
     const normalizado = normalizarFormularios(next);
     setFormularios(normalizado);
     if (!storageOk) return;
-    await gravarBloco('formularios', JSON.stringify(normalizado),
-      'Erro ao guardar o formulário. Se isto se repetir, falta correr o SQL do schema no Supabase.');
+    await gravarBloco('formularios', JSON.stringify(normalizado), 'Formulário');
   }
 
   // A assinatura segue o caminho das fotografias: sobe para o balde e fica
@@ -11422,14 +11448,14 @@ function AppInner() {
     const normalizado = normalizarDefinicoes(next);
     setDefinicoes(normalizado);
     if (!storageOk) return;
-    await gravarBloco('definicoes', JSON.stringify(normalizado), 'Erro ao guardar as definições da agenda.');
+    await gravarBloco('definicoes', JSON.stringify(normalizado), 'Definições');
   }
 
   async function persistCustomCategories(next) {
     const normalized = { ...EMPTY_CUSTOM_CATEGORIES, ...(next || {}) };
     setCustomCategories(normalized);
     if (!storageOk) return;
-    await gravarBloco('categorias', JSON.stringify(normalized), 'Erro ao guardar categoria.');
+    await gravarBloco('categorias', JSON.stringify(normalized), 'Categorias');
   }
 
   function addCategory(kind, item) {

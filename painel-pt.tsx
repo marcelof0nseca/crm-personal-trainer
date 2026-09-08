@@ -8,7 +8,7 @@ import {
   Camera, ArrowLeft, LineChart as LineChartIcon, Tag,
   Coffee, Dumbbell, UtensilsCrossed, Stethoscope, Gift, CreditCard, Mail, CircleUser, KeyRound, ShieldCheck,
   RefreshCcw, Printer, Pencil, Copy, ClipboardPaste, GripVertical, Bell, Archive, BookMarked,
-  Sun, Moon, Monitor, Send, ImagePlus, Eye,
+  Sun, Moon, Monitor, Send, ImagePlus, Eye, History,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
@@ -466,6 +466,73 @@ const EMPTY_ASSESS_FIELDS = {
   assessFoldSubscapular: '', assessFoldAbdominal: '', assessFoldSuprailiac: '', assessFoldThigh: '',
   assessNotes: '', photoIds: [],
 };
+
+/* ===================== VERSÕES DA AVALIAÇÃO ===================== */
+
+// Uma avaliação nasce rascunho e é finalizada quando o treinador a dá por
+// boa. Avaliações antigas não têm o campo: foram gravadas de uma vez, e por
+// isso contam como finais.
+function ehRascunho(a) {
+  return Boolean(a) && a.assessEstado === 'rascunho';
+}
+
+// Quantas revisões se guardam por avaliação. Cada uma é um retrato dos campos
+// anteriores, uns 600 bytes; o bloco da agenda é reescrito por inteiro a cada
+// gravação, e sem tecto uma avaliação muito mexida acabava por o dominar.
+const MAX_VERSOES_AVALIACAO = 20;
+
+// Só os campos da avaliação entram no retrato. A sessão à volta (hora, estado,
+// tipo) pertence à agenda e não faz parte do documento.
+const CAMPOS_AVALIACAO = ['date', ...Object.keys(EMPTY_ASSESS_FIELDS)];
+
+function retratoDaAvaliacao(a) {
+  const r = {};
+  CAMPOS_AVALIACAO.forEach((c) => { r[c] = a[c] === undefined ? '' : a[c]; });
+  return r;
+}
+
+// Rótulos legíveis, para a comparação não mostrar `assessPerimWaist`.
+const ROTULOS_AVALIACAO = {
+  date: 'Data',
+  assessMethod: 'Método',
+  assessProtocol: 'Protocolo',
+  assessAge: 'Idade',
+  assessWeight: 'Peso (kg)',
+  assessBodyFat: '% Gordura',
+  assessGoalWeight: 'Peso alvo (kg)',
+  assessGoalBodyFat: '% gordura alvo',
+  assessGoalNotes: 'Notas das metas',
+  assessNotes: 'Observações',
+  photoIds: 'Fotografias',
+  ...Object.fromEntries(PERIMETRO_FIELDS.map((p) => [p.id, `${p.label} (cm)`])),
+  ...Object.fromEntries(BIA_FIELDS.map((f) => [f.id, f.label])),
+  ...Object.fromEntries(ALL_FOLD_SITES.map((f) => [f.id, `Dobra: ${f.label}`])),
+};
+
+function rotuloDeCampo(id) { return ROTULOS_AVALIACAO[id] || id; }
+
+// O que mudou entre dois retratos. Compara como texto: os campos são strings de
+// um `input`, e "70" e 70 são a mesma medida escrita de duas maneiras.
+function diferencasDeAvaliacao(antes, depois) {
+  const texto = (v) => (Array.isArray(v) ? `${v.length} fotografia(s)` : String(v === undefined || v === null ? '' : v).trim());
+  return CAMPOS_AVALIACAO
+    .map((c) => ({ campo: c, rotulo: rotuloDeCampo(c), antes: texto(antes[c]), depois: texto(depois[c]) }))
+    .filter((d) => d.antes !== d.depois);
+}
+
+// Junta uma entrada ao historico e corta pelo tecto, mantendo as mais recentes.
+function registarVersao(anterior, entrada) {
+  const lista = Array.isArray(anterior.assessVersoes) ? anterior.assessVersoes : [];
+  const proxima = [...lista, { ...entrada, v: (lista[lista.length - 1]?.v || 0) + 1 }];
+  return proxima.slice(-MAX_VERSOES_AVALIACAO);
+}
+
+const MOTIVOS_REVISAO = [
+  'Erro de digitação',
+  'Medida repetida',
+  'Dados que faltavam',
+  'Pedido do aluno',
+];
 
 /* ===================== PRESCRICAO DE TREINO ===================== */
 // Grupos musculares e categorias (modalidade) sao taxonomias distintas: o
@@ -1774,6 +1841,18 @@ function regrasDaFolha(p) {
         ${p}.print-by strong { font-size: 10.5pt; color: #111 !important; }
 
         ${p}.print-title { font-size: 15pt; font-weight: 700; margin: 0 0 2px; }
+        /* Um rascunho impresso tem de dizer que o é, e à primeira vista: pode
+           ficar em cima de uma secretária ao lado de um documento final. */
+        ${p}.print-rascunho {
+          border: 1.5px solid #111; border-radius: 4px;
+          padding: 5px 9px; margin-bottom: 14px;
+          font-size: 8.5pt; font-weight: 700;
+          text-transform: uppercase; letter-spacing: 0.1em;
+        }
+        ${p}.print-rascunho span {
+          display: block; font-weight: 400; text-transform: none;
+          letter-spacing: 0; color: #555 !important; margin-top: 2px;
+        }
         ${p}.print-sub { font-size: 9.5pt; color: #555 !important; margin-bottom: 16px; }
 
         ${p}.print-section { margin-bottom: 15px; break-inside: avoid; }
@@ -7204,15 +7283,116 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
 // `assessment` presente = edição. Semear com os campos vazios primeiro garante
 // que uma avaliação antiga, gravada antes de um campo existir, não fica com o
 // valor `undefined` a passar por um input controlado.
+// Pede o motivo antes de mexer numa avaliação já finalizada. É o que dá valor
+// ao histórico: sem motivo, uma revisão só diz que alguém mudou um número.
+function MotivoRevisaoModal({ onConfirm, onClose }) {
+  const [motivo, setMotivo] = useState('');
+  const podeGuardar = motivo.trim().length > 0;
+  return (
+    <Modal title="Porquê esta alteração?" onClose={onClose}>
+      <div className="flex flex-col gap-3">
+        <p className="text-sm font-body text-muted">
+          Esta avaliação já foi finalizada e pode ter sido entregue ao aluno. O
+          motivo fica no histórico, ao lado dos valores antigos.
+        </p>
+        <div className="flex gap-1.5 flex-wrap">
+          {MOTIVOS_REVISAO.map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMotivo(m)}
+              aria-pressed={motivo === m}
+              className="px-3 py-1.5 rounded-lg border text-xs font-body nowrap"
+              style={{
+                borderColor: motivo === m ? 'var(--brass)' : 'var(--border-hair)',
+                backgroundColor: motivo === m ? 'var(--brass-soft)' : 'var(--bg-elevated)',
+                color: motivo === m ? 'var(--brass)' : 'var(--text-muted)',
+              }}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+        <FormField label="Motivo">
+          <input
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            className="input-field"
+            maxLength={140}
+            placeholder="Ex.: peso trocado com a medição anterior"
+            autoFocus
+          />
+        </FormField>
+        <div className="flex gap-2 pt-1 mobile-stack">
+          <button type="button" onClick={onClose} className="btn btn-ghost">Cancelar</button>
+          <button
+            type="button"
+            disabled={!podeGuardar}
+            onClick={() => onConfirm(motivo.trim())}
+            className="btn btn-primary flex-1"
+            style={{ opacity: podeGuardar ? 1 : 0.45 }}
+          >
+            Guardar alteração
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// Só há autosave enquanto a avaliação é rascunho, e só depois de haver uma
+// medida a sério: um clique sem querer em "Nova avaliação" não deve deixar
+// fichas vazias no histórico.
+const ESPERA_AUTOSAVE_MS = 4000;
+function temMedida(f) {
+  return Boolean(String(f.assessWeight || '').trim() || String(f.assessBodyFat || '').trim());
+}
+
 function AssessmentForm({ student, assessment, onSave, onCancel, photosById, onUploadPhotos, onRemovePhoto, uploadingPhotos }) {
   const isEdit = Boolean(assessment);
+  const eraFinal = isEdit && !ehRascunho(assessment);
   const [form, setForm] = useState(() => ({
     date: fmtDateISO(new Date()),
     ...EMPTY_ASSESS_FIELDS,
     ...(assessment || {}),
     photoIds: (assessment && assessment.photoIds) || [],
   }));
+  const [pedirMotivo, setPedirMotivo] = useState(false);
+  const [autoGravadoEm, setAutoGravadoEm] = useState(null);
+  // O primeiro autosave de uma avaliação nova cria-a; os seguintes têm de a
+  // atualizar, e para isso precisam do id que veio de lá.
+  const idRef = useRef(form.id || null);
+  const formRef = useRef(form);
+  formRef.current = form;
+  // O `onSave` vem de uma função nova a cada render do pai. Se entrasse nas
+  // dependências, cada gravação re-agendava a seguinte e o rascunho gravava-se
+  // sozinho de quatro em quatro segundos, para sempre.
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
+
   function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
+
+  // Guardar sozinho enquanto é rascunho. Uma avaliação tem trinta e tal campos
+  // e mede-se no ginásio, com o telemóvel na mão: perder isto por um toque em
+  // falso seria ter de repetir tudo com a pessoa já vestida.
+  useEffect(() => {
+    if (eraFinal) return undefined;
+    if (!temMedida(form)) return undefined;
+    const t = setTimeout(() => {
+      const atual = formRef.current;
+      const id = onSaveRef.current(
+        { ...atual, id: idRef.current || atual.id },
+        { estado: 'rascunho', silencioso: true },
+      );
+      if (id) idRef.current = id;
+      setAutoGravadoEm(new Date());
+    }, ESPERA_AUTOSAVE_MS);
+    return () => clearTimeout(t);
+  }, [form, eraFinal]);
+
+  function guardar(estado, motivo) {
+    onSave({ ...form, id: idRef.current || form.id }, { estado, motivo });
+  }
 
   return (
     <div className="flex flex-col gap-3 animate-in">
@@ -7223,10 +7403,39 @@ function AssessmentForm({ student, assessment, onSave, onCancel, photosById, onU
       <PhotoPicker photoIds={form.photoIds} photosById={photosById} busy={uploadingPhotos}
         onAdd={async (files) => { const ids = await onUploadPhotos(files); set('photoIds', [...form.photoIds, ...ids]); }}
         onRemove={(id) => { onRemovePhoto(id); set('photoIds', form.photoIds.filter((x) => x !== id)); }} />
-      <div className="flex gap-2 pt-1">
-        <button type="button" onClick={onCancel} className="px-4 py-2.5 rounded-lg text-sm font-body border border-hair btn-surface text-muted">Cancelar</button>
-        <button type="button" onClick={() => onSave(form)} className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>{isEdit ? 'Guardar Alterações' : 'Guardar Avaliação'}</button>
+
+      {!eraFinal && (
+        <div className="text-2xs font-body text-faint" aria-live="polite">
+          {autoGravadoEm
+            ? `Rascunho guardado sozinho às ${autoGravadoEm.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}.`
+            : 'Enquanto for rascunho, guarda-se sozinho assim que houver um peso ou uma percentagem.'}
+        </div>
+      )}
+
+      <div className="flex gap-2 pt-1 mobile-stack">
+        <button type="button" onClick={onCancel} className="btn btn-ghost">Cancelar</button>
+        {eraFinal ? (
+          <button type="button" onClick={() => setPedirMotivo(true)} className="btn btn-primary flex-1">
+            Guardar alterações
+          </button>
+        ) : (
+          <>
+            <button type="button" onClick={() => guardar('rascunho')} className="btn btn-ghost flex-1">
+              Guardar rascunho
+            </button>
+            <button type="button" onClick={() => guardar('final')} className="btn btn-primary flex-1">
+              <Check size={14} /> Finalizar
+            </button>
+          </>
+        )}
       </div>
+
+      {pedirMotivo && (
+        <MotivoRevisaoModal
+          onClose={() => setPedirMotivo(false)}
+          onConfirm={(motivo) => { setPedirMotivo(false); guardar('final', motivo); }}
+        />
+      )}
     </div>
   );
 }
@@ -7728,6 +7937,13 @@ function AssessmentPrintDoc({ student, assessment, historico, photosById, traine
         subtitulo={`${student.name} · ${fmtDateLong(`${a.date}T00:00:00`)}`}
       />
 
+      {ehRascunho(a) && (
+        <div className="print-rascunho">
+          Rascunho
+          <span>Avaliação por confirmar. Os valores podem ainda ser corrigidos.</span>
+        </div>
+      )}
+
       {ver.destaques && (
       <div className="print-highlight">
         <div className="print-kpi"><dt>Peso</dt><dd>{printValue(peso, 'kg') || '—'}</dd></div>
@@ -7878,12 +8094,129 @@ function AssessmentComparisonChart({ assessments }) {
   );
 }
 
+// Histórico de uma avaliação: quem mexeu, quando, porquê, o que mudou — e
+// repor. Nada se apaga ao repor: a reposição é ela própria mais uma revisão.
+function HistoricoAvaliacaoModal({ avaliacao, onRestaurar, onClose }) {
+  const versoes = Array.isArray(avaliacao.assessVersoes) ? avaliacao.assessVersoes : [];
+  const [aberta, setAberta] = useState(null);
+  const [aRepor, setARepor] = useState(null);
+  const atual = retratoDaAvaliacao(avaliacao);
+
+  return (
+    <Modal title="Histórico de alterações" onClose={onClose} largura={560}>
+      <div className="flex flex-col gap-3">
+        <div className="text-xs font-body text-muted">
+          Avaliação de {fmtDateLong(`${avaliacao.date}T00:00:00`)}
+          {avaliacao.assessEditadoPor ? ` · última alteração por ${avaliacao.assessEditadoPor}` : ''}
+          {avaliacao.assessEditadoEm ? ` em ${fmtDataHora(avaliacao.assessEditadoEm)}` : ''}
+        </div>
+
+        {versoes.length === 0 ? (
+          <EmptyState message="Esta avaliação ainda não foi alterada desde que foi criada." />
+        ) : (
+          <div className="flex flex-col gap-2">
+            {[...versoes].reverse().map((v) => {
+              const difs = diferencasDeAvaliacao(v.campos, atual);
+              const estaAberta = aberta === v.v;
+              return (
+                <div key={v.v} className="rounded-lg border border-hair p-3 flex flex-col gap-2" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+                  <div className="flex items-start justify-between gap-2 flex-wrap">
+                    <span className="flex flex-col min-w-0">
+                      <span className="text-sm font-body text-primary">
+                        {v.acao || 'Alterada'}
+                        {v.motivo ? <span className="text-faint"> — {v.motivo}</span> : null}
+                      </span>
+                      <span className="text-2xs font-body text-faint truncate">
+                        <span className="font-mono">{fmtDataHora(v.em)}</span> · {v.quem || 'Personal Trainer'}
+                      </span>
+                    </span>
+                    <span className="badge flex-shrink-0" style={{ backgroundColor: 'var(--bg-surface)', color: 'var(--text-muted)' }}>
+                      versão {v.v}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setAberta(estaAberta ? null : v.v)}
+                      aria-expanded={estaAberta}
+                      className="text-2xs font-body link-sky"
+                    >
+                      {estaAberta ? 'Esconder as diferenças' : `Ver o que mudou (${difs.length})`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setARepor(v)}
+                      className="btn btn-ghost"
+                      style={{ padding: '5px 10px', fontSize: 11 }}
+                    >
+                      <RotateCcw size={12} /> Repor estes valores
+                    </button>
+                  </div>
+
+                  {estaAberta && (
+                    difs.length === 0 ? (
+                      <div className="text-2xs font-body text-faint">
+                        Os valores desta versão são iguais aos de agora.
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-2xs font-body" style={{ borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr>
+                              <th className="text-left text-faint font-normal py-1 pr-3">Campo</th>
+                              <th className="text-left text-faint font-normal py-1 pr-3">Nessa versão</th>
+                              <th className="text-left text-faint font-normal py-1">Agora</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {difs.map((d) => (
+                              <tr key={d.campo} className="border-t border-hair">
+                                <td className="py-1 pr-3 text-muted">{d.rotulo}</td>
+                                <td className="py-1 pr-3 font-mono text-muted">{d.antes || '—'}</td>
+                                <td className="py-1 font-mono text-primary">{d.depois || '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {versoes.length >= MAX_VERSOES_AVALIACAO && (
+          <div className="text-2xs font-body text-faint">
+            Guardam-se as {MAX_VERSOES_AVALIACAO} alterações mais recentes.
+          </div>
+        )}
+      </div>
+
+      {aRepor && (
+        <ConfirmDialog
+          title="Repor esta versão"
+          message={`Os valores de ${fmtDataHora(aRepor.em)} voltam a ser os atuais. A versão de agora fica guardada no histórico — não se perde nada.`}
+          confirmLabel="Repor"
+          tone="brass"
+          onCancel={() => setARepor(null)}
+          onConfirm={() => { onRestaurar(aRepor); setARepor(null); onClose(); }}
+        />
+      )}
+    </Modal>
+  );
+}
+
 function AssessmentDetail({ student, sessions, photosById, onBack, onSaveAssessment, onUploadPhotos, onRemovePhoto, onDeleteAssessment, onPrintAssessment }) {
   // null = fechado, 'nova' = criar, objeto = editar essa avaliação.
   const [editando, setEditando] = useState(null);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [historicoId, setHistoricoId] = useState(null);
   const assessments = sessions.filter((s) => s.studentId === student.id && s.type === 'avaliacao' && (s.assessWeight || s.assessBodyFat)).sort((a, b) => b.date.localeCompare(a.date));
+  const comHistorico = assessments.find((a) => a.id === historicoId) || null;
 
   async function handleUpload(files) {
     setUploadingPhotos(true);
@@ -7923,7 +8256,13 @@ function AssessmentDetail({ student, sessions, photosById, onBack, onSaveAssessm
             uploadingPhotos={uploadingPhotos}
             onUploadPhotos={handleUpload}
             onRemovePhoto={onRemovePhoto}
-            onSave={(form) => { onSaveAssessment(student.id, form); setEditando(null); }}
+            onSave={(form, opcoes) => {
+              const id = onSaveAssessment(student.id, form, opcoes);
+              // O autosave grava por baixo do formulário; fechá-lo aqui tirava
+              // o teclado ao utilizador a meio de escrever.
+              if (!opcoes || !opcoes.silencioso) setEditando(null);
+              return id;
+            }}
           />
         </div>
       )}
@@ -7943,12 +8282,20 @@ function AssessmentDetail({ student, sessions, photosById, onBack, onSaveAssessm
               return (
                 <div key={a.id} className="rounded-lg border border-hair bg-elevated p-3">
                   <div className="flex items-start justify-between gap-2 mb-1.5">
-                    <div>
-                      <div className="font-mono text-xs text-muted">{fmtDateBR(new Date(`${a.date}T00:00:00`))}</div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono text-xs text-muted">{fmtDateBR(new Date(`${a.date}T00:00:00`))}</span>
+                        {ehRascunho(a) && (
+                          <span className="badge" style={{ backgroundColor: 'var(--gold-soft)', color: acentoTexto('#F5B44C') }}>Rascunho</span>
+                        )}
+                      </div>
                       <div className="text-2xs text-faint font-body">{methodLabel}</div>
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <button onClick={() => onPrintAssessment(a)} type="button" className="p-1.5 rounded btn-surface" aria-label="Exportar avaliação em PDF" title="Exportar PDF"><Printer size={13} className="text-muted" /></button>
+                      {(a.assessVersoes || []).length > 0 && (
+                        <button onClick={() => setHistoricoId(a.id)} type="button" className="p-1.5 rounded btn-surface" aria-label="Histórico de alterações" title={`Histórico de alterações (${a.assessVersoes.length})`}><History size={13} className="text-muted" /></button>
+                      )}
                       <button onClick={() => setEditando(a)} type="button" className="p-1.5 rounded btn-surface" aria-label="Editar avaliação" title="Editar"><Pencil size={13} className="text-muted" /></button>
                       <button onClick={() => setConfirmDeleteId(a.id)} type="button" className="p-1.5 rounded btn-surface" aria-label="Eliminar avaliação" title="Eliminar"><Trash2 size={13} className="text-rust" /></button>
                     </div>
@@ -7973,6 +8320,18 @@ function AssessmentDetail({ student, sessions, photosById, onBack, onSaveAssessm
 
       {confirmDeleteId && (
         <ConfirmDialog title="Eliminar avaliação" message="Tem a certeza de que pretende eliminar esta avaliação física?" onCancel={() => setConfirmDeleteId(null)} onConfirm={() => { onDeleteAssessment(confirmDeleteId); setConfirmDeleteId(null); }} />
+      )}
+
+      {comHistorico && (
+        <HistoricoAvaliacaoModal
+          avaliacao={comHistorico}
+          onClose={() => setHistoricoId(null)}
+          onRestaurar={(versao) => onSaveAssessment(
+            student.id,
+            { ...comHistorico, ...versao.campos },
+            { estado: 'final', motivo: `Reposta a versão de ${fmtDataHora(versao.em)}` },
+          )}
+        />
       )}
     </div>
   );
@@ -9766,22 +10125,61 @@ function AppInner() {
     return `Avaliação física${av ? ` de ${fmtDateLong(`${av.date}T00:00:00`)}` : ''} — ${aluno?.name || ''}`.trim();
   }
 
-  function saveAssessment(studentId, form) {
+  // `opcoes`: { estado, motivo, silencioso }. O `silencioso` é o autosave do
+  // rascunho — grava sem aviso e sem deixar revisão, porque são teclas a serem
+  // escritas e não uma decisão de alterar um documento.
+  function saveAssessment(studentId, form, opcoes = {}) {
+    const quem = trainerName || user?.email || 'Personal Trainer';
+    const agora = new Date().toISOString();
+    const anterior = form.id ? sessions.find((s) => s.id === form.id) : null;
+
     // A avaliação é uma sessão da agenda. Ao editar, só os campos da avaliação
     // mudam: hora, estado, tipo e aluno da sessão ficam como estavam, para não
     // desalinhar a agenda nem os contadores de faltas.
-    if (form.id && sessions.some((s) => s.id === form.id)) {
-      persistSessions(sessions.map((s) => (s.id === form.id ? { ...s, ...form } : s)));
-      showToast('Avaliação atualizada.');
-      return;
+    if (anterior) {
+      const estado = opcoes.estado || anterior.assessEstado || 'final';
+      const eraFinal = !ehRascunho(anterior);
+      // Só há revisão quando se mexe num documento já dado por bom, ou quando
+      // um rascunho passa a definitivo. Rascunho a rascunho não é história.
+      const guardaVersao = !opcoes.silencioso && (eraFinal || estado === 'final');
+      const atualizada = {
+        ...anterior,
+        ...form,
+        assessEstado: estado,
+        assessEditadoEm: agora,
+        assessEditadoPor: quem,
+        assessVersoes: guardaVersao
+          ? registarVersao(anterior, {
+            em: agora,
+            quem,
+            motivo: opcoes.motivo || '',
+            acao: eraFinal ? 'Revista' : 'Finalizada',
+            campos: retratoDaAvaliacao(anterior),
+          })
+          : anterior.assessVersoes,
+      };
+      persistSessions(sessions.map((s) => (s.id === form.id ? atualizada : s)));
+      if (!opcoes.silencioso) {
+        showToast(estado === 'rascunho' ? 'Rascunho guardado.'
+          : eraFinal ? 'Avaliação revista.' : 'Avaliação finalizada.');
+      }
+      return atualizada.id;
     }
+
     const session = {
       ...form,
       id: uid(), studentId, date: form.date, startTime: '08:00', endTime: '08:30',
       type: 'avaliacao', status: 'realizado', notes: '',
+      assessEstado: opcoes.estado || 'final',
+      assessCriadaEm: agora, assessCriadaPor: quem,
+      assessEditadoEm: agora, assessEditadoPor: quem,
+      assessVersoes: [],
     };
     persistSessions([...sessions, session]);
-    showToast('Avaliação registada.');
+    if (!opcoes.silencioso) {
+      showToast(session.assessEstado === 'rascunho' ? 'Rascunho guardado.' : 'Avaliação registada.');
+    }
+    return session.id;
   }
   function deleteAssessment(id) {
     persistSessions(sessions.filter((s) => s.id !== id));

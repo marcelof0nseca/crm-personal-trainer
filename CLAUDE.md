@@ -272,6 +272,10 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
 - **As regras da folha vivem em `regrasDaFolha(prefixo)`**, emitidas duas
   vezes: dentro de `@media print` e dentro de `.print-previa`. Escrever uma
   regra só num dos sítios faz a pré-visualização mentir sobre o papel.
+- **Erro de leitura engolido = conta vazia.** `loadAll` distingue «não há
+  dados» de «não consegui ler os dados» e levanta um aviso fixo no segundo
+  caso. Sem isso, uma política mal escrita passou semanas sem dar sinal: o
+  servidor recusava tudo e a aplicação mostrava uma conta limpa.
 - **Funções escritas e nunca chamadas.** Já aconteceu com `sessoesChocam`, que
   esteve meses no ficheiro sem ninguém a invocar. Antes de escrever uma
   utilidade, `grep` para ver se já existe.
@@ -297,6 +301,13 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   interface; o portão a sério é a política restritiva `app_data_exige_aal2` no
   `supabase-schema.sql`. **Se essa política não estiver aplicada, uma sessão em
   `aal1` continua a ler tudo pela API.**
+  **Uma política nunca pode consultar `auth.mfa_factors` diretamente.** Corre
+  com os direitos de quem faz o pedido, e `authenticated` não pode ler essa
+  tabela — o resultado é `42501 permission denied` em *todas* as consultas a
+  `app_data`, leituras incluídas, e uma conta cheia a aparecer vazia. A
+  pergunta vive em `public.aal_suficiente()`, `security definer`, que devolve
+  só sim ou não. Dar `select` nessa tabela a `authenticated` resolveria o erro
+  e exporia a coluna `secret` dos códigos TOTP de toda a gente.
 
 - **Storage** — balde privado `fotos`, criado pelo `supabase-schema.sql` com
   limite de 5 MB e só imagens. As políticas escoram-se no primeiro segmento do

@@ -6150,7 +6150,7 @@ function StudentsView({ students, sessions, onEdit, onNew }) {
   );
 }
 
-function StudentFormModal({ student, sessions, customCategories, treinoCount = 0, formularios, onAddCategory, onSave, onClose, onDelete, onGoToAssessments, onGoToTreinos, onGoToSession, onAgendarReposicao, onGoToFormularios }) {
+function StudentFormModal({ student, sessions, customCategories, treinoCount = 0, formularios, onAddCategory, onSave, onClose, onDelete, onGoToAssessments, onGoToTreinos, onGoToSession, onAgendarReposicao, onGoToFormularios, onGoToFicha }) {
   const isEdit = !!student;
   const [form, setForm] = useState(() => (student ? { ...student, quinzenasPagas: student.quinzenasPagas || {} } : {
     id: uid(), name: '', color: STUDENT_COLORS[Math.floor(Math.random() * STUDENT_COLORS.length)],
@@ -6321,6 +6321,13 @@ function StudentFormModal({ student, sessions, customCategories, treinoCount = 0
           <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-2">Prévia do líquido (mês atual)</div>
           <RevenueLoadBar gross={finance.gross} tax={finance.tax} gymFee={finance.gymFee} net={finance.net} height={24} />
         </div>
+
+        {isEdit && onGoToFicha && (
+          <button type="button" onClick={() => onGoToFicha(student)} className="flex items-center justify-between text-sm font-body px-3 py-2.5 rounded-lg border border-hair btn-surface">
+            <span className="flex items-center gap-2 text-primary"><History size={15} className="text-brass" /> Ficha 360º</span>
+            <span className="text-2xs text-faint font-mono">tudo o que aconteceu →</span>
+          </button>
+        )}
 
         {isEdit && (
           <button type="button" onClick={() => onGoToAssessments(student)} className="flex items-center justify-between text-sm font-body px-3 py-2.5 rounded-lg border border-hair btn-surface">
@@ -8875,6 +8882,367 @@ function FormulariosView({ student, formularios, photosById, onPreencher, onImpr
   );
 }
 
+/* ===================== FICHA 360º =====================
+ *
+ * Tudo o que aconteceu com um aluno, numa linha só. Nada disto é gravado: é
+ * derivado do que já existe na agenda, nos treinos e nos formulários, e por
+ * isso não pode dessincronizar-se do resto.
+ *
+ * As finanças ficam de fora de propósito: uma transação não tem `studentId`,
+ * e adivinhar a ligação pelo texto da descrição daria uma ficha que mente.
+ */
+
+const TIPOS_EVENTO = [
+  { id: 'aula', label: 'Aulas', um: 'Aula', cor: '#1EA6B4' },
+  { id: 'falta', label: 'Faltas', um: 'Falta', cor: '#D6534A' },
+  { id: 'reposicao', label: 'Reposições', um: 'Reposição', cor: '#F5B44C' },
+  { id: 'avaliacao', label: 'Avaliações', um: 'Avaliação', cor: '#5DA9E9' },
+  { id: 'treino', label: 'Treinos', um: 'Treino', cor: '#6FCF97' },
+  { id: 'formulario', label: 'Formulários', um: 'Formulário', cor: '#C77DFF' },
+];
+
+function tipoDeEvento(id) { return TIPOS_EVENTO.find((t) => t.id === id) || TIPOS_EVENTO[0]; }
+
+// Data e hora comparáveis, venha de onde vier: a agenda guarda `date` e
+// `startTime` separados, os formulários guardam um instante completo.
+function instanteDe(dia, hora) {
+  if (!dia) return '';
+  return `${dia}T${hora && /^\d{2}:\d{2}$/.test(hora) ? hora : '00:00'}:00`;
+}
+
+function eventosDoAluno(studentId, { sessions, treinos, formularios, student }) {
+  const eventos = [];
+
+  (sessions || []).filter((s) => s.studentId === studentId).forEach((s) => {
+    if (s.type === 'avaliacao') {
+      const gordura = s.assessMethod === 'dobras'
+        ? calcFoldBodyFat(s, student && student.sex)
+        : parseFloat(s.assessBodyFat);
+      const partes = [
+        s.assessWeight ? `${nPT(parseFloat(s.assessWeight))} kg` : null,
+        Number.isFinite(gordura) ? `${nPT(gordura)}% gordura` : null,
+        ehRascunho(s) ? 'rascunho' : null,
+      ].filter(Boolean);
+      eventos.push({
+        id: `av-${s.id}`, tipo: 'avaliacao', quando: instanteDe(s.date, s.startTime),
+        titulo: 'Avaliação física', detalhe: partes.join(' · '), fonte: s,
+      });
+      return;
+    }
+    if (isFalta(s)) {
+      const estado = reposicaoEstadoDe(s, sessions);
+      eventos.push({
+        id: `fa-${s.id}`, tipo: 'falta', quando: instanteDe(s.date, s.startTime),
+        titulo: 'Falta',
+        detalhe: [s.faltaMotivo || 'motivo não indicado', s.faltaJustificada ? 'justificada' : null,
+          estado.id !== 'na' ? `crédito ${estado.label.toLowerCase()}` : null,
+          s.faltaObs].filter(Boolean).join(' · '),
+        fonte: s,
+      });
+      return;
+    }
+    if (s.kind === 'evento' || s.type === 'horario_livre') return;
+    const tipo = s.type === 'reposicao' ? 'reposicao' : 'aula';
+    const estado = STATUS_OPTIONS.find((o) => o.id === (s.status || 'agendado'));
+    eventos.push({
+      id: `au-${s.id}`, tipo, quando: instanteDe(s.date, s.startTime),
+      titulo: s.type === 'reposicao' ? 'Reposição' : 'Aula',
+      detalhe: [s.startTime, estado ? estado.label.toLowerCase() : null, s.notes].filter(Boolean).join(' · '),
+      fonte: s,
+    });
+  });
+
+  prescricoesDoAluno(treinos, studentId, false)
+    .concat(prescricoesDoAluno(treinos, studentId, true))
+    .forEach((p) => {
+      const exercicios = (p.treinos || []).reduce((n, t) => n + (t.exercicios || []).length, 0);
+      eventos.push({
+        id: `tr-${p.id}`, tipo: 'treino',
+        quando: p.criadoEm || instanteDe(p.inicio),
+        titulo: p.nome || 'Programa de treino',
+        detalhe: [p.objetivo, `${plural((p.treinos || []).length, 'treino', 'treinos')}`,
+          `${plural(exercicios, 'exercício', 'exercícios')}`,
+          p.ativo === false ? 'arquivado' : null].filter(Boolean).join(' · '),
+        fonte: p,
+      });
+    });
+
+  respostasDoAluno(formularios, studentId).forEach((r) => {
+    const alertas = alertasDaResposta(r, modeloPorId(formularios, r.modeloId));
+    eventos.push({
+      id: `fo-${r.id}`, tipo: 'formulario', quando: r.em,
+      titulo: r.nome,
+      detalhe: [r.assinaturaId ? 'assinado' : 'sem assinatura',
+        alertas.length ? plural(alertas.length, 'ponto a ter em conta', 'pontos a ter em conta') : null,
+        ...alertas.map((a) => a.pergunta)].filter(Boolean).join(' · '),
+      fonte: r,
+    });
+  });
+
+  return eventos
+    .map((e) => ({ ...e, busca: chaveBusca(`${e.titulo} ${e.detalhe}`) }))
+    .sort((a, b) => String(b.quando).localeCompare(String(a.quando)));
+}
+
+// O resumo de cima. Só conta o que está registado -- uma comparência calculada
+// sobre aulas que ninguém marcou como realizadas seria um número inventado.
+function resumoDoAluno(studentId, { sessions, treinos, formularios }) {
+  const doAluno = (sessions || []).filter((s) => s.studentId === studentId
+    && s.kind !== 'evento' && s.type !== 'horario_livre' && s.type !== 'avaliacao');
+  const realizadas = doAluno.filter((s) => s.status === 'realizado').length;
+  const faltas = doAluno.filter((s) => isFalta(s)).length;
+  const decididas = realizadas + faltas;
+  const avaliacoes = (sessions || []).filter((s) => s.studentId === studentId && s.type === 'avaliacao'
+    && (s.assessWeight || s.assessBodyFat));
+  const ultima = [...avaliacoes].sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+  const porPreencher = modelosDe(formularios)
+    .filter((m) => !ultimasRespostas(formularios, studentId).some((r) => r.modeloId === m.id));
+  return {
+    realizadas,
+    faltas,
+    // Sem aulas decididas não há comparência nenhuma para mostrar.
+    comparencia: decididas > 0 ? Math.round((realizadas / decididas) * 100) : null,
+    creditos: pendingFaltas(studentId, sessions),
+    avaliacoes: avaliacoes.length,
+    ultimaAvaliacao: ultima,
+    programas: prescricoesDoAluno(treinos, studentId, false).length,
+    alertas: alertasDoAluno(formularios, studentId),
+    formulariosPorPreencher: porPreencher,
+  };
+}
+
+const PERIODOS_FICHA = [
+  { id: 'todos', label: 'Desde sempre', dias: null },
+  { id: '30', label: 'Últimos 30 dias', dias: 30 },
+  { id: '90', label: 'Últimos 90 dias', dias: 90 },
+  { id: '365', label: 'Último ano', dias: 365 },
+];
+
+function FichaView({ student, sessions, treinos, formularios, onOpenSession, onGoToAssessments, onGoToTreinos, onGoToFormularios, onVoltar }) {
+  const [procura, setProcura] = useState('');
+  const [tipos, setTipos] = useState([]);   // vazio = todos
+  const [periodo, setPeriodo] = useState('todos');
+
+  const eventos = useMemo(
+    () => eventosDoAluno(student.id, { sessions, treinos, formularios, student }),
+    [student, sessions, treinos, formularios],
+  );
+  const resumo = useMemo(
+    () => resumoDoAluno(student.id, { sessions, treinos, formularios }),
+    [student.id, sessions, treinos, formularios],
+  );
+
+  const desdeIso = useMemo(() => {
+    const p = PERIODOS_FICHA.find((x) => x.id === periodo);
+    if (!p || p.dias == null) return '';
+    const d = new Date();
+    d.setDate(d.getDate() - p.dias);
+    return fmtDateISO(d);
+  }, [periodo]);
+
+  const visiveis = useMemo(() => {
+    const termo = chaveBusca(procura.trim());
+    return eventos.filter((e) => (tipos.length === 0 || tipos.includes(e.tipo))
+      && (!desdeIso || String(e.quando).slice(0, 10) >= desdeIso)
+      && (!termo || e.busca.includes(termo)));
+  }, [eventos, tipos, desdeIso, procura]);
+
+  function alternarTipo(id) {
+    setTipos((t) => (t.includes(id) ? t.filter((x) => x !== id) : [...t, id]));
+  }
+
+  function abrir(evento) {
+    if (evento.tipo === 'avaliacao') { onGoToAssessments(student); return; }
+    if (evento.tipo === 'treino') { onGoToTreinos(student); return; }
+    if (evento.tipo === 'formulario') { onGoToFormularios(student); return; }
+    onOpenSession(evento.fonte);
+  }
+
+  return (
+    <div className="px-4 py-4 max-w-3xl mx-auto flex flex-col gap-4">
+      <div className="flex items-center gap-2">
+        <button onClick={onVoltar} type="button" className="p-2 rounded-lg bg-surface border border-hair btn-surface flex-shrink-0" aria-label="Voltar aos alunos">
+          <ArrowLeft size={16} className="text-muted" />
+        </button>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: student.color }} />
+          <h1 className="font-display font-semibold text-xl text-primary tracking-wide truncate">{student.name}</h1>
+        </div>
+      </div>
+
+      {resumo.alertas.length > 0 && (
+        <div className="rounded-xl border p-3 flex flex-col gap-1" style={{ borderColor: 'var(--gold)', backgroundColor: 'var(--gold-soft)' }}>
+          <span className="flex items-center gap-1.5 text-sm font-body font-semibold" style={{ color: acentoTexto('#F5B44C') }}>
+            <AlertTriangle size={15} /> {plural(resumo.alertas.length, 'ponto a ter em conta', 'pontos a ter em conta')}
+          </span>
+          {resumo.alertas.map((a, i) => (
+            <span key={i} className="text-xs font-body text-muted">
+              {a.pergunta}{a.detalhe ? ` — ${a.detalhe}` : ''}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard
+          label="Aulas realizadas"
+          value={resumo.realizadas}
+          sub={resumo.comparencia != null ? `${resumo.comparencia}% de comparência` : 'sem aulas fechadas'}
+          icon={CheckCircle2}
+          accent="brass"
+        />
+        <StatCard
+          label="Faltas"
+          value={resumo.faltas}
+          sub={resumo.creditos > 0 ? `${plural(resumo.creditos, 'crédito por usar', 'créditos por usar')}` : undefined}
+          icon={UserX}
+          accent="rust"
+        />
+        <StatCard
+          label="Avaliações"
+          value={resumo.avaliacoes}
+          sub={resumo.ultimaAvaliacao ? `última a ${fmtDateBR(new Date(`${resumo.ultimaAvaliacao.date}T00:00:00`))}` : 'nenhuma ainda'}
+          icon={Activity}
+          accent="sky"
+        />
+        <StatCard
+          label="Programas ativos"
+          value={resumo.programas}
+          sub={student.startDate ? `aluno desde ${fmtDateLong(`${student.startDate}T00:00:00`)}` : undefined}
+          icon={Dumbbell}
+          accent="brass"
+        />
+      </div>
+
+      {resumo.formulariosPorPreencher.length > 0 && (
+        <div className="card p-3 flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-xs font-body text-muted min-w-0">
+            Por preencher: {resumo.formulariosPorPreencher.map((m) => m.nome).join(', ')}
+          </span>
+          <button type="button" onClick={() => onGoToFormularios(student)} className="text-2xs font-body link-sky flex-shrink-0">
+            Abrir formulários
+          </button>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2">
+        <div className="relative min-w-0">
+          <Search size={15} className="absolute text-faint" style={{ left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+          <input
+            value={procura}
+            onChange={(e) => setProcura(e.target.value)}
+            placeholder="Procurar na história deste aluno..."
+            aria-label="Procurar na ficha"
+            className="input-field"
+            style={{ paddingLeft: 34 }}
+          />
+        </div>
+
+        <div className="flex gap-1.5 flex-wrap">
+          {TIPOS_EVENTO.map((t) => {
+            const ativo = tipos.includes(t.id);
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => alternarTipo(t.id)}
+                aria-pressed={ativo}
+                className="px-3 py-1.5 rounded-lg border text-xs font-body nowrap"
+                style={{
+                  borderColor: ativo ? t.cor : 'var(--border-hair)',
+                  backgroundColor: ativo ? `color-mix(in srgb, ${t.cor} 16%, transparent)` : 'var(--bg-elevated)',
+                  color: ativo ? acentoTexto(t.cor) : 'var(--text-muted)',
+                  fontWeight: ativo ? 600 : 400,
+                }}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+          <select value={periodo} onChange={(e) => setPeriodo(e.target.value)} aria-label="Filtrar por período" className="input-field" style={{ flex: '0 1 170px', fontSize: 13 }}>
+            {PERIODOS_FICHA.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select>
+        </div>
+
+        {(tipos.length > 0 || procura || periodo !== 'todos') && (
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-2xs font-body text-faint">
+              {visiveis.length === eventos.length
+                ? plural(eventos.length, 'acontecimento', 'acontecimentos')
+                : `${visiveis.length} de ${eventos.length} acontecimentos`}
+            </span>
+            <button
+              type="button"
+              onClick={() => { setProcura(''); setTipos([]); setPeriodo('todos'); }}
+              className="text-2xs font-body link-sky"
+            >
+              Limpar filtros
+            </button>
+          </div>
+        )}
+      </div>
+
+      {visiveis.length === 0 ? (
+        <EmptyState
+          icon={CalendarDays}
+          message={eventos.length === 0 ? 'Ainda não há história para mostrar.' : 'Nada corresponde a estes filtros.'}
+          hint={eventos.length === 0
+            ? 'Marque uma aula, registe uma avaliação ou preencha um formulário e aparece tudo aqui.'
+            : 'Experimente outro termo, ou limpe os filtros.'}
+        />
+      ) : (
+        <ol className="flex flex-col gap-2">
+          {visiveis.map((e) => {
+            const t = tipoDeEvento(e.tipo);
+            return (
+              <li key={e.id}>
+                <button
+                  type="button"
+                  onClick={() => abrir(e)}
+                  className="w-full text-left rounded-lg border border-hair p-3 flex items-start gap-3 min-w-0 btn-surface"
+                  style={{
+                    backgroundColor: 'var(--bg-elevated)',
+                    borderLeftWidth: 3,
+                    borderLeftColor: t.cor,
+                  }}
+                >
+                  <span className="flex flex-col items-center flex-shrink-0" style={{ width: 52 }}>
+                    <span className="font-mono text-xs text-primary">
+                      {fmtDateBR(new Date(e.quando))}
+                    </span>
+                    <span className="font-mono text-2xs text-faint">
+                      {new Date(e.quando).getFullYear()}
+                    </span>
+                  </span>
+                  <span className="flex flex-col min-w-0 flex-1">
+                    <span className="text-sm font-body text-primary truncate" style={{ fontWeight: 500 }}>
+                      {e.titulo}
+                    </span>
+                    {e.detalhe && (
+                      <span className="text-2xs font-body text-faint" style={{ overflowWrap: 'anywhere' }}>
+                        {e.detalhe}
+                      </span>
+                    )}
+                  </span>
+                  <span className="badge flex-shrink-0" style={{ backgroundColor: `color-mix(in srgb, ${t.cor} 14%, transparent)`, color: acentoTexto(t.cor) }}>
+                    {t.um}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+
+      <p className="text-2xs font-body text-faint">
+        Os pagamentos não aparecem aqui: um lançamento das finanças não fica
+        ligado a um aluno, e adivinhar a ligação pelo texto daria uma ficha que
+        mente.
+      </p>
+    </div>
+  );
+}
+
 /* ===================== IMPRESSAO / EXPORTACAO PDF ===================== */
 
 // Numero formatado com unidade, ou nada. Devolver null deixa o chamador decidir
@@ -10957,6 +11325,7 @@ function AppInner() {
   const [treinos, setTreinos] = useState(EMPTY_TREINOS);
   const [formularios, setFormularios] = useState(EMPTY_FORMULARIOS);
   const [formulariosStudentId, setFormulariosStudentId] = useState(null);
+  const [fichaStudentId, setFichaStudentId] = useState(null);
   const [preencherForm, setPreencherForm] = useState(null); // { modelo, resposta }
   const [treinosStudentId, setTreinosStudentId] = useState(null);
   const [clipboardSession, setClipboardSession] = useState(null);
@@ -11454,6 +11823,11 @@ function AppInner() {
   function goToFormularios(student) {
     setShowStudentModal(false);
     setFormulariosStudentId(student.id);
+  }
+
+  function goToFicha(student) {
+    setShowStudentModal(false);
+    setFichaStudentId(student.id);
   }
 
   function printFormulario(resposta) {
@@ -12372,7 +12746,19 @@ function AppInner() {
       <main className="flex-1 pb-10 pb-nav">
         {/* Os treinos vivem dentro do aluno e nao na barra de navegacao: quando
             ha um aluno escolhido, esta vista toma conta do ecra. */}
-        {formulariosStudentId && students.some((st) => st.id === formulariosStudentId) ? (
+        {fichaStudentId && students.some((st) => st.id === fichaStudentId) ? (
+          <FichaView
+            student={students.find((st) => st.id === fichaStudentId)}
+            sessions={sessions}
+            treinos={treinos}
+            formularios={formularios}
+            onOpenSession={openEditSession}
+            onGoToAssessments={(st) => { setFichaStudentId(null); goToAssessments(st); }}
+            onGoToTreinos={(st) => { setFichaStudentId(null); goToTreinos(st); }}
+            onGoToFormularios={(st) => { setFichaStudentId(null); goToFormularios(st); }}
+            onVoltar={() => setFichaStudentId(null)}
+          />
+        ) : formulariosStudentId && students.some((st) => st.id === formulariosStudentId) ? (
           <FormulariosView
             student={students.find((st) => st.id === formulariosStudentId)}
             formularios={formularios}
@@ -12558,7 +12944,7 @@ function AppInner() {
         <RegistarFaltaModal students={students} sessions={sessions} definicoes={definicoes} onSave={registarFalta} onClose={() => setShowFaltaModal(false)} />
       )}
       {showStudentModal && (
-        <StudentFormModal student={studentModal} sessions={sessions} customCategories={customCategories} formularios={formularios} onAddCategory={addCategory} onSave={saveStudent} onClose={() => setShowStudentModal(false)} onDelete={deleteStudent} onGoToAssessments={goToAssessments} onGoToTreinos={goToTreinos} onGoToFormularios={goToFormularios} onGoToSession={openEditSession} onAgendarReposicao={openReposicaoFor}
+        <StudentFormModal student={studentModal} sessions={sessions} customCategories={customCategories} formularios={formularios} onAddCategory={addCategory} onSave={saveStudent} onClose={() => setShowStudentModal(false)} onDelete={deleteStudent} onGoToAssessments={goToAssessments} onGoToTreinos={goToTreinos} onGoToFormularios={goToFormularios} onGoToFicha={goToFicha} onGoToSession={openEditSession} onAgendarReposicao={openReposicaoFor}
           treinoCount={studentModal ? prescricoesDoAluno(treinos, studentModal.id).length : 0} />
       )}
       {showTransactionModal && (

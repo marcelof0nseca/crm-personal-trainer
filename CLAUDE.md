@@ -95,6 +95,12 @@ Consequências que decidem quase tudo:
 - **Cada gravação reescreve o bloco inteiro.** Daí o carimbo de versão, abaixo.
 - **As avaliações físicas são sessões da agenda** (`type: 'avaliacao'` + campos
   `assess*`), não uma entidade própria. Mexer em avaliações mexe na agenda.
+  Uma avaliação tem estado (`assessEstado`: `rascunho` ou `final` — quem não
+  tem o campo é final) e história (`assessVersoes`: até 20 retratos dos campos
+  anteriores, cada um com quem, quando e porquê). Escrever num rascunho não
+  gera revisão; finalizar e rever um documento final geram. **O autosave grava
+  em silêncio e só para rascunhos** — guardar sozinho um documento já entregue
+  criaria revisões sem motivo.
 - **As fotografias já não vivem aqui.** O bloco `fotos` guarda só
   `{ id, path, createdAt }`; os ficheiros estão no balde privado `fotos` do
   Supabase Storage, em `<user_id>/<foto_id>.jpg`, e chegam por URL assinado com
@@ -342,7 +348,7 @@ existe de verdade.
 | **Agenda** | Dia, semana, mês, lista · procura e filtros · horário de abertura por dia com exceções · horários livres em lote · arrastar com confirmação e desfazer · **selecionar e mover várias de uma vez** · copiar/colar · recorrência com "só esta / toda a série" · **aviso de conflito** |
 | **Faltas** | Estados, direito a reposição, crédito ligado à aula de origem · **validade do crédito, estado "Expirada" e registo de auditoria** (quem concedeu, quando, o que aconteceu desde então) |
 | **Prescrição** | Treinos A/B/C, 2 076 exercícios, modelos, arquivo, PDF timbrado agrupado por bloco. Blocos, métodos como lista, 15 campos por exercício, duplicar, arrastar para reordenar |
-| **Avaliações** | Dobras, % massa gorda, perímetros, fotografias, gráfico de evolução, PDF |
+| **Avaliações** | Dobras, % massa gorda, perímetros, fotografias, gráfico de evolução, PDF · **rascunho e final, autosave, revisões com motivo, comparar e repor** |
 | **Documentos** | Timbre com logótipo próprio, estúdio, nº profissional e contactos · aviso de confidencialidade em todas as folhas · escolher que secções saem · **pré-visualizar antes de imprimir** · abrir o e-mail para o aluno |
 | **Finanças** | Entradas e saídas, categorias, IVA, taxa do ginásio, pendências |
 | **Pagamentos** | Stripe: mensal/trimestral/anual, cartão, Apple Pay, Google Pay, MB WAY, webhook, portal de faturação, meses grátis |
@@ -409,8 +415,8 @@ Combinado por níveis, do mais barato ao mais caro:
 9. ~~Timbre completo: logótipo, contactos, nº profissional, aviso de
    confidencialidade, escolher secções, pré-visualizar~~ **feito**
    — a numeração das páginas é do browser, não da aplicação (ver secção 6)
-10. **Versões da avaliação:** rascunho, revisões, quem editou, comparar,
-    restaurar, motivo, autosave
+10. ~~Versões da avaliação: rascunho, revisões, quem editou, comparar,
+    restaurar, motivo, autosave~~ **feito**
 11. **Biblioteca:** PT-PT/PT-BR/EN e sinónimos (o catálogo de origem tinha
     `name_en`, que o gerador hoje deita fora), progressões, regressões,
     substituições, pastas, favoritos

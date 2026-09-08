@@ -393,6 +393,7 @@ existe de verdade.
 | **Documentos** | Timbre com logótipo próprio, estúdio, nº profissional e contactos · aviso de confidencialidade em todas as folhas · escolher que secções saem · **pré-visualizar antes de imprimir** · abrir o e-mail para o aluno |
 | **Finanças** | Entradas e saídas, categorias, IVA, taxa do ginásio, pendências |
 | **Pagamentos** | Stripe: mensal/trimestral/anual, cartão, Apple Pay, Google Pay, MB WAY, webhook, portal de faturação, meses grátis |
+| **Ficha 360º** | Aulas, faltas, avaliações, treinos e formulários numa linha só, por aluno · procura livre sobre tudo · filtros por tipo e período · resumo com comparência e créditos · os pontos a ter em conta em cima |
 | **Formulários** | PAR-Q, anamnese e consentimentos (treino, imagem, dados de saúde) · construtor próprio · assinatura desenhada · PDF timbrado · pontos a ter em conta, ditos como avisos |
 | **Segurança** | Auth, RLS por utilizador, Turnstile, termos e política em pt-PT, dados na UE, exportação e apagamento |
 | **Fiabilidade** | Gravação imediata, backup e restauro, **carimbo de versão contra perda silenciosa** |
@@ -467,7 +468,8 @@ Combinado por níveis, do mais barato ao mais caro:
     passar a guardá-lo
 12. ~~Anamnese, PAR-Q e consentimentos — construtor de formulários~~ **feito**
     — **falta correr o SQL do schema** para a chave `formularios`
-13. **Ficha 360º** com linha temporal pesquisável
+13. ~~Ficha 360º com linha temporal pesquisável~~ **feito**
+    — sem os pagamentos: uma transação não tem `studentId`
 14. **Progresso e relatórios** — só o que existe sem área do aluno
 15. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
 16. Decisões de produto — ver secção 10

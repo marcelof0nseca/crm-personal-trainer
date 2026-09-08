@@ -89,22 +89,40 @@ using (public.has_personal_app_access(user_id));
 -- E só aperta para quem tem um fator verificado -- para os outros continua a
 -- aceitar aal1, senão ninguém entrava. Sem isto, o pedido do código na
 -- aplicação é só um ecrã: a sessão em aal1 continuava a ler tudo pela API.
+--
+-- A pergunta tem de ser feita DENTRO de uma função `security definer`. A
+-- política corre com os direitos de quem faz o pedido, e `authenticated` não
+-- pode ler `auth.mfa_factors` -- consultá-la diretamente numa política faz
+-- toda a consulta a `app_data` rebentar com «permission denied for table
+-- mfa_factors», leituras incluídas. Dar `select` nessa tabela a
+-- `authenticated` resolveria o erro e abriria um buraco: lá está a coluna
+-- `secret` dos códigos TOTP, de toda a gente. A função devolve só sim ou não.
+create or replace function public.aal_suficiente()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select case
+    when exists (
+      select 1 from auth.mfa_factors f
+      where f.user_id = (select auth.uid()) and f.status = 'verified'
+    )
+    then coalesce((select auth.jwt() ->> 'aal'), '') = 'aal2'
+    else true
+  end;
+$$;
+
+grant execute on function public.aal_suficiente() to authenticated;
+
 drop policy if exists "app_data_exige_aal2" on public.app_data;
 create policy "app_data_exige_aal2"
 on public.app_data
 as restrictive
 to authenticated
-using (
-  array[(select auth.jwt() ->> 'aal')] <@ (
-    select case
-      when count(id) > 0 then array['aal2']
-      else array['aal1', 'aal2']
-    end
-    from auth.mfa_factors
-    where auth.mfa_factors.user_id = (select auth.uid())
-      and auth.mfa_factors.status = 'verified'
-  )
-);
+using (public.aal_suficiente())
+with check (public.aal_suficiente());
 
 /* ========================= FOTOGRAFIAS NO STORAGE =========================
    As fotografias de progresso viviam dentro do `app_data`, em base64. O bloco
@@ -152,18 +170,8 @@ create policy "fotos_exige_aal2"
 on storage.objects
 as restrictive
 to authenticated
-using (
-  bucket_id <> 'fotos'
-  or array[(select auth.jwt() ->> 'aal')] <@ (
-    select case
-      when count(id) > 0 then array['aal2']
-      else array['aal1', 'aal2']
-    end
-    from auth.mfa_factors
-    where auth.mfa_factors.user_id = (select auth.uid())
-      and auth.mfa_factors.status = 'verified'
-  )
-);
+using (bucket_id <> 'fotos' or public.aal_suficiente())
+with check (bucket_id <> 'fotos' or public.aal_suficiente());
 
 alter table public.personal_subscriptions enable row level security;
 

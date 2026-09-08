@@ -10963,6 +10963,10 @@ function AppInner() {
   // Qual o bloco que foi alterado noutro sítio. Enquanto estiver preenchido, a
   // aplicação diz-lhe que o que está no ecrã não ficou guardado.
   const [conflito, setConflito] = useState(null);
+  // Blocos que o servidor recusou. Um erro de leitura engolido faz uma conta
+  // cheia parecer vazia -- foi assim que uma política mal escrita passou
+  // semanas sem dar sinal de vida.
+  const [leituraFalhada, setLeituraFalhada] = useState(null);
   const [movimentoDesfazivel, setMovimentoDesfazivel] = useState(null);
   const [mfaPendente, setMfaPendente] = useState(false);
   // Endereços assinados das fotografias que estão no balde, por id.
@@ -11148,17 +11152,28 @@ function AppInner() {
   async function loadAll() {
     setLoading(true);
     let st = []; let se = []; let fi = []; let ph = []; let cc = EMPTY_CUSTOM_CATEGORIES; let df = null; let tr = null; let fo = null;
+    // Não basta apanhar o erro: é preciso saber que ele aconteceu. Sem isto,
+    // "não há nada gravado" e "não consegui ler o que está gravado" são a
+    // mesma coisa aos olhos de quem usa — e a segunda é grave.
+    const falhas = [];
+    const tentar = async (chave, aplicar) => {
+      try {
+        const r = await readStoredValue(chave);
+        if (r && r.value) aplicar(JSON.parse(r.value));
+      } catch (e) {
+        console.error(`[PTMANAGER] falhou a ler "${chave}"`, e);
+        falhas.push({ chave, erro: e });
+      }
+    };
     if (storageOk) {
-      try { const r = await readStoredValue('alunos'); if (r && r.value) st = JSON.parse(r.value); } catch (e) { /* sem dados */ }
-      try { const r = await readStoredValue('agenda'); if (r && r.value) se = JSON.parse(r.value); } catch (e) { /* sem dados */ }
-      try { const r = await readStoredValue('financas'); if (r && r.value) fi = JSON.parse(r.value); } catch (e) { /* sem dados */ }
-      try { const r = await readStoredValue('fotos'); if (r && r.value) ph = JSON.parse(r.value); } catch (e) { /* sem dados */ }
-      try { const r = await readStoredValue('categorias'); if (r && r.value) cc = JSON.parse(r.value); } catch (e) { /* sem dados */ }
-      try { const r = await readStoredValue('definicoes'); if (r && r.value) df = JSON.parse(r.value); } catch (e) { /* sem dados */ }
-      try { const r = await readStoredValue('treinos'); if (r && r.value) tr = JSON.parse(r.value); } catch (e) { /* sem dados */ }
-      // A chave 'formularios' é recente: quem ainda não correu o SQL do schema
-      // não a tem, e a leitura falha em silêncio. A aplicação abre à mesma.
-      try { const r = await readStoredValue('formularios'); if (r && r.value) fo = JSON.parse(r.value); } catch (e) { /* sem dados */ }
+      await tentar('alunos', (v) => { st = v; });
+      await tentar('agenda', (v) => { se = v; });
+      await tentar('financas', (v) => { fi = v; });
+      await tentar('fotos', (v) => { ph = v; });
+      await tentar('categorias', (v) => { cc = v; });
+      await tentar('definicoes', (v) => { df = v; });
+      await tentar('treinos', (v) => { tr = v; });
+      await tentar('formularios', (v) => { fo = v; });
     }
     setStudents(Array.isArray(st) ? st : []);
 
@@ -11188,6 +11203,7 @@ function AppInner() {
     if (Array.isArray(tr && tr.biblioteca) && storageOk) {
       try { await writeStoredValue('treinos', JSON.stringify(serializarTreinos(treinosNorm))); } catch (e) { /* fica para a próxima gravação */ }
     }
+    setLeituraFalhada(falhas.length > 0 ? falhas : null);
     setLoading(false);
     // Depois de a aplicação abrir, não antes: subir fotografias antigas pode
     // demorar e não há razão para o treinador esperar por isso.
@@ -12594,6 +12610,42 @@ function AppInner() {
           onDone={(msg) => showToast(msg)}
         />
       )}
+      {leituraFalhada && (
+        <div
+          role="alert"
+          className="fixed left-0 right-0 px-4 py-3 flex items-start gap-2.5 animate-in"
+          style={{
+            bottom: 0, zIndex: 55,
+            backgroundColor: 'var(--rust-soft)',
+            borderTop: '2px solid var(--rust)',
+            paddingBottom: 'calc(12px + env(safe-area-inset-bottom))',
+          }}
+        >
+          <AlertTriangle size={17} className="text-rust flex-shrink-0" style={{ marginTop: 1 }} />
+          <div className="flex flex-col gap-1 min-w-0">
+            <span className="text-sm font-body font-semibold text-primary">
+              Não foi possível ler os seus dados do servidor.
+            </span>
+            <span className="text-xs font-body text-muted">
+              O que está no ecrã pode não ser o que está guardado.{' '}
+              <strong>Não altere nada</strong> até isto ficar resolvido —{' '}
+              {descreverErroDeGravacao(leituraFalhada[0].erro).replace(' Nada ficou guardado.', '')}
+            </span>
+            <span className="text-2xs font-mono text-faint">
+              {leituraFalhada.map((f) => f.chave).join(', ')}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="btn btn-ghost flex-shrink-0"
+            style={{ fontSize: 12, marginLeft: 'auto' }}
+          >
+            <RefreshCcw size={13} /> Tentar de novo
+          </button>
+        </div>
+      )}
+
       {conflito && (
         <ConfirmDialog
           title="Alterado noutro dispositivo"

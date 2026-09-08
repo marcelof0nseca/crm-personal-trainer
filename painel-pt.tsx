@@ -5142,7 +5142,7 @@ function NavTabs({ view, setView, isAdmin }) {
 
 /* ============================== DASHBOARD ============================== */
 
-function Dashboard({ students, sessions, finances, customCategories, setView, onAddSession, onOpenSession, onQuickStatus }) {
+function Dashboard({ students, sessions, finances, customCategories, setView, onAddSession, onOpenSession, onQuickStatus, onRelatorio }) {
   const activeStudents = useMemo(() => students.filter((s) => s.active), [students]);
 
   const totals = useMemo(() => activeStudents.reduce((acc, s) => {
@@ -5244,9 +5244,16 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
 
   return (
     <div className="px-4 py-4 max-w-6xl mx-auto flex flex-col gap-6">
-      <div>
-        <div className="text-2xs uppercase tracking-widest text-faint font-mono mb-1">{greeting}</div>
-        <h1 className="font-display font-semibold text-2xl text-primary tracking-wide">Painel Financeiro e Operacional</h1>
+      <div className="flex items-end justify-between gap-3 flex-wrap">
+        <div>
+          <div className="text-2xs uppercase tracking-widest text-faint font-mono mb-1">{greeting}</div>
+          <h1 className="font-display font-semibold text-2xl text-primary tracking-wide">Painel Financeiro e Operacional</h1>
+        </div>
+        {onRelatorio && (
+          <button type="button" onClick={onRelatorio} className="btn btn-ghost flex-shrink-0" style={{ fontSize: 12 }}>
+            <Printer size={14} /> Relatório do período
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -9018,7 +9025,7 @@ const PERIODOS_FICHA = [
   { id: '365', label: 'Último ano', dias: 365 },
 ];
 
-function FichaView({ student, sessions, treinos, formularios, onOpenSession, onGoToAssessments, onGoToTreinos, onGoToFormularios, onVoltar }) {
+function FichaView({ student, sessions, treinos, formularios, onOpenSession, onGoToAssessments, onGoToTreinos, onGoToFormularios, onProgresso, onVoltar }) {
   const [procura, setProcura] = useState('');
   const [tipos, setTipos] = useState([]);   // vazio = todos
   const [periodo, setPeriodo] = useState('todos');
@@ -9068,6 +9075,11 @@ function FichaView({ student, sessions, treinos, formularios, onOpenSession, onG
           <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: student.color }} />
           <h1 className="font-display font-semibold text-xl text-primary tracking-wide truncate">{student.name}</h1>
         </div>
+        {onProgresso && (
+          <button type="button" onClick={() => onProgresso(student)} className="btn btn-ghost flex-shrink-0" style={{ fontSize: 12, marginLeft: 'auto' }}>
+            <Printer size={14} /> Progresso
+          </button>
+        )}
       </div>
 
       {resumo.alertas.length > 0 && (
@@ -9940,6 +9952,429 @@ function AssessmentPrintDoc({ student, assessment, historico, photosById, traine
       {/* fmtDateBR e dd/mm, sem ano: serve na agenda, nao num documento que o aluno guarda. */}
       <PrintFooter nota={`${student.name} · Avaliação de ${fmtDateLong(`${a.date}T00:00:00`)}`} timbre={marca} />
     </>
+  );
+}
+
+/* ===================== RELATÓRIOS =====================
+ *
+ * O Painel mostra o mês corrente no ecrã. Um relatório é outra coisa: escolhe-se
+ * o período, imprime-se, guarda-se. São dois — o do negócio, para o treinador,
+ * e o do progresso, para entregar ao aluno.
+ *
+ * Nada aqui inventa números. O aluno não usa a aplicação, por isso não há
+ * cargas levantadas nem adesão ao plano: só o que foi mesmo registado.
+ */
+
+const PERIODOS_RELATORIO = [
+  { id: 'mes', label: 'Este mês' },
+  { id: 'mes_anterior', label: 'Mês passado' },
+  { id: 'trimestre', label: 'Últimos 3 meses' },
+  { id: 'ano', label: 'Últimos 12 meses' },
+  { id: 'personalizado', label: 'Datas à escolha' },
+];
+
+function limitesDoPeriodo(id) {
+  const hoje = new Date();
+  const iso = (d) => fmtDateISO(d);
+  if (id === 'mes') {
+    return { inicio: iso(new Date(hoje.getFullYear(), hoje.getMonth(), 1)), fim: iso(new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0)) };
+  }
+  if (id === 'mes_anterior') {
+    return { inicio: iso(new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1)), fim: iso(new Date(hoje.getFullYear(), hoje.getMonth(), 0)) };
+  }
+  if (id === 'trimestre') {
+    return { inicio: iso(new Date(hoje.getFullYear(), hoje.getMonth() - 2, 1)), fim: iso(new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0)) };
+  }
+  return { inicio: iso(new Date(hoje.getFullYear(), hoje.getMonth() - 11, 1)), fim: iso(new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0)) };
+}
+
+// Quantos minutos de horário de funcionamento existem entre duas datas. É o
+// denominador da ocupação: sem ele, "20 aulas" não diz se sobra espaço ou não.
+function minutosDisponiveis(definicoes, inicio, fim) {
+  let total = 0;
+  const d = new Date(`${inicio}T00:00:00`);
+  const ultimo = new Date(`${fim}T00:00:00`);
+  // Um ano de dias é 365 voltas: barato, e evita ter de somar por semana e
+  // depois corrigir as pontas.
+  while (d <= ultimo) {
+    const h = horarioDoDia(definicoes, fmtDateISO(d));
+    if (h && h.aberto) {
+      (h.intervalos || []).forEach((i) => { total += Math.max(0, minutosDe(i.fim) - minutosDe(i.inicio)); });
+    }
+    d.setDate(d.getDate() + 1);
+  }
+  return total;
+}
+
+function metricasDoPeriodo({ inicio, fim, sessions, students, finances, definicoes }) {
+  const noPeriodo = (s) => s.date >= inicio && s.date <= fim;
+  const marcacoes = (sessions || []).filter((s) => noPeriodo(s) && s.kind !== 'evento' && s.type !== 'horario_livre');
+
+  // Uma avaliação também é uma presença, mas não é uma aula: contá-la nas
+  // duas linhas da mesma folha seria contar o mesmo acontecimento duas vezes.
+  const avaliacoes = marcacoes.filter((s) => s.type === 'avaliacao' && s.status === 'realizado');
+  const realizadas = marcacoes.filter((s) => s.status === 'realizado' && s.type !== 'avaliacao');
+  const faltas = marcacoes.filter((s) => isFalta(s));
+  const canceladas = marcacoes.filter((s) => s.status === 'cancelado');
+  // A comparência conta as duas: o aluno apareceu. É o mesmo critério do Painel.
+  const presencas = realizadas.length + avaliacoes.length;
+  const decididas = presencas + faltas.length;
+
+  // Minutos ocupados: só o que aconteceu ou está para acontecer, nunca o
+  // cancelado — uma aula cancelada devolveu a hora à agenda.
+  const ocupados = marcacoes
+    .filter((s) => s.status !== 'cancelado')
+    .reduce((soma, s) => soma + Math.max(0, minutosDe(s.endTime || '00:00') - minutosDe(s.startTime || '00:00')), 0);
+  const disponiveis = definicoes ? minutosDisponiveis(definicoes, inicio, fim) : 0;
+
+  const ativos = (students || []).filter((s) => s.active);
+  const novos = (students || []).filter((s) => s.startDate && s.startDate >= inicio && s.startDate <= fim);
+
+  const lancamentos = (finances || []).filter((t) => t.date >= inicio && t.date <= fim);
+  const entradas = lancamentos.filter((t) => t.type === 'entrada').reduce((s, t) => s + (Number(t.amount) || 0), 0);
+  const saidas = lancamentos.filter((t) => t.type === 'gasto').reduce((s, t) => s + (Number(t.amount) || 0), 0);
+  const pendentes = lancamentos.filter((t) => t.status === 'pendente').length;
+
+  // Os planos dos alunos são um valor mensal: multiplica-se pelos meses que o
+  // período abrange, senão um trimestre parecia render o mesmo que um mês.
+  const meses = Math.max(1, Math.round(
+    (new Date(`${fim}T00:00:00`) - new Date(`${inicio}T00:00:00`)) / (30.44 * 86400000),
+  ));
+  const planos = ativos.reduce((acc, s) => {
+    const f = studentFinance(s);
+    return { bruto: acc.bruto + f.gross, imposto: acc.imposto + f.tax, ginasio: acc.ginasio + f.gymFee, liquido: acc.liquido + f.net };
+  }, { bruto: 0, imposto: 0, ginasio: 0, liquido: 0 });
+
+  return {
+    inicio,
+    fim,
+    realizadas: realizadas.length,
+    faltas: faltas.length,
+    canceladas: canceladas.length,
+    avaliacoes: avaliacoes.length,
+    comparencia: decididas > 0 ? Math.round((presencas / decididas) * 100) : null,
+    ocupacao: disponiveis > 0 ? Math.round((ocupados / disponiveis) * 100) : null,
+    horasOcupadas: ocupados / 60,
+    horasDisponiveis: disponiveis / 60,
+    ativos: ativos.length,
+    novos: novos.length,
+    meses,
+    planos: {
+      bruto: planos.bruto * meses,
+      imposto: planos.imposto * meses,
+      ginasio: planos.ginasio * meses,
+      liquido: planos.liquido * meses,
+    },
+    entradas,
+    saidas,
+    pendentes,
+    // Por aluno, ordenado pelo que rende: é a lista que decide quem se retém.
+    porAluno: ativos
+      .map((s) => ({
+        nome: s.name,
+        plano: s.plan,
+        liquido: studentFinance(s).net * meses,
+        realizadas: realizadas.filter((x) => x.studentId === s.id).length,
+        faltas: faltas.filter((x) => x.studentId === s.id).length,
+      }))
+      .sort((a, b) => b.liquido - a.liquido),
+  };
+}
+
+function RelatorioPeriodoPrintDoc({ metricas, trainerName, userEmail, timbre }) {
+  if (!metricas) return null;
+  const m = metricas;
+  const marca = timbre || EMPTY_TIMBRE;
+  const periodo = `${fmtDateLong(`${m.inicio}T00:00:00`)} a ${fmtDateLong(`${m.fim}T00:00:00`)}`;
+
+  return (
+    <>
+      <PrintHeader
+        trainerName={trainerName}
+        userEmail={userEmail}
+        timbre={marca}
+        titulo="Relatório do período"
+        subtitulo={periodo}
+      />
+
+      <div className="print-highlight">
+        <div className="print-kpi"><dt>Aulas dadas</dt><dd>{m.realizadas}</dd></div>
+        <div className="print-kpi"><dt>Comparência</dt><dd>{m.comparencia != null ? `${m.comparencia}%` : '—'}</dd></div>
+        <div className="print-kpi"><dt>Alunos ativos</dt><dd>{m.ativos}</dd></div>
+        <div className="print-kpi"><dt>Líquido</dt><dd>{currency(m.planos.liquido)}</dd></div>
+      </div>
+
+      <PrintSection title="Atividade">
+        <dl className="print-grid">
+          <PrintField label="Aulas realizadas" value={String(m.realizadas)} />
+          <PrintField label="Faltas" value={String(m.faltas)} />
+          <PrintField label="Canceladas" value={String(m.canceladas)} />
+          <PrintField label="Avaliações feitas" value={String(m.avaliacoes)} />
+          <PrintField label="Comparência" value={m.comparencia != null ? `${m.comparencia}%` : null} />
+          <PrintField label="Alunos novos no período" value={String(m.novos)} />
+        </dl>
+        <div className="print-notes" style={{ marginTop: 6 }}>
+          A comparência conta aulas e avaliações a que o aluno compareceu,
+          sobre o total de marcações que ficaram decididas. As canceladas não
+          entram: não chegaram a ser uma presença nem uma falta.
+        </div>
+        {m.comparencia == null && (
+          <div className="print-notes" style={{ marginTop: 6 }}>
+            Não há comparência a mostrar: nenhuma aula do período foi marcada
+            como realizada ou como falta.
+          </div>
+        )}
+      </PrintSection>
+
+      <PrintSection title="Ocupação da agenda">
+        <dl className="print-grid">
+          <PrintField label="Horas ocupadas" value={`${nPT(m.horasOcupadas)} h`} />
+          <PrintField label="Horas de horário" value={m.horasDisponiveis > 0 ? `${nPT(m.horasDisponiveis)} h` : null} />
+          <PrintField label="Ocupação" value={m.ocupacao != null ? `${m.ocupacao}%` : null} />
+        </dl>
+        <div className="print-notes" style={{ marginTop: 6 }}>
+          A ocupação compara as horas marcadas com o horário de funcionamento
+          definido. Serve para saber quanto espaço ainda há para vender, não
+          para avaliar o trabalho de ninguém.
+        </div>
+      </PrintSection>
+
+      <PrintSection title={`Receita dos planos${m.meses > 1 ? ` (${plural(m.meses, 'mês', 'meses')})` : ''}`}>
+        <dl className="print-grid">
+          <PrintField label="Bruto" value={currency(m.planos.bruto)} />
+          <PrintField label="Impostos" value={currency(m.planos.imposto)} />
+          <PrintField label="Taxa do ginásio" value={currency(m.planos.ginasio)} />
+          <PrintField label="Líquido" value={currency(m.planos.liquido)} />
+        </dl>
+        <div className="print-notes" style={{ marginTop: 6 }}>
+          Calculado a partir dos planos dos alunos ativos, não dos pagamentos
+          recebidos. É o que está contratado, não o que já entrou.
+        </div>
+      </PrintSection>
+
+      <PrintSection title="Lançamentos do período">
+        <dl className="print-grid">
+          <PrintField label="Entradas" value={currency(m.entradas)} />
+          <PrintField label="Saídas" value={currency(m.saidas)} />
+          <PrintField label="Saldo" value={currency(m.entradas - m.saidas)} />
+          <PrintField label="Por receber" value={m.pendentes > 0 ? plural(m.pendentes, 'lançamento', 'lançamentos') : null} />
+        </dl>
+      </PrintSection>
+
+      {m.porAluno.length > 0 && (
+        <PrintSection title="Por aluno">
+          <table className="print-table">
+            <thead>
+              <tr>
+                <th>Aluno</th>
+                <th>Plano</th>
+                <th className="num">Aulas</th>
+                <th className="num">Faltas</th>
+                <th className="num">Líquido</th>
+              </tr>
+            </thead>
+            <tbody>
+              {m.porAluno.map((a) => (
+                <tr key={a.nome}>
+                  <td>{a.nome}</td>
+                  <td>{a.plano || '—'}</td>
+                  <td className="num">{a.realizadas}</td>
+                  <td className="num">{a.faltas}</td>
+                  <td className="num">{currency(a.liquido)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </PrintSection>
+      )}
+
+      <PrintFooter nota={`Relatório do período · ${periodo}`} timbre={marca} />
+    </>
+  );
+}
+
+// O que se entrega ao aluno ao fim de uns meses. Só medidas registadas e a
+// diferença entre a primeira e a última -- nenhuma leitura, nenhum juízo.
+function ProgressoPrintDoc({ student, assessments, sessions, trainerName, userEmail, timbre }) {
+  if (!student) return null;
+  const marca = timbre || EMPTY_TIMBRE;
+  const ordenadas = [...(assessments || [])].sort((a, b) => a.date.localeCompare(b.date));
+  const primeira = ordenadas[0] || null;
+  const ultima = ordenadas[ordenadas.length - 1] || null;
+
+  const gorduraDe = (a) => (a.assessMethod === 'dobras'
+    ? calcFoldBodyFat(a, student.sex)
+    : parseFloat(a.assessBodyFat));
+
+  const medidas = [
+    { rotulo: 'Peso', unidade: ' kg', ler: (a) => parseFloat(a.assessWeight) },
+    { rotulo: '% Gordura', unidade: '%', ler: gorduraDe },
+    ...PERIMETRO_FIELDS.map((p) => ({ rotulo: p.label, unidade: ' cm', ler: (a) => parseFloat(a[p.id]) })),
+  ]
+    .map((m) => {
+      const antes = primeira ? m.ler(primeira) : null;
+      const agora = ultima ? m.ler(ultima) : null;
+      if (!Number.isFinite(antes) || !Number.isFinite(agora)) return null;
+      const dif = agora - antes;
+      const fmt = (v) => `${nPT(v)}${m.unidade}`;
+      return {
+        rotulo: m.rotulo,
+        antes: fmt(antes),
+        agora: fmt(agora),
+        // O sinal é o que se lê de relance. Se subiu ou desceu é bom ou mau
+        // depende do objetivo, e isso não é a folha que decide.
+        diferenca: `${dif > 0 ? '+' : dif < 0 ? '−' : ''}${fmt(Math.abs(dif))}`,
+      };
+    })
+    .filter(Boolean);
+
+  const doAluno = (sessions || []).filter((s) => s.studentId === student.id
+    && s.kind !== 'evento' && s.type !== 'horario_livre'
+    && primeira && s.date >= primeira.date);
+  const realizadas = doAluno.filter((s) => s.status === 'realizado').length;
+  const faltas = doAluno.filter((s) => isFalta(s)).length;
+
+  const periodo = primeira && ultima && primeira.id !== ultima.id
+    ? `${fmtDateLong(`${primeira.date}T00:00:00`)} a ${fmtDateLong(`${ultima.date}T00:00:00`)}`
+    : (ultima ? fmtDateLong(`${ultima.date}T00:00:00`) : '');
+
+  return (
+    <>
+      <PrintHeader
+        trainerName={trainerName}
+        userEmail={userEmail}
+        timbre={marca}
+        titulo="Relatório de progresso"
+        subtitulo={`${student.name}${periodo ? ` · ${periodo}` : ''}`}
+      />
+
+      {ordenadas.length < 2 ? (
+        <PrintSection title="Ainda sem comparação">
+          <div className="print-notes">
+            É preciso mais do que uma avaliação para mostrar evolução. Esta
+            folha passa a ter conteúdo assim que houver a segunda.
+          </div>
+        </PrintSection>
+      ) : (
+        <>
+          <div className="print-highlight">
+            <div className="print-kpi"><dt>Avaliações</dt><dd>{ordenadas.length}</dd></div>
+            <div className="print-kpi"><dt>Aulas dadas</dt><dd>{realizadas}</dd></div>
+            <div className="print-kpi"><dt>Faltas</dt><dd>{faltas}</dd></div>
+            <div className="print-kpi">
+              <dt>Medidas com evolução</dt><dd>{medidas.length}</dd>
+            </div>
+          </div>
+
+          {medidas.length > 0 && (
+            <PrintSection title="Da primeira à última avaliação">
+              <table className="print-table">
+                <thead>
+                  <tr>
+                    <th>Medida</th>
+                    <th className="num">Primeira</th>
+                    <th className="num">Última</th>
+                    <th className="num">Diferença</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {medidas.map((m) => (
+                    <tr key={m.rotulo}>
+                      <td>{m.rotulo}</td>
+                      <td className="num">{m.antes}</td>
+                      <td className="num">{m.agora}</td>
+                      <td className="num">{m.diferenca}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </PrintSection>
+          )}
+
+          <PrintEvolutionChart assessments={ordenadas} sex={student.sex} />
+
+          <PrintSection title="Nota">
+            <div className="print-notes">
+              Os números são as medidas registadas em cada avaliação. Se subiram
+              ou desceram é uma leitura que se faz com o treinador, à luz do
+              objetivo acordado — a folha mostra, não interpreta.
+            </div>
+          </PrintSection>
+        </>
+      )}
+
+      <PrintFooter nota={`${student.name} · Relatório de progresso`} timbre={marca} />
+    </>
+  );
+}
+
+// Escolher o período antes de imprimir o relatório do negócio.
+function PeriodoRelatorioModal({ onImprimir, onClose }) {
+  const [tipo, setTipo] = useState('mes');
+  const [inicio, setInicio] = useState(limitesDoPeriodo('mes').inicio);
+  const [fim, setFim] = useState(limitesDoPeriodo('mes').fim);
+
+  function mudarTipo(id) {
+    setTipo(id);
+    if (id !== 'personalizado') {
+      const l = limitesDoPeriodo(id);
+      setInicio(l.inicio);
+      setFim(l.fim);
+    }
+  }
+
+  return (
+    <Modal title="Relatório do período" onClose={onClose}>
+      <div className="flex flex-col gap-3">
+        <div className="flex gap-1.5 flex-wrap">
+          {PERIODOS_RELATORIO.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => mudarTipo(p.id)}
+              aria-pressed={tipo === p.id}
+              className="px-3 py-1.5 rounded-lg border text-xs font-body nowrap"
+              style={{
+                borderColor: tipo === p.id ? 'var(--brass)' : 'var(--border-hair)',
+                backgroundColor: tipo === p.id ? 'var(--brass-soft)' : 'var(--bg-elevated)',
+                color: tipo === p.id ? 'var(--brass)' : 'var(--text-muted)',
+                fontWeight: tipo === p.id ? 600 : 400,
+              }}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <FormField label="De">
+            <input type="date" value={inicio} onChange={(e) => { setInicio(e.target.value); setTipo('personalizado'); }} className="input-field" />
+          </FormField>
+          <FormField label="Até">
+            <input type="date" value={fim} onChange={(e) => { setFim(e.target.value); setTipo('personalizado'); }} className="input-field" />
+          </FormField>
+        </div>
+
+        <p className="text-2xs font-body text-faint">
+          A receita sai dos planos dos alunos ativos — é o que está contratado,
+          não o que já entrou. Os pagamentos recebidos aparecem à parte, na
+          secção dos lançamentos.
+        </p>
+
+        <div className="flex gap-2 pt-1 mobile-stack">
+          <button type="button" onClick={onClose} className="btn btn-ghost">Cancelar</button>
+          <button
+            type="button"
+            disabled={!inicio || !fim || fim < inicio}
+            onClick={() => onImprimir(inicio, fim)}
+            className="btn btn-primary flex-1"
+            style={{ opacity: !inicio || !fim || fim < inicio ? 0.45 : 1 }}
+          >
+            <Printer size={14} /> Ver relatório
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -11326,6 +11761,7 @@ function AppInner() {
   const [formularios, setFormularios] = useState(EMPTY_FORMULARIOS);
   const [formulariosStudentId, setFormulariosStudentId] = useState(null);
   const [fichaStudentId, setFichaStudentId] = useState(null);
+  const [pedirPeriodo, setPedirPeriodo] = useState(false);
   const [preencherForm, setPreencherForm] = useState(null); // { modelo, resposta }
   const [treinosStudentId, setTreinosStudentId] = useState(null);
   const [clipboardSession, setClipboardSession] = useState(null);
@@ -11825,9 +12261,28 @@ function AppInner() {
     setFormulariosStudentId(student.id);
   }
 
+  // Treinos, formulários e ficha tomam conta do ecrã inteiro. Sem os fechar
+  // aqui, carregar num separador da navegação não fazia nada -- a sub-vista
+  // continuava por cima, e a aplicação parecia encravada.
+  function mudarVista(v) {
+    setTreinosStudentId(null);
+    setFormulariosStudentId(null);
+    setFichaStudentId(null);
+    setView(v);
+  }
+
   function goToFicha(student) {
     setShowStudentModal(false);
     setFichaStudentId(student.id);
+  }
+
+  function printRelatorio(inicio, fim) {
+    setPedirPeriodo(false);
+    setPreviaJob({ tipo: 'relatorio', inicio, fim });
+  }
+
+  function printProgresso(student) {
+    setPreviaJob({ tipo: 'progresso', studentId: student.id });
   }
 
   function printFormulario(resposta) {
@@ -12091,6 +12546,31 @@ function AppInner() {
         />
       );
     }
+    if (job.tipo === 'relatorio') {
+      return (
+        <RelatorioPeriodoPrintDoc
+          metricas={metricasDoPeriodo({
+            inicio: job.inicio, fim: job.fim, sessions, students, finances, definicoes,
+          })}
+          trainerName={trainerName}
+          userEmail={user?.email}
+          timbre={definicoes.timbre}
+        />
+      );
+    }
+    if (job.tipo === 'progresso') {
+      return (
+        <ProgressoPrintDoc
+          student={students.find((st) => st.id === job.studentId)}
+          assessments={sessions.filter((s) => s.studentId === job.studentId && s.type === 'avaliacao'
+            && (s.assessWeight || s.assessBodyFat))}
+          sessions={sessions}
+          trainerName={trainerName}
+          userEmail={user?.email}
+          timbre={definicoes.timbre}
+        />
+      );
+    }
     if (job.tipo === 'formulario') {
       const resposta = formularios.respostas.find((r) => r.id === job.respostaId);
       return (
@@ -12129,6 +12609,13 @@ function AppInner() {
   function tituloDaFolha(job) {
     if (!job) return 'Documento';
     if (job.tipo === 'exemplo') return 'Exemplo de timbre';
+    if (job.tipo === 'relatorio') {
+      return `Relatório de ${fmtDateLong(`${job.inicio}T00:00:00`)} a ${fmtDateLong(`${job.fim}T00:00:00`)}`;
+    }
+    if (job.tipo === 'progresso') {
+      const al = students.find((st) => st.id === job.studentId);
+      return `Relatório de progresso — ${al ? al.name : ''}`.trim();
+    }
     if (job.tipo === 'formulario') {
       const r = formularios.respostas.find((x) => x.id === job.respostaId);
       const al = students.find((st) => st.id === job.studentId);
@@ -12742,7 +13229,7 @@ function AppInner() {
   return (
     <div className="min-h-screen bg-base flex flex-col">
       <Header onOpenSettings={() => setSettingsOpen(true)} temaResolvido={temaResolvido} onAlternarTema={alternarTema} />
-      <NavTabs view={view} setView={setView} isAdmin={isAdmin} />
+      <NavTabs view={view} setView={mudarVista} isAdmin={isAdmin} />
       <main className="flex-1 pb-10 pb-nav">
         {/* Os treinos vivem dentro do aluno e nao na barra de navegacao: quando
             ha um aluno escolhido, esta vista toma conta do ecra. */}
@@ -12756,6 +13243,7 @@ function AppInner() {
             onGoToAssessments={(st) => { setFichaStudentId(null); goToAssessments(st); }}
             onGoToTreinos={(st) => { setFichaStudentId(null); goToTreinos(st); }}
             onGoToFormularios={(st) => { setFichaStudentId(null); goToFormularios(st); }}
+            onProgresso={printProgresso}
             onVoltar={() => setFichaStudentId(null)}
           />
         ) : formulariosStudentId && students.some((st) => st.id === formulariosStudentId) ? (
@@ -12794,7 +13282,7 @@ function AppInner() {
           />
         ) : (
         <>
-        {view === 'dashboard' && <Dashboard students={students} sessions={sessions} finances={finances} customCategories={customCategories} setView={setView} onAddSession={openNewSession} onOpenSession={openEditSession} onQuickStatus={quickStatus} />}
+        {view === 'dashboard' && <Dashboard students={students} sessions={sessions} finances={finances} customCategories={customCategories} setView={setView} onAddSession={openNewSession} onOpenSession={openEditSession} onQuickStatus={quickStatus} onRelatorio={() => setPedirPeriodo(true)} />}
         {view === 'agenda' && (
           <div className="px-4 pt-4 max-w-6xl mx-auto flex flex-col gap-3">
             <div className="flex items-center gap-2 flex-wrap">
@@ -12906,6 +13394,10 @@ function AppInner() {
           )}
           onClose={() => setPreencherForm(null)}
         />
+      )}
+
+      {pedirPeriodo && (
+        <PeriodoRelatorioModal onImprimir={printRelatorio} onClose={() => setPedirPeriodo(false)} />
       )}
 
       {previaJob && (

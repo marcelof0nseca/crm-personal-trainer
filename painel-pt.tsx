@@ -534,6 +534,243 @@ const MOTIVOS_REVISAO = [
   'Pedido do aluno',
 ];
 
+/* ===================== FORMULÁRIOS: ANAMNESE, PAR-Q, CONSENTIMENTOS =====================
+ *
+ * Três modelos vêm no código, como a biblioteca de exercícios: não se gravam,
+ * e o treinador pode duplicá-los para os mudar. O que se grava são as
+ * respostas, e os modelos que ele próprio criar.
+ *
+ * REGRA QUE MANDA AQUI: a aplicação assinala, nunca diagnostica. Um "sim" no
+ * PAR-Q não é um impedimento nem um veredicto — é um aviso para procurar um
+ * médico antes de começar. Nada nestes formulários decide seja o que for.
+ */
+
+const TIPOS_PERGUNTA = [
+  { id: 'sim_nao', label: 'Sim / Não' },
+  { id: 'sim_nao_detalhe', label: 'Sim / Não, com detalhe' },
+  { id: 'texto', label: 'Texto curto' },
+  { id: 'texto_longo', label: 'Texto longo' },
+  { id: 'numero', label: 'Número' },
+  { id: 'data', label: 'Data' },
+  { id: 'escolha', label: 'Escolha de uma opção' },
+  { id: 'varias', label: 'Escolha de várias' },
+  { id: 'escala', label: 'Escala de 1 a 5' },
+  { id: 'declaracao', label: 'Declaração a aceitar' },
+];
+
+function tipoDePergunta(id) {
+  return TIPOS_PERGUNTA.find((t) => t.id === id) || TIPOS_PERGUNTA[0];
+}
+
+// As sete perguntas do PAR-Q. São o instrumento internacional de rastreio
+// antes de começar a treinar, e não se mexe na redação: mudar as palavras
+// tirava-lhes o valor.
+const PARQ_PERGUNTAS = [
+  'Algum médico já lhe disse que tem um problema de coração e que só deve fazer atividade física recomendada por um médico?',
+  'Sente dor no peito quando pratica atividade física?',
+  'No último mês, sentiu dor no peito quando não estava a praticar atividade física?',
+  'Perde o equilíbrio devido a tonturas, ou alguma vez perdeu a consciência?',
+  'Tem algum problema ósseo ou articular que possa piorar com a prática de atividade física?',
+  'Toma atualmente medicamentos para a tensão arterial ou para o coração?',
+  'Conhece alguma outra razão pela qual não deva praticar atividade física?',
+];
+
+const MODELO_PARQ = {
+  id: 'f:parq',
+  nome: 'PAR-Q — Aptidão para a atividade física',
+  descricao: 'As sete perguntas de rastreio antes de começar a treinar. Uma resposta afirmativa é motivo para falar com um médico primeiro.',
+  base: true,
+  // Um "sim" em qualquer pergunta levanta o aviso. É o comportamento do
+  // próprio instrumento.
+  alertaSeSim: true,
+  seccoes: [{
+    id: 'parq',
+    titulo: 'Aptidão para a atividade física',
+    perguntas: PARQ_PERGUNTAS.map((texto, i) => ({
+      id: `parq${i + 1}`, texto, tipo: 'sim_nao_detalhe', obrigatoria: true, alerta: true,
+    })),
+  }],
+  rodape: 'Se respondeu «sim» a alguma pergunta, fale com o seu médico antes de aumentar a atividade física. Este questionário é um rastreio, não um diagnóstico nem uma autorização médica.',
+};
+
+const MODELO_ANAMNESE = {
+  id: 'f:anamnese',
+  nome: 'Anamnese',
+  descricao: 'Historial de saúde, lesões, hábitos e objetivos. É a conversa da primeira sessão, escrita.',
+  base: true,
+  seccoes: [
+    {
+      id: 'saude',
+      titulo: 'Saúde',
+      perguntas: [
+        { id: 'a_condicoes', texto: 'Tem alguma condição de saúde diagnosticada?', tipo: 'sim_nao_detalhe', alerta: true },
+        { id: 'a_medicacao', texto: 'Toma medicação regularmente?', tipo: 'sim_nao_detalhe', alerta: true },
+        { id: 'a_cirurgias', texto: 'Fez alguma cirurgia?', tipo: 'sim_nao_detalhe' },
+        { id: 'a_alergias', texto: 'Tem alergias?', tipo: 'sim_nao_detalhe' },
+        { id: 'a_gravidez', texto: 'Está grávida ou no pós-parto?', tipo: 'sim_nao_detalhe', alerta: true },
+      ],
+    },
+    {
+      id: 'lesoes',
+      titulo: 'Lesões e dores',
+      perguntas: [
+        { id: 'a_lesoes', texto: 'Tem ou teve lesões que ainda o condicionem?', tipo: 'sim_nao_detalhe', alerta: true },
+        { id: 'a_dor', texto: 'Sente dor em alguma zona neste momento?', tipo: 'sim_nao_detalhe', alerta: true },
+        { id: 'a_dor_onde', texto: 'Onde, e desde quando?', tipo: 'texto_longo' },
+      ],
+    },
+    {
+      id: 'habitos',
+      titulo: 'Hábitos',
+      perguntas: [
+        { id: 'a_experiencia', texto: 'Experiência anterior com treino', tipo: 'escolha', opcoes: ['Nenhuma', 'Menos de 1 ano', '1 a 3 anos', 'Mais de 3 anos'] },
+        { id: 'a_atividade', texto: 'Atividade física atual (fora do treino)', tipo: 'texto' },
+        { id: 'a_sono', texto: 'Horas de sono por noite', tipo: 'numero' },
+        { id: 'a_stress', texto: 'Nível de stress no dia a dia', tipo: 'escala' },
+        { id: 'a_tabaco', texto: 'Fuma?', tipo: 'sim_nao' },
+        { id: 'a_profissao', texto: 'Profissão e quanto tempo passa sentado', tipo: 'texto' },
+      ],
+    },
+    {
+      id: 'objetivos',
+      titulo: 'Objetivos',
+      perguntas: [
+        { id: 'a_objetivo', texto: 'O que o traz aqui?', tipo: 'texto_longo', obrigatoria: true },
+        { id: 'a_prazo', texto: 'Tem alguma data em vista?', tipo: 'texto' },
+        { id: 'a_disponibilidade', texto: 'Dias por semana disponíveis', tipo: 'numero' },
+      ],
+    },
+  ],
+  rodape: 'As respostas servem para adaptar o treino. Não substituem avaliação médica.',
+};
+
+const MODELO_CONSENTIMENTO = {
+  id: 'f:consentimento',
+  nome: 'Consentimentos',
+  descricao: 'Consentimento informado para o treino, para o registo fotográfico e para o tratamento de dados de saúde.',
+  base: true,
+  seccoes: [
+    {
+      id: 'treino',
+      titulo: 'Treino personalizado',
+      perguntas: [
+        {
+          id: 'c_treino', tipo: 'declaracao', obrigatoria: true,
+          texto: 'Declaro que as informações que prestei são verdadeiras, que compreendo que a prática de exercício físico envolve riscos, e que aceito realizar o plano acordado com o meu treinador.',
+        },
+        {
+          id: 'c_medico', tipo: 'declaracao',
+          texto: 'Declaro que fui informado de que devo procurar avaliação médica antes de iniciar, e que compete a mim fazê-lo.',
+        },
+      ],
+    },
+    {
+      id: 'imagem',
+      titulo: 'Registo fotográfico',
+      perguntas: [
+        {
+          id: 'c_fotos', tipo: 'sim_nao',
+          texto: 'Autorizo o registo fotográfico da minha evolução, para acompanhamento do treino.',
+        },
+        {
+          id: 'c_divulgacao', tipo: 'sim_nao',
+          texto: 'Autorizo a utilização dessas fotografias na divulgação do trabalho do meu treinador (redes sociais, site).',
+        },
+      ],
+    },
+    {
+      id: 'dados',
+      titulo: 'Dados de saúde',
+      perguntas: [
+        {
+          id: 'c_dados', tipo: 'declaracao', obrigatoria: true,
+          texto: 'Dou o meu consentimento explícito para que os meus dados de saúde (avaliações físicas, medidas e, se autorizado, fotografias) sejam tratados para o acompanhamento do meu treino. Fui informado de que posso retirar este consentimento a qualquer momento, e de que tenho direito a aceder, corrigir e apagar estes dados.',
+        },
+      ],
+    },
+  ],
+  rodape: 'Os dados são conservados enquanto durar o acompanhamento e podem ser pedidos ou apagados a qualquer momento.',
+};
+
+const MODELOS_BASE = [MODELO_PARQ, MODELO_ANAMNESE, MODELO_CONSENTIMENTO];
+
+const EMPTY_FORMULARIOS = {
+  modelos: [],     // os que o treinador criou ou duplicou
+  respostas: [],   // { id, modeloId, studentId, nome, em, quem, respostas:{}, assinaturaId, assinadoEm, assinadoPor }
+};
+
+function normalizarFormularios(raw) {
+  const d = raw && typeof raw === 'object' ? raw : {};
+  return {
+    modelos: Array.isArray(d.modelos) ? d.modelos : [],
+    respostas: Array.isArray(d.respostas) ? d.respostas : [],
+  };
+}
+
+// Todos os modelos disponíveis: os de origem mais os do treinador.
+function modelosDe(formularios) {
+  return [...MODELOS_BASE, ...(formularios.modelos || [])];
+}
+
+function modeloPorId(formularios, id) {
+  return modelosDe(formularios).find((m) => m.id === id) || null;
+}
+
+function perguntasDoModelo(modelo) {
+  return (modelo.seccoes || []).flatMap((s) => s.perguntas || []);
+}
+
+// As respostas que merecem ser lidas antes de montar um treino. Não são um
+// diagnóstico: é o treinador que decide o que fazer com elas.
+function alertasDaResposta(resposta, modelo) {
+  if (!modelo) return [];
+  return perguntasDoModelo(modelo)
+    .filter((p) => p.alerta || modelo.alertaSeSim)
+    .map((p) => ({ p, v: resposta.respostas[p.id] }))
+    .filter(({ p, v }) => {
+      if (p.tipo === 'sim_nao' || p.tipo === 'sim_nao_detalhe') {
+        return (v && v.valor) === 'sim';
+      }
+      return false;
+    })
+    .map(({ p, v }) => ({ pergunta: p.texto, detalhe: (v && v.detalhe) || '' }));
+}
+
+// A assinatura vive no bloco das fotografias, e chega das duas maneiras: como
+// `data:` URI sem conta ligada, e como endereço assinado com conta. O
+// `photosById` já resolve essa diferença -- ler o `urlsDeFotos` diretamente
+// deixava a assinatura invisível em modo local.
+function urlDaAssinatura(photosById, id) {
+  if (!id) return '';
+  const foto = (photosById || {})[id];
+  return (foto && foto.dataUri) || '';
+}
+
+// A resposta mais recente de cada modelo, por aluno. Preencher outra vez não
+// apaga a anterior: o historial de saude e o consentimento de ontem valem por
+// si, e podem ser precisos.
+function respostasDoAluno(formularios, studentId) {
+  return (formularios.respostas || [])
+    .filter((r) => r.studentId === studentId)
+    .sort((a, b) => String(b.em).localeCompare(String(a.em)));
+}
+
+function ultimasRespostas(formularios, studentId) {
+  const vistas = new Set();
+  return respostasDoAluno(formularios, studentId).filter((r) => {
+    if (vistas.has(r.modeloId)) return false;
+    vistas.add(r.modeloId);
+    return true;
+  });
+}
+
+// Quantos alertas tem um aluno agora, olhando so para a versao mais recente de
+// cada formulario. Serve o distintivo na ficha.
+function alertasDoAluno(formularios, studentId) {
+  return ultimasRespostas(formularios, studentId)
+    .flatMap((r) => alertasDaResposta(r, modeloPorId(formularios, r.modeloId)));
+}
+
 /* ===================== PRESCRICAO DE TREINO ===================== */
 // Grupos musculares e categorias (modalidade) sao taxonomias distintas: o
 // agachamento e "Quadricipites" no grupo e "Musculacao" na categoria; o mesmo
@@ -5889,7 +6126,7 @@ function StudentsView({ students, sessions, onEdit, onNew }) {
   );
 }
 
-function StudentFormModal({ student, sessions, customCategories, treinoCount = 0, onAddCategory, onSave, onClose, onDelete, onGoToAssessments, onGoToTreinos, onGoToSession, onAgendarReposicao }) {
+function StudentFormModal({ student, sessions, customCategories, treinoCount = 0, formularios, onAddCategory, onSave, onClose, onDelete, onGoToAssessments, onGoToTreinos, onGoToSession, onAgendarReposicao, onGoToFormularios }) {
   const isEdit = !!student;
   const [form, setForm] = useState(() => (student ? { ...student, quinzenasPagas: student.quinzenasPagas || {} } : {
     id: uid(), name: '', color: STUDENT_COLORS[Math.floor(Math.random() * STUDENT_COLORS.length)],
@@ -6074,6 +6311,24 @@ function StudentFormModal({ student, sessions, customCategories, treinoCount = 0
             <span className="text-2xs text-faint font-mono">{plural(treinoCount, 'programa', 'programas')} →</span>
           </button>
         )}
+
+        {isEdit && onGoToFormularios && (() => {
+          const preenchidos = ultimasRespostas(formularios, student.id);
+          const avisos = alertasDoAluno(formularios, student.id);
+          return (
+            <button type="button" onClick={() => onGoToFormularios(student)} className="flex items-center justify-between text-sm font-body px-3 py-2.5 rounded-lg border border-hair btn-surface">
+              <span className="flex items-center gap-2 text-primary">
+                <ClipboardCheck size={15} className="text-brass" /> Formulários
+                {avisos.length > 0 && (
+                  <span className="badge" style={{ backgroundColor: 'var(--gold-soft)', color: acentoTexto('#F5B44C') }}>
+                    <AlertTriangle size={10} /> {avisos.length}
+                  </span>
+                )}
+              </span>
+              <span className="text-2xs text-faint font-mono">{plural(preenchidos.length, 'preenchido', 'preenchidos')} →</span>
+            </button>
+          );
+        })()}
 
         {error && <div className="text-sm font-body text-rust">{error}</div>}
 
@@ -7822,6 +8077,780 @@ function AssessmentForm({ student, assessment, onSave, onCancel, photosById, onU
   );
 }
 
+// Assinatura desenhada com o dedo ou com o rato. O aluno não tem acesso à
+// aplicação: quem assina é ele, no telemóvel do treinador, ali na altura.
+//
+// Pointer Events pela mesma razão da agenda: o toque tem de chegar cá, e o
+// `touch-action: none` impede o browser de arrastar a página por baixo do dedo.
+function PadAssinatura({ onMudar }) {
+  const tela = useRef(null);
+  const desenhando = useRef(false);
+  const anterior = useRef(null);
+  const [temTraco, setTemTraco] = useState(false);
+
+  // A tela é redimensionada para os pixels reais do ecrã, senão a linha sai
+  // desfocada num telemóvel com densidade alta.
+  useEffect(() => {
+    const c = tela.current;
+    if (!c) return;
+    const r = c.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    c.width = Math.round(r.width * dpr);
+    c.height = Math.round(r.height * dpr);
+    const ctx = c.getContext('2d');
+    ctx.scale(dpr, dpr);
+    // Fundo branco de propósito: a assinatura vai para um documento impresso a
+    // preto sobre branco, e uma tela transparente sairia com o fundo do tema.
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, r.width, r.height);
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#111111';
+  }, []);
+
+  function ponto(e) {
+    const r = tela.current.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+  function comecar(e) {
+    desenhando.current = true;
+    anterior.current = ponto(e);
+    tela.current.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  }
+  function mover(e) {
+    if (!desenhando.current) return;
+    const ctx = tela.current.getContext('2d');
+    const p = ponto(e);
+    ctx.beginPath();
+    ctx.moveTo(anterior.current.x, anterior.current.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    anterior.current = p;
+    if (!temTraco) setTemTraco(true);
+    e.preventDefault();
+  }
+  function largar() {
+    if (!desenhando.current) return;
+    desenhando.current = false;
+    // JPEG e não PNG: é uma imagem com fundo branco e vai para o mesmo balde
+    // das fotografias, que só aceita imagens. Uns 4 kB.
+    onMudar(tela.current.toDataURL('image/jpeg', 0.8));
+  }
+  function limpar() {
+    const c = tela.current;
+    const ctx = c.getContext('2d');
+    const r = c.getBoundingClientRect();
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, r.width, r.height);
+    setTemTraco(false);
+    onMudar('');
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <canvas
+        ref={tela}
+        onPointerDown={comecar}
+        onPointerMove={mover}
+        onPointerUp={largar}
+        onPointerCancel={largar}
+        aria-label="Área para assinar"
+        style={{
+          width: '100%', height: 150, touchAction: 'none', cursor: 'crosshair',
+          backgroundColor: '#FFFFFF',
+          border: '1px solid var(--border-hair)', borderRadius: 8, display: 'block',
+        }}
+      />
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-2xs font-body text-faint">
+          {temTraco ? 'Assinado.' : 'Assine aqui com o dedo ou com o rato.'}
+        </span>
+        {temTraco && (
+          <button type="button" onClick={limpar} className="text-2xs font-body link-sky">
+            Limpar
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Uma pergunta, com o campo que o seu tipo pede.
+function CampoResposta({ pergunta, valor, onMudar }) {
+  const v = valor || {};
+  const tipo = pergunta.tipo;
+
+  if (tipo === 'sim_nao' || tipo === 'sim_nao_detalhe') {
+    return (
+      <div className="flex flex-col gap-2">
+        <span className="text-sm font-body text-primary">
+          {pergunta.texto}
+          {pergunta.obrigatoria ? <span className="text-rust"> *</span> : null}
+        </span>
+        <div className="flex gap-2">
+          {[['sim', 'Sim'], ['nao', 'Não']].map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => onMudar({ ...v, valor: id })}
+              aria-pressed={v.valor === id}
+              className="px-4 py-2 rounded-lg border text-sm font-body"
+              style={{
+                borderColor: v.valor === id ? 'var(--brass)' : 'var(--border-hair)',
+                backgroundColor: v.valor === id ? 'var(--brass-soft)' : 'var(--bg-elevated)',
+                color: v.valor === id ? 'var(--brass)' : 'var(--text-muted)',
+                fontWeight: v.valor === id ? 600 : 400,
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {tipo === 'sim_nao_detalhe' && v.valor === 'sim' && (
+          <input
+            value={v.detalhe || ''}
+            onChange={(e) => onMudar({ ...v, detalhe: e.target.value })}
+            className="input-field"
+            placeholder="Qual? Desde quando?"
+            aria-label={`Detalhe: ${pergunta.texto}`}
+          />
+        )}
+      </div>
+    );
+  }
+
+  if (tipo === 'declaracao') {
+    return (
+      <label className="flex items-start gap-2.5 text-sm font-body text-primary">
+        <input
+          type="checkbox"
+          checked={v.valor === 'sim'}
+          onChange={(e) => onMudar({ valor: e.target.checked ? 'sim' : 'nao' })}
+          style={{ accentColor: 'var(--brass)', marginTop: 3, flexShrink: 0 }}
+        />
+        <span>
+          {pergunta.texto}
+          {pergunta.obrigatoria ? <span className="text-rust"> *</span> : null}
+        </span>
+      </label>
+    );
+  }
+
+  const rotulo = (
+    <>
+      {pergunta.texto}
+      {pergunta.obrigatoria ? <span className="text-rust"> *</span> : null}
+    </>
+  );
+
+  if (tipo === 'escolha' || tipo === 'varias') {
+    const opcoes = pergunta.opcoes || [];
+    const escolhidas = Array.isArray(v.valor) ? v.valor : (v.valor ? [v.valor] : []);
+    return (
+      <div className="flex flex-col gap-2">
+        <span className="text-sm font-body text-primary">{rotulo}</span>
+        <div className="flex gap-1.5 flex-wrap">
+          {opcoes.map((o) => {
+            const marcada = escolhidas.includes(o);
+            return (
+              <button
+                key={o}
+                type="button"
+                onClick={() => {
+                  if (tipo === 'escolha') { onMudar({ valor: marcada ? '' : o }); return; }
+                  onMudar({ valor: marcada ? escolhidas.filter((x) => x !== o) : [...escolhidas, o] });
+                }}
+                aria-pressed={marcada}
+                className="px-3 py-1.5 rounded-lg border text-xs font-body"
+                style={{
+                  borderColor: marcada ? 'var(--brass)' : 'var(--border-hair)',
+                  backgroundColor: marcada ? 'var(--brass-soft)' : 'var(--bg-elevated)',
+                  color: marcada ? 'var(--brass)' : 'var(--text-muted)',
+                }}
+              >
+                {o}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  if (tipo === 'escala') {
+    return (
+      <div className="flex flex-col gap-2">
+        <span className="text-sm font-body text-primary">{rotulo}</span>
+        <div className="flex gap-1.5">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => onMudar({ valor: String(n) })}
+              aria-pressed={v.valor === String(n)}
+              className="rounded-lg border text-sm font-mono"
+              style={{
+                flex: 1, padding: '9px 0',
+                borderColor: v.valor === String(n) ? 'var(--brass)' : 'var(--border-hair)',
+                backgroundColor: v.valor === String(n) ? 'var(--brass-soft)' : 'var(--bg-elevated)',
+                color: v.valor === String(n) ? 'var(--brass)' : 'var(--text-muted)',
+              }}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <FormField label={rotulo}>
+      {tipo === 'texto_longo' ? (
+        <textarea value={v.valor || ''} onChange={(e) => onMudar({ valor: e.target.value })} className="input-field" rows={3} />
+      ) : (
+        <input
+          type={tipo === 'numero' ? 'number' : tipo === 'data' ? 'date' : 'text'}
+          value={v.valor || ''}
+          onChange={(e) => onMudar({ valor: e.target.value })}
+          className="input-field"
+        />
+      )}
+    </FormField>
+  );
+}
+
+// Preencher um formulário para um aluno. O treinador tem o telemóvel na mão e
+// pergunta; no fim entrega-o para o aluno assinar.
+function PreencherFormularioModal({ modelo, aluno, resposta, onGuardar, onClose }) {
+  const [valores, setValores] = useState(() => (resposta ? { ...resposta.respostas } : {}));
+  const [assinatura, setAssinatura] = useState('');
+  const [erro, setErro] = useState('');
+  const [aGuardar, setAGuardar] = useState(false);
+
+  const perguntas = perguntasDoModelo(modelo);
+  const emFalta = perguntas.filter((p) => {
+    if (!p.obrigatoria) return false;
+    const v = valores[p.id];
+    if (p.tipo === 'declaracao') return !v || v.valor !== 'sim';
+    return !v || v.valor === '' || v.valor === undefined || (Array.isArray(v.valor) && v.valor.length === 0);
+  });
+
+  // Os avisos aparecem enquanto se preenche, e não só no fim: é durante a
+  // conversa que fazem falta.
+  const alertas = alertasDaResposta({ respostas: valores }, modelo);
+
+  async function guardar() {
+    if (emFalta.length > 0) {
+      setErro(`Falta responder a ${plural(emFalta.length, 'pergunta obrigatória', 'perguntas obrigatórias')}.`);
+      return;
+    }
+    setAGuardar(true);
+    try {
+      await onGuardar({ respostas: valores, assinatura });
+    } finally {
+      setAGuardar(false);
+    }
+  }
+
+  return (
+    <Modal title={modelo.nome} onClose={onClose} largura={620}>
+      <div className="flex flex-col gap-4">
+        <div className="text-xs font-body text-muted">
+          {aluno.name}{modelo.descricao ? ` · ${modelo.descricao}` : ''}
+        </div>
+
+        {modelo.seccoes.map((sec) => (
+          <div key={sec.id} className="flex flex-col gap-3">
+            <div className="text-2xs uppercase tracking-wide text-faint font-body border-b border-hair pb-1">
+              {sec.titulo}
+            </div>
+            {(sec.perguntas || []).map((p) => (
+              <CampoResposta
+                key={p.id}
+                pergunta={p}
+                valor={valores[p.id]}
+                onMudar={(v) => { setValores((x) => ({ ...x, [p.id]: v })); setErro(''); }}
+              />
+            ))}
+          </div>
+        ))}
+
+        {alertas.length > 0 && (
+          <div className="rounded-lg border p-3 flex flex-col gap-1.5" style={{ borderColor: 'var(--gold)', backgroundColor: 'var(--gold-soft)' }}>
+            <span className="flex items-center gap-1.5 text-sm font-body" style={{ color: acentoTexto('#F5B44C') }}>
+              <AlertTriangle size={14} /> {plural(alertas.length, 'ponto a ter em conta', 'pontos a ter em conta')}
+            </span>
+            <ul className="flex flex-col gap-0.5">
+              {alertas.map((a, i) => (
+                <li key={i} className="text-2xs font-body text-muted">
+                  {a.pergunta}{a.detalhe ? ` — ${a.detalhe}` : ''}
+                </li>
+              ))}
+            </ul>
+            <span className="text-2xs font-body text-faint">
+              Isto é um aviso para ler antes de montar o treino, não um diagnóstico
+              nem um impedimento. Quem decide é o profissional — e, quando for caso
+              disso, o médico do aluno.
+            </span>
+          </div>
+        )}
+
+        {modelo.rodape && (
+          <p className="text-2xs font-body text-faint">{modelo.rodape}</p>
+        )}
+
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-body text-muted">Assinatura de {aluno.name}</span>
+          <PadAssinatura onMudar={setAssinatura} />
+        </div>
+
+        {erro && <div className="text-sm font-body text-rust">{erro}</div>}
+
+        <div className="flex gap-2 pt-1 mobile-stack">
+          <button type="button" onClick={onClose} className="btn btn-ghost">Cancelar</button>
+          <button type="button" onClick={guardar} disabled={aGuardar} className="btn btn-primary flex-1">
+            {aGuardar ? <Loader2 size={14} className="spin" /> : <Check size={14} />} Guardar formulário
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// O formulário preenchido, para ler. É a versão de ecrã do que sai no PDF.
+function VerFormularioModal({ resposta, modelo, aluno, urlAssinatura, onImprimir, onClose }) {
+  const alertas = alertasDaResposta(resposta, modelo);
+  return (
+    <Modal
+      title={resposta.nome}
+      onClose={onClose}
+      largura={620}
+      acoes={(
+        <button type="button" onClick={onImprimir} className="btn btn-ghost" style={{ fontSize: 12 }}>
+          <Printer size={14} /> PDF
+        </button>
+      )}
+    >
+      <div className="flex flex-col gap-4">
+        <div className="text-xs font-body text-muted">
+          {aluno ? `${aluno.name} · ` : ''}Preenchido a {fmtDataHora(resposta.em)}
+          {resposta.quem ? ` por ${resposta.quem}` : ''}
+        </div>
+
+        {alertas.length > 0 && (
+          <div className="rounded-lg border p-3 flex flex-col gap-1" style={{ borderColor: 'var(--gold)', backgroundColor: 'var(--gold-soft)' }}>
+            <span className="flex items-center gap-1.5 text-sm font-body" style={{ color: acentoTexto('#F5B44C') }}>
+              <AlertTriangle size={14} /> {plural(alertas.length, 'ponto a ter em conta', 'pontos a ter em conta')}
+            </span>
+            {alertas.map((a, i) => (
+              <span key={i} className="text-2xs font-body text-muted">
+                {a.pergunta}{a.detalhe ? ` — ${a.detalhe}` : ''}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {modelo ? modelo.seccoes.map((sec) => (
+          <div key={sec.id} className="flex flex-col gap-2">
+            <div className="text-2xs uppercase tracking-wide text-faint font-body border-b border-hair pb-1">
+              {sec.titulo}
+            </div>
+            {(sec.perguntas || []).map((p) => (
+              <div key={p.id} className="flex flex-col gap-0.5">
+                <span className="text-2xs font-body text-faint">{p.texto}</span>
+                <span className="text-sm font-body text-primary">
+                  {textoDaResposta(p, resposta.respostas[p.id]) || '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )) : (
+          <EmptyState message="O modelo deste formulário já não existe. As respostas ficam, mas sem as perguntas." />
+        )}
+
+        {urlAssinatura && (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-2xs uppercase tracking-wide text-faint font-body">Assinatura</span>
+            <img
+              src={urlAssinatura}
+              alt={`Assinatura de ${aluno ? aluno.name : 'aluno'}`}
+              style={{ maxWidth: 280, borderRadius: 6, border: '1px solid var(--border-hair)' }}
+            />
+            {resposta.assinadoEm && (
+              <span className="text-2xs font-body text-faint">
+                Assinado a {fmtDataHora(resposta.assinadoEm)}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// Uma resposta em texto, para o ecrã e para o papel.
+function textoDaResposta(pergunta, valor) {
+  if (!valor) return '';
+  const v = valor.valor;
+  if (pergunta.tipo === 'sim_nao' || pergunta.tipo === 'sim_nao_detalhe' || pergunta.tipo === 'declaracao') {
+    if (!v) return '';
+    const base = v === 'sim' ? 'Sim' : 'Não';
+    return valor.detalhe ? `${base} — ${valor.detalhe}` : base;
+  }
+  if (Array.isArray(v)) return v.join(', ');
+  if (pergunta.tipo === 'data' && v) return fmtDateLong(`${v}T00:00:00`);
+  if (pergunta.tipo === 'escala' && v) return `${v} de 5`;
+  return String(v || '');
+}
+
+// Construtor de formulários. Os três modelos de origem não se editam — se
+// alguém mudasse a redação do PAR-Q deixava de ser o PAR-Q — mas duplicam-se,
+// e a cópia é do treinador.
+function novaPerguntaForm() {
+  return { id: uid(), texto: '', tipo: 'texto', obrigatoria: false, alerta: false, opcoes: [] };
+}
+function novaSeccaoForm() {
+  return { id: uid(), titulo: 'Nova secção', perguntas: [novaPerguntaForm()] };
+}
+
+function ConstrutorFormularioModal({ modelo, onGuardar, onClose }) {
+  const [form, setForm] = useState(() => ({
+    id: (modelo && !modelo.base && modelo.id) || uid(),
+    nome: modelo ? (modelo.base ? `${modelo.nome} (cópia)` : modelo.nome) : 'Formulário novo',
+    descricao: (modelo && modelo.descricao) || '',
+    rodape: (modelo && modelo.rodape) || '',
+    // Cópia funda: sem isto, mexer na cópia mexia no modelo de origem, que é
+    // uma constante partilhada por toda a aplicação.
+    seccoes: modelo
+      ? modelo.seccoes.map((sc) => ({
+        ...sc,
+        id: uid(),
+        perguntas: (sc.perguntas || []).map((pg) => ({ ...pg, id: uid(), opcoes: [...(pg.opcoes || [])] })),
+      }))
+      : [novaSeccaoForm()],
+  }));
+  const [erro, setErro] = useState('');
+
+  function mudarSeccao(i, mudanca) {
+    setForm((f) => ({ ...f, seccoes: f.seccoes.map((sc, k) => (k === i ? { ...sc, ...mudanca } : sc)) }));
+  }
+  function mudarPergunta(si, pi, mudanca) {
+    setForm((f) => ({
+      ...f,
+      seccoes: f.seccoes.map((sc, k) => (k !== si ? sc : {
+        ...sc,
+        perguntas: sc.perguntas.map((pg, j) => (j === pi ? { ...pg, ...mudanca } : pg)),
+      })),
+    }));
+  }
+
+  function guardar() {
+    const nome = form.nome.trim();
+    if (!nome) { setErro('Dê um nome ao formulário.'); return; }
+    const seccoes = form.seccoes
+      .map((sc) => ({ ...sc, perguntas: sc.perguntas.filter((pg) => pg.texto.trim()) }))
+      .filter((sc) => sc.perguntas.length > 0);
+    if (seccoes.length === 0) { setErro('Escreva pelo menos uma pergunta.'); return; }
+    onGuardar({ ...form, nome, seccoes, base: false });
+  }
+
+  return (
+    <Modal title={modelo ? 'Duplicar formulário' : 'Formulário novo'} onClose={onClose} largura={620}>
+      <div className="flex flex-col gap-4">
+        <FormField label="Nome">
+          <input value={form.nome} onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))} className="input-field" maxLength={80} />
+        </FormField>
+        <FormField label="Descrição (opcional)">
+          <input value={form.descricao} onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))} className="input-field" maxLength={160} />
+        </FormField>
+
+        {form.seccoes.map((sc, si) => (
+          <div key={sc.id} className="flex flex-col gap-2.5 rounded-lg border border-hair p-3" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+            <div className="flex items-center gap-2">
+              <input
+                value={sc.titulo}
+                onChange={(e) => mudarSeccao(si, { titulo: e.target.value })}
+                className="input-field flex-1"
+                aria-label={`Título da secção ${si + 1}`}
+              />
+              <button
+                type="button"
+                onClick={() => setForm((f) => ({ ...f, seccoes: f.seccoes.filter((_, k) => k !== si) }))}
+                disabled={form.seccoes.length === 1}
+                className="p-1.5 rounded btn-surface disabled:opacity-30 flex-shrink-0"
+                aria-label={`Remover secção ${si + 1}`}
+              >
+                <Trash2 size={14} className="text-rust" style={{ display: 'block' }} />
+              </button>
+            </div>
+
+            {sc.perguntas.map((pg, pi) => (
+              <div key={pg.id} className="flex flex-col gap-1.5 rounded-lg border border-hair p-2.5" style={{ backgroundColor: 'var(--bg-surface)' }}>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={pg.texto}
+                    onChange={(e) => mudarPergunta(si, pi, { texto: e.target.value })}
+                    className="input-field flex-1"
+                    placeholder="Escreva a pergunta"
+                    aria-label={`Pergunta ${pi + 1} da secção ${si + 1}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => mudarSeccao(si, { perguntas: sc.perguntas.filter((_, k) => k !== pi) })}
+                    disabled={sc.perguntas.length === 1}
+                    className="p-1.5 rounded btn-surface disabled:opacity-30 flex-shrink-0"
+                    aria-label={`Remover pergunta ${pi + 1}`}
+                  >
+                    <X size={13} className="text-muted" style={{ display: 'block' }} />
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <select
+                    value={pg.tipo}
+                    onChange={(e) => mudarPergunta(si, pi, { tipo: e.target.value })}
+                    aria-label={`Tipo da pergunta ${pi + 1}`}
+                    className="input-field"
+                    style={{ flex: '1 1 150px', fontSize: 13 }}
+                  >
+                    {TIPOS_PERGUNTA.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+                  </select>
+                  <label className="flex items-center gap-1.5 text-2xs font-body text-muted nowrap">
+                    <input type="checkbox" checked={Boolean(pg.obrigatoria)} onChange={(e) => mudarPergunta(si, pi, { obrigatoria: e.target.checked })} style={{ accentColor: 'var(--brass)' }} />
+                    Obrigatória
+                  </label>
+                  {(pg.tipo === 'sim_nao' || pg.tipo === 'sim_nao_detalhe') && (
+                    <label className="flex items-center gap-1.5 text-2xs font-body text-muted nowrap">
+                      <input type="checkbox" checked={Boolean(pg.alerta)} onChange={(e) => mudarPergunta(si, pi, { alerta: e.target.checked })} style={{ accentColor: 'var(--brass)' }} />
+                      «Sim» é um ponto a ter em conta
+                    </label>
+                  )}
+                </div>
+
+                {(pg.tipo === 'escolha' || pg.tipo === 'varias') && (
+                  <input
+                    value={(pg.opcoes || []).join(', ')}
+                    onChange={(e) => mudarPergunta(si, pi, { opcoes: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })}
+                    className="input-field"
+                    style={{ fontSize: 13 }}
+                    placeholder="Opções separadas por vírgulas"
+                    aria-label={`Opções da pergunta ${pi + 1}`}
+                  />
+                )}
+              </div>
+            ))}
+
+            <button
+              type="button"
+              onClick={() => mudarSeccao(si, { perguntas: [...sc.perguntas, novaPerguntaForm()] })}
+              className="btn btn-ghost self-start"
+              style={{ fontSize: 11 }}
+            >
+              <Plus size={12} /> Acrescentar pergunta
+            </button>
+          </div>
+        ))}
+
+        <button
+          type="button"
+          onClick={() => setForm((f) => ({ ...f, seccoes: [...f.seccoes, novaSeccaoForm()] }))}
+          className="btn btn-ghost self-start"
+          style={{ fontSize: 12 }}
+        >
+          <Plus size={13} /> Acrescentar secção
+        </button>
+
+        <FormField label="Nota de rodapé (opcional)">
+          <textarea value={form.rodape} onChange={(e) => setForm((f) => ({ ...f, rodape: e.target.value }))} className="input-field" rows={2} placeholder="Sai no fim do formulário e no PDF." />
+        </FormField>
+
+        {erro && <div className="text-sm font-body text-rust">{erro}</div>}
+
+        <div className="flex gap-2 pt-1 mobile-stack">
+          <button type="button" onClick={onClose} className="btn btn-ghost">Cancelar</button>
+          <button type="button" onClick={guardar} className="btn btn-primary flex-1">Guardar formulário</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// Os formulários de um aluno: o que está preenchido, o que falta, e os pontos
+// a ter em conta antes de montar o treino.
+function FormulariosView({ student, formularios, photosById, onPreencher, onImprimir, onApagar, onGuardarModelo, onApagarModelo, onVoltar }) {
+  const [aVer, setAVer] = useState(null);
+  const [aApagar, setAApagar] = useState(null);
+  // null = fechado; 'novo' = de raiz; objeto = a duplicar esse.
+  const [construtor, setConstrutor] = useState(null);
+  const [modeloAApagar, setModeloAApagar] = useState(null);
+  const modelos = modelosDe(formularios);
+  const ultimas = ultimasRespostas(formularios, student.id);
+  const todas = respostasDoAluno(formularios, student.id);
+  const avisos = alertasDoAluno(formularios, student.id);
+  const porModelo = new Map(ultimas.map((r) => [r.modeloId, r]));
+
+  return (
+    <div className="px-4 py-4 max-w-3xl mx-auto flex flex-col gap-4">
+      <div className="flex items-center gap-2">
+        <button onClick={onVoltar} type="button" className="p-2 rounded-lg bg-surface border border-hair btn-surface flex-shrink-0" aria-label="Voltar aos alunos">
+          <ArrowLeft size={16} className="text-muted" />
+        </button>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: student.color }} />
+          <h1 className="font-display font-semibold text-xl text-primary tracking-wide truncate">{student.name}</h1>
+        </div>
+      </div>
+
+      {avisos.length > 0 && (
+        <div className="rounded-xl border p-4 flex flex-col gap-1.5" style={{ borderColor: 'var(--gold)', backgroundColor: 'var(--gold-soft)' }}>
+          <span className="flex items-center gap-1.5 text-sm font-body font-semibold" style={{ color: acentoTexto('#F5B44C') }}>
+            <AlertTriangle size={15} /> {plural(avisos.length, 'ponto a ter em conta', 'pontos a ter em conta')}
+          </span>
+          <ul className="flex flex-col gap-0.5">
+            {avisos.map((a, i) => (
+              <li key={i} className="text-xs font-body text-muted">
+                {a.pergunta}{a.detalhe ? ` — ${a.detalhe}` : ''}
+              </li>
+            ))}
+          </ul>
+          <span className="text-2xs font-body text-faint">
+            Sai das respostas do aluno. Não é diagnóstico nem impedimento — é o
+            que há para ler antes de prescrever, e o que justifica mandar falar
+            com um médico quando for caso disso.
+          </span>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-2xs uppercase tracking-wide text-faint font-mono">Formulários</span>
+          <button type="button" onClick={() => setConstrutor('novo')} className="btn btn-ghost" style={{ padding: '5px 10px', fontSize: 11 }}>
+            <Plus size={12} /> Formulário novo
+          </button>
+        </div>
+        {modelos.map((m) => {
+          const r = porModelo.get(m.id);
+          return (
+            <div key={m.id} className="card p-4 flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-2 flex-wrap">
+                <span className="min-w-0">
+                  <span className="block text-sm font-body font-semibold text-primary">{m.nome}</span>
+                  <span className="block text-2xs font-body text-faint">{m.descricao}</span>
+                </span>
+                {r ? (
+                  <span className="badge flex-shrink-0" style={{ backgroundColor: 'var(--brass-soft)', color: 'var(--brass)' }}>
+                    <Check size={10} /> Preenchido
+                  </span>
+                ) : (
+                  <span className="badge flex-shrink-0" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-faint)' }}>
+                    Por preencher
+                  </span>
+                )}
+              </div>
+
+              {r && (
+                <span className="text-2xs font-body text-faint">
+                  <span className="font-mono">{fmtDataHora(r.em)}</span>
+                  {r.assinaturaId ? ' · assinado' : ' · sem assinatura'}
+                </span>
+              )}
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <button type="button" onClick={() => onPreencher(m, null)} className="btn btn-ghost" style={{ padding: '6px 11px', fontSize: 12 }}>
+                  {r ? <><RefreshCcw size={13} /> Preencher de novo</> : <><Plus size={13} /> Preencher</>}
+                </button>
+                {r && (
+                  <>
+                    <button type="button" onClick={() => setAVer(r)} className="text-2xs font-body link-sky">Ver</button>
+                    <button type="button" onClick={() => onImprimir(r)} className="text-2xs font-body link-sky">PDF</button>
+                  </>
+                )}
+                <button type="button" onClick={() => setConstrutor(m)} className="text-2xs font-body link-sky ml-auto">
+                  {m.base ? 'Duplicar para editar' : 'Editar'}
+                </button>
+                {!m.base && (
+                  <button type="button" onClick={() => setModeloAApagar(m)} className="p-1 rounded btn-surface" aria-label={`Eliminar o modelo ${m.nome}`}>
+                    <Trash2 size={12} className="text-rust" style={{ display: 'block' }} />
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {todas.length > ultimas.length && (
+        <div className="flex flex-col gap-2">
+          <div className="text-2xs uppercase tracking-wide text-faint font-mono">
+            Versões anteriores ({todas.length - ultimas.length})
+          </div>
+          <p className="text-2xs font-body text-faint">
+            Preencher de novo não apaga o anterior: um consentimento assinado no
+            ano passado continua a valer pelo que foi assinado nessa altura.
+          </p>
+          {todas.filter((r) => !ultimas.includes(r)).map((r) => (
+            <div key={r.id} className="rounded-lg border border-hair p-3 flex items-center justify-between gap-2 flex-wrap" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+              <span className="min-w-0">
+                <span className="block text-xs font-body text-primary truncate">{r.nome}</span>
+                <span className="block text-2xs font-body text-faint font-mono">{fmtDataHora(r.em)}</span>
+              </span>
+              <span className="flex items-center gap-2 flex-shrink-0">
+                <button type="button" onClick={() => setAVer(r)} className="text-2xs font-body link-sky">Ver</button>
+                <button type="button" onClick={() => onImprimir(r)} className="text-2xs font-body link-sky">PDF</button>
+                <button type="button" onClick={() => setAApagar(r)} className="p-1.5 rounded btn-surface" aria-label={`Eliminar ${r.nome}`}>
+                  <Trash2 size={13} className="text-rust" style={{ display: 'block' }} />
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {aVer && (
+        <VerFormularioModal
+          resposta={aVer}
+          modelo={modeloPorId(formularios, aVer.modeloId)}
+          aluno={student}
+          urlAssinatura={urlDaAssinatura(photosById, aVer.assinaturaId)}
+          onImprimir={() => { onImprimir(aVer); setAVer(null); }}
+          onClose={() => setAVer(null)}
+        />
+      )}
+
+      {construtor && (
+        <ConstrutorFormularioModal
+          modelo={construtor === 'novo' ? null : construtor}
+          onClose={() => setConstrutor(null)}
+          onGuardar={(m) => { onGuardarModelo(m); setConstrutor(null); }}
+        />
+      )}
+
+      {modeloAApagar && (
+        <ConfirmDialog
+          title={`Eliminar "${modeloAApagar.nome}"`}
+          message="O modelo desaparece da lista. Os formulários já preenchidos com ele ficam guardados, mas passam a mostrar só as respostas."
+          confirmLabel="Eliminar"
+          onCancel={() => setModeloAApagar(null)}
+          onConfirm={() => { onApagarModelo(modeloAApagar); setModeloAApagar(null); }}
+        />
+      )}
+
+      {aApagar && (
+        <ConfirmDialog
+          title="Eliminar formulário"
+          message={`Isto apaga a versão de ${fmtDataHora(aApagar.em)} de "${aApagar.nome}", e a assinatura que a acompanha. Não se pode desfazer.`}
+          confirmLabel="Eliminar"
+          onCancel={() => setAApagar(null)}
+          onConfirm={() => { onApagar(aApagar); setAApagar(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
 /* ===================== IMPRESSAO / EXPORTACAO PDF ===================== */
 
 // Numero formatado com unidade, ou nada. Devolver null deixa o chamador decidir
@@ -8241,6 +9270,78 @@ function TreinoPrintDoc({ student, prescricao, biblioteca, trainerName, userEmai
       )}
 
       <PrintFooter nota={student.name + ' · ' + (prescricao.nome || 'Plano de treino')} timbre={marca} />
+    </>
+  );
+}
+
+function FormularioPrintDoc({ resposta, modelo, student, trainerName, userEmail, timbre, urlAssinatura }) {
+  if (!resposta || !student) return null;
+  const marca = timbre || EMPTY_TIMBRE;
+  const alertas = alertasDaResposta(resposta, modelo);
+
+  return (
+    <>
+      <PrintHeader
+        trainerName={trainerName}
+        userEmail={userEmail}
+        timbre={marca}
+        titulo={resposta.nome}
+        subtitulo={`${student.name} · ${fmtDateLong(resposta.em)}`}
+      />
+
+      {modelo && modelo.seccoes.map((sec) => (
+        <PrintSection key={sec.id} title={sec.titulo}>
+          {(sec.perguntas || []).map((p) => (
+            <div key={p.id} style={{ marginBottom: 5 }}>
+              <div className="print-ex-nota" style={{ marginTop: 0 }}>{p.texto}</div>
+              <div style={{ fontSize: '9.5pt', fontWeight: 600 }}>
+                {textoDaResposta(p, resposta.respostas[p.id]) || '—'}
+              </div>
+            </div>
+          ))}
+        </PrintSection>
+      ))}
+
+      {alertas.length > 0 && (
+        <PrintSection title="Pontos a ter em conta">
+          <ul style={{ margin: 0, paddingLeft: 16, fontSize: '9.5pt' }}>
+            {alertas.map((a, i) => (
+              <li key={i}>{a.pergunta}{a.detalhe ? ` — ${a.detalhe}` : ''}</li>
+            ))}
+          </ul>
+          <div className="print-notes" style={{ marginTop: 6 }}>
+            Assinalado a partir das respostas. Não constitui diagnóstico nem
+            autorização médica: é informação para o profissional ler antes de
+            prescrever treino.
+          </div>
+        </PrintSection>
+      )}
+
+      {modelo && modelo.rodape ? (
+        <PrintSection title="Nota">
+          <div className="print-notes">{modelo.rodape}</div>
+        </PrintSection>
+      ) : null}
+
+      <PrintSection title="Assinaturas">
+        <div className="print-assinaturas">
+          <div>
+            {urlAssinatura
+              ? <img src={urlAssinatura} alt="" style={{ height: '14mm', width: 'auto', maxWidth: '70mm', display: 'block', objectFit: 'contain' }} />
+              : <div className="print-assinatura" />}
+            <div className="print-ex-nota" style={{ borderTop: urlAssinatura ? '1px solid #111' : 'none', paddingTop: urlAssinatura ? 3 : 0, width: '70mm' }}>
+              {student.name}
+              {resposta.assinadoEm ? ` · ${fmtDataHora(resposta.assinadoEm)}` : ''}
+            </div>
+          </div>
+          <div>
+            <div className="print-assinatura" />
+            <div className="print-ex-nota">{trainerName || userEmail || 'Personal Trainer'}</div>
+          </div>
+        </div>
+      </PrintSection>
+
+      <PrintFooter nota={`${student.name} · ${resposta.nome}`} timbre={marca} />
     </>
   );
 }
@@ -9830,6 +10931,9 @@ function AppInner() {
   const [previaJob, setPreviaJob] = useState(null);
   const [definicoes, setDefinicoes] = useState(() => normalizarDefinicoes(null));
   const [treinos, setTreinos] = useState(EMPTY_TREINOS);
+  const [formularios, setFormularios] = useState(EMPTY_FORMULARIOS);
+  const [formulariosStudentId, setFormulariosStudentId] = useState(null);
+  const [preencherForm, setPreencherForm] = useState(null); // { modelo, resposta }
   const [treinosStudentId, setTreinosStudentId] = useState(null);
   const [clipboardSession, setClipboardSession] = useState(null);
   // Qual o bloco que foi alterado noutro sítio. Enquanto estiver preenchido, a
@@ -10019,7 +11123,7 @@ function AppInner() {
 
   async function loadAll() {
     setLoading(true);
-    let st = []; let se = []; let fi = []; let ph = []; let cc = EMPTY_CUSTOM_CATEGORIES; let df = null; let tr = null;
+    let st = []; let se = []; let fi = []; let ph = []; let cc = EMPTY_CUSTOM_CATEGORIES; let df = null; let tr = null; let fo = null;
     if (storageOk) {
       try { const r = await readStoredValue('alunos'); if (r && r.value) st = JSON.parse(r.value); } catch (e) { /* sem dados */ }
       try { const r = await readStoredValue('agenda'); if (r && r.value) se = JSON.parse(r.value); } catch (e) { /* sem dados */ }
@@ -10028,6 +11132,9 @@ function AppInner() {
       try { const r = await readStoredValue('categorias'); if (r && r.value) cc = JSON.parse(r.value); } catch (e) { /* sem dados */ }
       try { const r = await readStoredValue('definicoes'); if (r && r.value) df = JSON.parse(r.value); } catch (e) { /* sem dados */ }
       try { const r = await readStoredValue('treinos'); if (r && r.value) tr = JSON.parse(r.value); } catch (e) { /* sem dados */ }
+      // A chave 'formularios' é recente: quem ainda não correu o SQL do schema
+      // não a tem, e a leitura falha em silêncio. A aplicação abre à mesma.
+      try { const r = await readStoredValue('formularios'); if (r && r.value) fo = JSON.parse(r.value); } catch (e) { /* sem dados */ }
     }
     setStudents(Array.isArray(st) ? st : []);
 
@@ -10045,6 +11152,7 @@ function AppInner() {
     setPhotos(fotosCarregadas);
     photosRef.current = fotosCarregadas;
     setCustomCategories({ ...EMPTY_CUSTOM_CATEGORIES, ...(cc || {}) });
+    setFormularios(normalizarFormularios(fo));
     setDefinicoes(normalizarDefinicoes(df));
     // Escreve a migração de imediato em vez de esperar pela próxima gravação:
     // é o que troca o bloco antigo, com a biblioteca inteira lá dentro, por um
@@ -10215,6 +11323,99 @@ function AppInner() {
     setTreinos(normalizado);
     if (!storageOk) return;
     await gravarBloco('treinos', JSON.stringify(serializarTreinos(normalizado)), 'Erro ao guardar os treinos.');
+  }
+
+  async function persistFormularios(next) {
+    const normalizado = normalizarFormularios(next);
+    setFormularios(normalizado);
+    if (!storageOk) return;
+    await gravarBloco('formularios', JSON.stringify(normalizado),
+      'Erro ao guardar o formulário. Se isto se repetir, falta correr o SQL do schema no Supabase.');
+  }
+
+  // A assinatura segue o caminho das fotografias: sobe para o balde e fica
+  // registada no bloco `fotos`. É uma imagem pequena, mas são muitas ao longo
+  // dos anos, e o bloco dos formulários viaja inteiro a cada gravação.
+  async function guardarAssinatura(dataUri) {
+    if (!dataUri) return '';
+    const id = uid();
+    const userId = supabaseConfigured ? await currentSupabaseUserId() : null;
+    if (userId) {
+      const path = await guardarFotoNoBalde(userId, id, dataUri);
+      setUrlsDeFotos((u) => ({ ...u, [id]: dataUri }));
+      await persistPhotos([...photosRef.current, { id, path, createdAt: new Date().toISOString() }]);
+    } else {
+      await persistPhotos([...photosRef.current, { id, dataUri, createdAt: new Date().toISOString() }]);
+    }
+    return id;
+  }
+
+  async function guardarFormulario(modelo, aluno, { respostas, assinatura }) {
+    const quem = trainerName || user?.email || 'Personal Trainer';
+    const agora = new Date().toISOString();
+    let assinaturaId = '';
+    try {
+      assinaturaId = await guardarAssinatura(assinatura);
+    } catch (e) {
+      // Perder a assinatura não pode perder as respostas: guarda-se o que há e
+      // diz-se o que faltou.
+      showToast('As respostas ficaram guardadas, mas a assinatura falhou.', 'error');
+    }
+    await persistFormularios({
+      ...formularios,
+      respostas: [...formularios.respostas, {
+        id: uid(),
+        modeloId: modelo.id,
+        studentId: aluno.id,
+        nome: modelo.nome,
+        em: agora,
+        quem,
+        respostas,
+        assinaturaId,
+        assinadoEm: assinaturaId ? agora : '',
+      }],
+    });
+    setPreencherForm(null);
+    showToast('Formulário guardado.');
+  }
+
+  function apagarFormulario(resposta) {
+    if (resposta.assinaturaId) removePhoto(resposta.assinaturaId);
+    persistFormularios({
+      ...formularios,
+      respostas: formularios.respostas.filter((r) => r.id !== resposta.id),
+    });
+    showToast('Formulário eliminado.');
+  }
+
+  function guardarModeloFormulario(modelo) {
+    const existe = (formularios.modelos || []).some((m) => m.id === modelo.id);
+    persistFormularios({
+      ...formularios,
+      modelos: existe
+        ? formularios.modelos.map((m) => (m.id === modelo.id ? modelo : m))
+        : [...(formularios.modelos || []), modelo],
+    });
+    showToast(existe ? 'Formulário atualizado.' : 'Formulário criado.');
+  }
+
+  // Apagar o modelo não apaga as respostas: quem assinou assinou, e o
+  // documento continua a valer pelo que lá está escrito.
+  function apagarModeloFormulario(modelo) {
+    persistFormularios({
+      ...formularios,
+      modelos: (formularios.modelos || []).filter((m) => m.id !== modelo.id),
+    });
+    showToast('Modelo eliminado. As respostas ficaram.');
+  }
+
+  function goToFormularios(student) {
+    setShowStudentModal(false);
+    setFormulariosStudentId(student.id);
+  }
+
+  function printFormulario(resposta) {
+    setPreviaJob({ tipo: 'formulario', respostaId: resposta.id, studentId: resposta.studentId });
   }
 
   async function persistDefinicoes(next) {
@@ -10474,6 +11675,20 @@ function AppInner() {
         />
       );
     }
+    if (job.tipo === 'formulario') {
+      const resposta = formularios.respostas.find((r) => r.id === job.respostaId);
+      return (
+        <FormularioPrintDoc
+          resposta={resposta}
+          modelo={resposta ? modeloPorId(formularios, resposta.modeloId) : null}
+          student={students.find((st) => st.id === job.studentId)}
+          trainerName={trainerName}
+          userEmail={user?.email}
+          timbre={definicoes.timbre}
+          urlAssinatura={urlDaAssinatura(photosById, resposta && resposta.assinaturaId)}
+        />
+      );
+    }
     if (job.tipo === 'exemplo') {
       return (
         <ExemploPrintDoc trainerName={trainerName} userEmail={user?.email} timbre={definicoes.timbre} />
@@ -10498,6 +11713,11 @@ function AppInner() {
   function tituloDaFolha(job) {
     if (!job) return 'Documento';
     if (job.tipo === 'exemplo') return 'Exemplo de timbre';
+    if (job.tipo === 'formulario') {
+      const r = formularios.respostas.find((x) => x.id === job.respostaId);
+      const al = students.find((st) => st.id === job.studentId);
+      return `${r ? r.nome : 'Formulário'} — ${al ? al.name : ''}`.trim();
+    }
     const aluno = students.find((st) => st.id === job.studentId);
     if (job.tipo === 'treino') {
       const pr = treinos.prescricoes.find((x) => x.id === job.prescricaoId);
@@ -11110,7 +12330,19 @@ function AppInner() {
       <main className="flex-1 pb-10 pb-nav">
         {/* Os treinos vivem dentro do aluno e nao na barra de navegacao: quando
             ha um aluno escolhido, esta vista toma conta do ecra. */}
-        {treinosStudentId && students.some((st) => st.id === treinosStudentId) ? (
+        {formulariosStudentId && students.some((st) => st.id === formulariosStudentId) ? (
+          <FormulariosView
+            student={students.find((st) => st.id === formulariosStudentId)}
+            formularios={formularios}
+            photosById={photosById}
+            onPreencher={(modelo, resposta) => setPreencherForm({ modelo, resposta })}
+            onImprimir={printFormulario}
+            onApagar={apagarFormulario}
+            onGuardarModelo={guardarModeloFormulario}
+            onApagarModelo={apagarModeloFormulario}
+            onVoltar={() => setFormulariosStudentId(null)}
+          />
+        ) : treinosStudentId && students.some((st) => st.id === treinosStudentId) ? (
           <TreinosView
             student={students.find((st) => st.id === treinosStudentId)}
             treinos={treinos}
@@ -11234,6 +12466,20 @@ function AppInner() {
 
       <PrintHost job={printJob} onDone={setPrintJob}>{documentoDaFolha(printJob)}</PrintHost>
 
+      {preencherForm && formulariosStudentId && (
+        <PreencherFormularioModal
+          modelo={preencherForm.modelo}
+          resposta={preencherForm.resposta}
+          aluno={students.find((st) => st.id === formulariosStudentId)}
+          onGuardar={(dados) => guardarFormulario(
+            preencherForm.modelo,
+            students.find((st) => st.id === formulariosStudentId),
+            dados,
+          )}
+          onClose={() => setPreencherForm(null)}
+        />
+      )}
+
       {previaJob && (
         <PrevisualizacaoModal
           titulo={tituloDaFolha(previaJob)}
@@ -11270,7 +12516,7 @@ function AppInner() {
         <RegistarFaltaModal students={students} sessions={sessions} definicoes={definicoes} onSave={registarFalta} onClose={() => setShowFaltaModal(false)} />
       )}
       {showStudentModal && (
-        <StudentFormModal student={studentModal} sessions={sessions} customCategories={customCategories} onAddCategory={addCategory} onSave={saveStudent} onClose={() => setShowStudentModal(false)} onDelete={deleteStudent} onGoToAssessments={goToAssessments} onGoToTreinos={goToTreinos} onGoToSession={openEditSession} onAgendarReposicao={openReposicaoFor}
+        <StudentFormModal student={studentModal} sessions={sessions} customCategories={customCategories} formularios={formularios} onAddCategory={addCategory} onSave={saveStudent} onClose={() => setShowStudentModal(false)} onDelete={deleteStudent} onGoToAssessments={goToAssessments} onGoToTreinos={goToTreinos} onGoToFormularios={goToFormularios} onGoToSession={openEditSession} onAgendarReposicao={openReposicaoFor}
           treinoCount={studentModal ? prescricoesDoAluno(treinos, studentModal.id).length : 0} />
       )}
       {showTransactionModal && (

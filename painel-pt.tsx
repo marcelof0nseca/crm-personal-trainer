@@ -467,6 +467,602 @@ const EMPTY_ASSESS_FIELDS = {
   assessNotes: '', photoIds: [],
 };
 
+/* ===================== CONDICIONAMENTO FÍSICO =====================
+ *
+ * Protocolos configuráveis. Os de origem vivem no código, como a biblioteca de
+ * exercícios e os formulários; os que o treinador criar ou alterar ficam em
+ * `definicoes.protocolos` -- são configuração, e assim não obrigam a mais uma
+ * chave de dados nem a mais um SQL por correr.
+ *
+ * O que fica gravado na avaliação é a APLICAÇÃO do protocolo: o que se mediu,
+ * em que condições, com que fórmula, por quem.
+ *
+ * REGRA QUE MANDA AQUI, e que a especificação repete: uma estimativa nunca se
+ * apresenta como medição. O VO₂máx calculado diz que é estimado, mostra a
+ * fórmula, a versão da fórmula e os valores que entraram. E **nada é
+ * classificado automaticamente** -- a classificação é um campo que o
+ * profissional escreve, não um veredicto da aplicação.
+ */
+
+const CATEGORIAS_CONDICIONAMENTO = [
+  'Capacidade aeróbia',
+  'Capacidade anaeróbia',
+  'Resistência cardiorrespiratória',
+  'Velocidade',
+  'Agilidade',
+  'Potência',
+  'Recuperação da frequência cardíaca',
+  'Resistência muscular',
+  'Condicionamento geral',
+  'Personalizado',
+];
+
+// O catálogo de medidas. Cada protocolo escolhe as suas: mostrar trinta campos
+// num teste de sprint seria pedir que ninguém o preenchesse.
+const CAMPOS_CONDICIONAMENTO = [
+  { id: 'duracao', label: 'Duração', unidade: 'min' },
+  { id: 'distancia', label: 'Distância', unidade: 'm' },
+  { id: 'velocidade', label: 'Velocidade', unidade: 'km/h' },
+  { id: 'ritmo', label: 'Ritmo', unidade: 'min/km', tipo: 'texto' },
+  { id: 'potencia', label: 'Potência', unidade: 'W' },
+  { id: 'inclinacao', label: 'Inclinação', unidade: '%' },
+  { id: 'repeticoes', label: 'Repetições', unidade: 'reps' },
+  { id: 'voltas', label: 'Voltas', unidade: 'voltas' },
+  { id: 'tempo', label: 'Tempo', unidade: 's' },
+  { id: 'estagio', label: 'Estágio atingido', tipo: 'texto' },
+  { id: 'fcRepouso', label: 'FC de repouso', unidade: 'bpm' },
+  { id: 'fcMedia', label: 'FC média', unidade: 'bpm' },
+  { id: 'fcMaxima', label: 'FC máxima observada', unidade: 'bpm' },
+  { id: 'fcRecuperacao', label: 'FC de recuperação', unidade: 'bpm' },
+  { id: 'exercicio', label: 'Exercício', tipo: 'texto' },
+  { id: 'carga', label: 'Carga', unidade: 'kg' },
+  { id: 'altura', label: 'Altura', unidade: 'cm' },
+  // Lados em campos próprios: a unidade muda de teste para teste (kgf na
+  // preensão, segundos no equilíbrio), e um par genérico não servia os dois.
+  { id: 'preensaoDireita', label: 'Mão direita', unidade: 'kgf' },
+  { id: 'preensaoEsquerda', label: 'Mão esquerda', unidade: 'kgf' },
+];
+
+function campoCondicionamento(id) {
+  return CAMPOS_CONDICIONAMENTO.find((c) => c.id === id) || { id, label: id };
+}
+
+// Campos que qualquer aplicação leva, seja qual for o protocolo.
+const CAMPOS_SEMPRE = [
+  { id: 'rpe', label: 'RPE (esforço percebido, 0-10)', unidade: '' },
+  { id: 'sintomas', label: 'Sintomas durante o teste', tipo: 'texto' },
+  { id: 'motivoInterrupcao', label: 'Motivo de interrupção', tipo: 'texto' },
+  { id: 'condicoes', label: 'Condições ambientais', tipo: 'texto' },
+];
+
+// Lê um campo como número. Vazio devolve null, para nenhuma fórmula produzir
+// um resultado a partir de zeros que ninguém escreveu.
+function numDoCampo(v) {
+  const x = parseFloat(String(v == null ? '' : v).replace(',', '.'));
+  return Number.isFinite(x) ? x : null;
+}
+
+/* ---------------------------- fórmulas ----------------------------
+   Cada uma traz o nome, o ano e a expressão escrita por extenso. É o que a
+   especificação pede e é o que permite, daqui a três anos, saber como aquele
+   número foi obtido -- mesmo que entretanto se mude de fórmula. */
+const FORMULAS = {
+  cooper_1968: {
+    id: 'cooper_1968',
+    nome: 'Cooper',
+    versao: '1968',
+    rotulo: 'VO₂máx estimado',
+    unidade: 'ml/kg/min',
+    expressao: 'VO₂máx = (distância em metros − 504,9) ÷ 44,73',
+    entradas: ['distancia'],
+    calcular: (v) => {
+      const d = numDoCampo(v.distancia);
+      if (d == null || d <= 505) return null;
+      return (d - 504.9) / 44.73;
+    },
+  },
+  corrida_2400: {
+    id: 'corrida_2400',
+    nome: 'Corrida de 2,4 km',
+    versao: '1976',
+    rotulo: 'VO₂máx estimado',
+    unidade: 'ml/kg/min',
+    expressao: 'VO₂máx = 483 ÷ tempo em minutos + 3,5',
+    entradas: ['duracao'],
+    calcular: (v) => {
+      const t = numDoCampo(v.duracao);
+      if (t == null || t <= 0) return null;
+      return (483 / t) + 3.5;
+    },
+  },
+  rockport_1987: {
+    id: 'rockport_1987',
+    nome: 'Rockport',
+    versao: '1987',
+    rotulo: 'VO₂máx estimado',
+    unidade: 'ml/kg/min',
+    expressao: 'VO₂máx = 132,853 − (0,0769 × peso em lb) − (0,3877 × idade) + (6,315 se masculino) − (3,2649 × tempo) − (0,1565 × FC final)',
+    entradas: ['duracao', 'fcMaxima', 'peso', 'idade', 'sexo'],
+    calcular: (v, ctx) => {
+      const t = numDoCampo(v.duracao);
+      const fc = numDoCampo(v.fcMaxima);
+      const peso = numDoCampo(ctx.peso);
+      const idade = numDoCampo(ctx.idade);
+      if (t == null || fc == null || peso == null || idade == null) return null;
+      return 132.853 - (0.0769 * peso * 2.20462) - (0.3877 * idade)
+        + (ctx.sexo === 'M' ? 6.315 : 0) - (3.2649 * t) - (0.1565 * fc);
+    },
+  },
+  queens_1972: {
+    id: 'queens_1972',
+    nome: 'Queens College (degrau)',
+    versao: '1972',
+    rotulo: 'VO₂máx estimado',
+    unidade: 'ml/kg/min',
+    expressao: 'Homens: VO₂máx = 111,33 − (0,42 × FC de recuperação). Mulheres: VO₂máx = 65,81 − (0,1847 × FC de recuperação)',
+    entradas: ['fcRecuperacao', 'sexo'],
+    calcular: (v, ctx) => {
+      const fc = numDoCampo(v.fcRecuperacao);
+      if (fc == null) return null;
+      return ctx.sexo === 'M' ? 111.33 - (0.42 * fc) : 65.81 - (0.1847 * fc);
+    },
+  },
+  brzycki_1993: {
+    id: 'brzycki_1993',
+    nome: 'Brzycki',
+    versao: '1993',
+    expressao: '1RM = carga / (1,0278 - 0,0278 x repeticoes)',
+    entradas: ['carga', 'repeticoes'],
+    unidade: 'kg',
+    rotulo: '1RM estimado',
+    calcular: (v) => {
+      const c = numDoCampo(v.carga);
+      const r = numDoCampo(v.repeticoes);
+      // Acima das 12 repetições a estimativa deixa de ter fundamento.
+      if (c == null || r == null || r < 1 || r > 12) return null;
+      return c / (1.0278 - (0.0278 * r));
+    },
+  },
+  leger_1988: {
+    id: 'leger_1988',
+    nome: 'Léger (vaivém de 20 m)',
+    versao: '1988',
+    rotulo: 'VO₂máx estimado',
+    unidade: 'ml/kg/min',
+    expressao: 'VO₂máx = 31,025 + (3,238 × velocidade final) − (3,248 × idade) + (0,1536 × velocidade final × idade)',
+    entradas: ['velocidade', 'idade'],
+    calcular: (v, ctx) => {
+      const vel = numDoCampo(v.velocidade);
+      const idade = numDoCampo(ctx.idade);
+      if (vel == null || idade == null) return null;
+      return 31.025 + (3.238 * vel) - (3.248 * idade) + (0.1536 * vel * idade);
+    },
+  },
+};
+
+function formulaPorId(id) { return FORMULAS[id] || null; }
+
+/* ---------------------------- protocolos ---------------------------- */
+
+const PROTOCOLOS_BASE = [
+  {
+    id: 'p:cooper', base: true, nome: 'Teste de Cooper (12 minutos)', versao: '1', categoria: 'Capacidade aeróbia',
+    objetivo: 'Estimar a capacidade aeróbia pela distância percorrida em 12 minutos.',
+    instrucoes: 'Depois de aquecer, percorrer a maior distância possível em 12 minutos, mantendo um ritmo constante. É permitido caminhar.',
+    criterios: 'Pista ou percurso medido. Aluno sem sintomas no dia do teste.',
+    contraindicacoes: 'Dor torácica, tonturas, doença aguda, lesão que impeça correr, ou indicação médica em contrário.',
+    equipamento: 'Pista medida ou GPS, cronómetro, cardiofrequencímetro.',
+    campos: ['distancia', 'fcRepouso', 'fcMedia', 'fcMaxima', 'fcRecuperacao'],
+    formula: 'cooper_1968',
+  },
+  {
+    id: 'p:distancia_definida', base: true, nome: 'Caminhada ou corrida de distância definida', versao: '1', categoria: 'Resistência cardiorrespiratória',
+    objetivo: 'Medir o tempo necessário para percorrer uma distância combinada.',
+    instrucoes: 'Percorrer a distância definida no menor tempo possível, a andar ou a correr conforme combinado.',
+    criterios: 'Distância medida e registada. Mesmo percurso nas repetições futuras.',
+    contraindicacoes: 'As mesmas do esforço moderado a intenso.',
+    equipamento: 'Percurso medido, cronómetro.',
+    campos: ['distancia', 'duracao', 'ritmo', 'fcMedia', 'fcMaxima', 'fcRecuperacao'],
+  },
+  {
+    id: 'p:milha', base: true, nome: 'Teste de 1 milha (Rockport)', versao: '1', categoria: 'Capacidade aeróbia',
+    objetivo: 'Estimar o VO₂máx a partir de uma milha a andar.',
+    instrucoes: 'Andar 1,6 km o mais depressa possível, sem correr. Medir a frequência cardíaca imediatamente ao terminar.',
+    criterios: 'Requer o peso e a idade preenchidos na avaliação.',
+    contraindicacoes: 'Limitação de marcha, dor ao andar, ou indicação médica em contrário.',
+    equipamento: 'Percurso de 1,6 km medido, cronómetro, cardiofrequencímetro.',
+    campos: ['duracao', 'fcMaxima', 'fcRecuperacao'],
+    formula: 'rockport_1987',
+  },
+  {
+    id: 'p:tc6', base: true, nome: 'Teste de caminhada de 6 minutos', versao: '1', categoria: 'Resistência cardiorrespiratória',
+    objetivo: 'Medir a distância percorrida a andar em 6 minutos, como referência funcional.',
+    instrucoes: 'Andar o máximo possível em 6 minutos num corredor plano, podendo parar se necessário. Registar as paragens.',
+    criterios: 'Corredor plano de comprimento conhecido. Muito usado em populações com baixa aptidão.',
+    contraindicacoes: 'Angina instável ou enfarte recente — nestes casos, só com acompanhamento clínico.',
+    equipamento: 'Corredor medido, cronómetro, oxímetro se disponível.',
+    campos: ['distancia', 'fcRepouso', 'fcMaxima', 'fcRecuperacao'],
+    pressaoArterial: true,
+  },
+  {
+    id: 'p:degrau', base: true, nome: 'Teste de degrau (Queens College)', versao: '1', categoria: 'Recuperação da frequência cardíaca',
+    objetivo: 'Estimar o VO₂máx pela frequência cardíaca de recuperação após 3 minutos de degrau.',
+    instrucoes: 'Subir e descer um degrau de 41 cm durante 3 minutos, a 22 ciclos por minuto (mulheres) ou 24 (homens). Medir a FC entre os 5 e os 20 segundos após parar.',
+    criterios: 'Degrau de altura conhecida e metrónomo.',
+    contraindicacoes: 'Problemas de equilíbrio, dor no joelho ou no tornozelo.',
+    equipamento: 'Degrau de 41 cm, metrónomo, cronómetro.',
+    campos: ['fcRepouso', 'fcRecuperacao'],
+    formula: 'queens_1972',
+  },
+  {
+    id: 'p:progressivo', base: true, nome: 'Teste progressivo de corrida', versao: '1', categoria: 'Capacidade aeróbia',
+    objetivo: 'Determinar a velocidade máxima atingida num protocolo de estágios crescentes.',
+    instrucoes: 'Correr em estágios de velocidade crescente até não conseguir manter o ritmo. Registar o último estágio completado.',
+    criterios: 'Registar sempre o protocolo de estágios usado, porque o resultado não é comparável entre protocolos diferentes.',
+    contraindicacoes: 'As do esforço máximo. Não aplicar sem rastreio prévio.',
+    equipamento: 'Passadeira ou pista, cronómetro, cardiofrequencímetro.',
+    campos: ['estagio', 'velocidade', 'inclinacao', 'duracao', 'fcMaxima', 'fcRecuperacao'],
+  },
+  {
+    id: 'p:shuttle', base: true, nome: 'Vaivém de 20 m (shuttle run)', versao: '1', categoria: 'Capacidade aeróbia',
+    objetivo: 'Estimar o VO₂máx pela velocidade atingida no vaivém de 20 metros.',
+    instrucoes: 'Percorrer 20 metros de ida e volta ao ritmo dos sinais sonoros, até não conseguir chegar à linha a tempo em duas ocasiões.',
+    criterios: 'Requer a idade preenchida na avaliação. Registar a velocidade do último estágio.',
+    contraindicacoes: 'As do esforço máximo; mudanças de direção repetidas exigem articulações sem dor.',
+    equipamento: 'Espaço de 20 m, sinal sonoro do protocolo, cones.',
+    campos: ['estagio', 'velocidade', 'voltas', 'fcMaxima', 'fcRecuperacao'],
+    formula: 'leger_1988',
+  },
+  {
+    id: 'p:bicicleta', base: true, nome: 'Teste em bicicleta', versao: '1', categoria: 'Capacidade aeróbia',
+    objetivo: 'Registar a potência sustentada e a resposta cardíaca em cicloergómetro.',
+    instrucoes: 'Pedalar na carga combinada durante o tempo definido, mantendo a cadência. Registar a potência e a frequência cardíaca.',
+    criterios: 'Registar sempre a carga e a cadência — sem elas o resultado não se repete.',
+    contraindicacoes: 'Dor no joelho ou na anca em flexão repetida.',
+    equipamento: 'Cicloergómetro com leitura de potência.',
+    campos: ['potencia', 'duracao', 'repeticoes', 'fcMedia', 'fcMaxima', 'fcRecuperacao'],
+  },
+  {
+    id: 'p:remo', base: true, nome: 'Teste em remo', versao: '1', categoria: 'Condicionamento geral',
+    objetivo: 'Medir o tempo e a potência numa distância fixa em remoergómetro.',
+    instrucoes: 'Remar a distância combinada no menor tempo possível. Registar o ritmo médio e a potência.',
+    criterios: 'Mesma regulação do aparelho nas repetições futuras.',
+    contraindicacoes: 'Dor lombar em flexão, lesão de ombro.',
+    equipamento: 'Remoergómetro.',
+    campos: ['distancia', 'duracao', 'ritmo', 'potencia', 'fcMedia', 'fcMaxima'],
+  },
+  {
+    id: 'p:velocidade', base: true, nome: 'Corrida de velocidade', versao: '1', categoria: 'Velocidade',
+    objetivo: 'Medir o tempo numa distância curta em esforço máximo.',
+    instrucoes: 'Após aquecimento completo, percorrer a distância em velocidade máxima. Registar a melhor de várias tentativas.',
+    criterios: 'Aquecimento obrigatório. Recuperação completa entre tentativas.',
+    contraindicacoes: 'Lesão muscular recente nos membros inferiores.',
+    equipamento: 'Pista medida, cronómetro ou células fotoelétricas.',
+    campos: ['distancia', 'tempo', 'repeticoes'],
+  },
+  {
+    id: 'p:contra_relogio', base: true, nome: 'Contra-relógio', versao: '1', categoria: 'Capacidade anaeróbia',
+    objetivo: 'Medir a distância percorrida num tempo fixo, ou o tempo numa distância fixa, em intensidade alta.',
+    instrucoes: 'Manter a intensidade mais alta possível durante todo o teste.',
+    criterios: 'Registar qual das duas variantes foi usada.',
+    contraindicacoes: 'As do esforço máximo.',
+    equipamento: 'Percurso ou ergómetro, cronómetro.',
+    campos: ['distancia', 'duracao', 'ritmo', 'potencia', 'fcMaxima', 'fcRecuperacao'],
+  },
+  {
+    id: 'p:agilidade', base: true, nome: 'Circuito de agilidade', versao: '1', categoria: 'Agilidade',
+    objetivo: 'Medir o tempo num percurso com mudanças de direção.',
+    instrucoes: 'Percorrer o circuito marcado no menor tempo possível, sem derrubar cones.',
+    criterios: 'Mesmo desenho de circuito nas repetições futuras.',
+    contraindicacoes: 'Instabilidade articular no tornozelo ou no joelho.',
+    equipamento: 'Cones, fita métrica, cronómetro.',
+    campos: ['tempo', 'repeticoes', 'distancia'],
+  },
+  {
+    id: 'p:circuito', base: true, nome: 'Circuito de condicionamento', versao: '1', categoria: 'Condicionamento geral',
+    objetivo: 'Medir o desempenho num circuito de exercícios combinados.',
+    instrucoes: 'Completar as voltas definidas no menor tempo possível, ou o máximo de voltas no tempo definido.',
+    criterios: 'Descrever o circuito nas observações — sem isso o resultado não se compara.',
+    contraindicacoes: 'Conforme os exercícios que o compõem.',
+    equipamento: 'Conforme o circuito.',
+    campos: ['voltas', 'duracao', 'repeticoes', 'fcMedia', 'fcMaxima', 'fcRecuperacao'],
+  },
+  {
+    id: 'p:rm_direto', base: true, nome: '1RM direto', versao: '1', categoria: 'Resistência muscular',
+    objetivo: 'Determinar a carga máxima levantada uma única vez com técnica correta.',
+    instrucoes: 'Aquecer progressivamente e subir a carga em séries curtas até à máxima levantada uma vez com técnica.',
+    criterios: 'Só com técnica dominada e com quem dá apoio. Registar o exercício exato.',
+    contraindicacoes: 'Lesão na região envolvida, tensão arterial não controlada, iniciantes sem técnica.',
+    equipamento: 'Barra e discos, apoio de segurança.',
+    campos: ['exercicio', 'carga'],
+  },
+  {
+    id: 'p:rm_estimado', base: true, nome: '1RM estimado (Brzycki)', versao: '1', categoria: 'Resistência muscular',
+    objetivo: 'Estimar o 1RM a partir de uma série até à falha técnica, sem chegar à carga máxima.',
+    instrucoes: 'Escolher uma carga que permita entre 3 e 10 repetições. Parar à falha técnica, não à falha total.',
+    criterios: 'Acima das 12 repetições a estimativa deixa de ter fundamento.',
+    contraindicacoes: 'As mesmas do esforço máximo, ainda que a carga seja menor.',
+    equipamento: 'Conforme o exercício.',
+    campos: ['exercicio', 'carga', 'repeticoes'],
+    formula: 'brzycki_1993',
+  },
+  {
+    id: 'p:preensao', base: true, nome: 'Preensão manual (dinamómetro)', versao: '1', categoria: 'Resistência muscular',
+    objetivo: 'Medir a força de preensão de cada mão.',
+    instrucoes: 'Cotovelo a 90 graus, apertar com força máxima durante 3 segundos. Melhor de três tentativas por mão.',
+    criterios: 'Registar o dinamómetro usado — os valores não se comparam entre aparelhos.',
+    contraindicacoes: 'Dor ou lesão na mão, no punho ou no cotovelo.',
+    equipamento: 'Dinamómetro de preensão.',
+    campos: ['preensaoDireita', 'preensaoEsquerda', 'repeticoes'],
+  },
+  {
+    id: 'p:flexoes_min', base: true, nome: 'Flexões de braços em 1 minuto', versao: '1', categoria: 'Resistência muscular',
+    objetivo: 'Contar as repetições completas em 60 segundos.',
+    instrucoes: 'Manter o corpo alinhado e descer até o cotovelo formar 90 graus. Contam só as repetições com amplitude completa.',
+    criterios: 'Registar a variante usada (de joelhos, de pés, inclinada).',
+    contraindicacoes: 'Dor no ombro, no punho ou na lombar.',
+    equipamento: 'Cronómetro.',
+    campos: ['repeticoes', 'fcMaxima'],
+  },
+  {
+    id: 'p:abdominais_min', base: true, nome: 'Abdominais em 1 minuto', versao: '1', categoria: 'Resistência muscular',
+    objetivo: 'Contar as repetições completas em 60 segundos.',
+    instrucoes: 'Joelhos fletidos, pés apoiados. Contam as repetições com a amplitude combinada.',
+    criterios: 'Registar a variante e a amplitude exigida.',
+    contraindicacoes: 'Dor lombar ou cervical.',
+    equipamento: 'Colchão, cronómetro.',
+    campos: ['repeticoes'],
+  },
+  {
+    id: 'p:agachamentos_min', base: true, nome: 'Agachamentos em 1 minuto', versao: '1', categoria: 'Resistência muscular',
+    objetivo: 'Contar as repetições completas em 60 segundos.',
+    instrucoes: 'Agachar até à profundidade combinada e estender por completo.',
+    criterios: 'Registar a profundidade exigida.',
+    contraindicacoes: 'Dor no joelho ou na anca.',
+    equipamento: 'Cronómetro.',
+    campos: ['repeticoes'],
+  },
+  {
+    id: 'p:prancha', base: true, nome: 'Prancha isométrica', versao: '1', categoria: 'Resistência muscular',
+    objetivo: 'Medir quanto tempo o alinhamento se mantém.',
+    instrucoes: 'Parar quando o alinhamento se perde, e não quando o aluno desiste. É essa a medida.',
+    criterios: 'Registar a variante (antebraços ou mãos).',
+    contraindicacoes: 'Dor lombar, dor no ombro.',
+    equipamento: 'Colchão, cronómetro.',
+    campos: ['tempo'],
+  },
+  {
+    id: 'p:wall_sit', base: true, nome: 'Wall sit (cadeira na parede)', versao: '1', categoria: 'Resistência muscular',
+    objetivo: 'Medir o tempo em isometria com os joelhos a 90 graus.',
+    instrucoes: 'Costas na parede, joelhos e ancas a 90 graus. Parar quando a posição se perde.',
+    criterios: 'Confirmar o ângulo no início.',
+    contraindicacoes: 'Dor no joelho, dor patelofemoral.',
+    equipamento: 'Parede lisa, cronómetro.',
+    campos: ['tempo'],
+  },
+  {
+    id: 'p:salto_vertical', base: true, nome: 'Salto vertical', versao: '1', categoria: 'Potência',
+    objetivo: 'Medir a diferença entre o alcance parado e o alcance no salto.',
+    instrucoes: 'Marcar o alcance parado. Saltar e marcar o ponto mais alto. Melhor de três tentativas.',
+    criterios: 'Mesma técnica de salto nas repetições futuras (com ou sem contramovimento).',
+    contraindicacoes: 'Lesão recente no tornozelo, no joelho ou na lombar.',
+    equipamento: 'Parede marcada ou aparelho de medição.',
+    campos: ['altura', 'repeticoes'],
+  },
+  {
+    id: 'p:salto_horizontal', base: true, nome: 'Salto horizontal sem corrida', versao: '1', categoria: 'Potência',
+    objetivo: 'Medir a distância alcançada num salto a pés juntos.',
+    instrucoes: 'Pés atrás da linha, saltar em frente e aterrar com os dois pés. Mede-se ao calcanhar mais recuado.',
+    criterios: 'Melhor de três tentativas.',
+    contraindicacoes: 'Lesão recente nos membros inferiores.',
+    equipamento: 'Fita métrica, superfície não escorregadia.',
+    campos: ['distancia', 'repeticoes'],
+  },
+  {
+    id: 'p:personalizado', base: true, nome: 'Protocolo personalizado', versao: '1', categoria: 'Personalizado',
+    objetivo: '',
+    instrucoes: 'Descrever o que foi feito nas observações.',
+    criterios: '',
+    contraindicacoes: '',
+    equipamento: '',
+    campos: ['duracao', 'distancia', 'velocidade', 'ritmo', 'potencia', 'inclinacao',
+      'repeticoes', 'voltas', 'tempo', 'carga', 'altura',
+      'fcRepouso', 'fcMedia', 'fcMaxima', 'fcRecuperacao'],
+  },
+];
+
+function protocolosDe(definicoes) {
+  const meus = (definicoes && definicoes.protocolos) || [];
+  const escondidos = new Set((definicoes && definicoes.protocolosOcultos) || []);
+  return [...PROTOCOLOS_BASE.filter((p) => !escondidos.has(p.id)), ...meus];
+}
+
+function protocoloPorId(definicoes, id) {
+  return protocolosDe(definicoes).find((p) => p.id === id) || null;
+}
+
+// O contexto que algumas fórmulas pedem vem da própria avaliação -- pedir o
+// peso e a idade outra vez, com eles já preenchidos acima, convidava ao erro.
+function contextoDaAvaliacao(form, studentSex) {
+  return { peso: form.assessWeight, idade: form.assessAge, sexo: studentSex === 'F' ? 'F' : 'M' };
+}
+
+// O resultado de uma aplicação: o número, a fórmula que o produziu, a versão
+// dessa fórmula e os valores que entraram. É isto que a especificação exige
+// para uma estimativa não passar por medição.
+function estimativaDaAplicacao(protocolo, aplicacao, ctx) {
+  const f = protocolo && protocolo.formula ? formulaPorId(protocolo.formula) : null;
+  if (!f) return null;
+  const valor = f.calcular(aplicacao.valores || {}, ctx || {});
+  if (valor == null || !Number.isFinite(valor)) {
+    return { formula: f, valor: null, entradas: [], emFalta: true };
+  }
+  const entradas = (f.entradas || []).map((id) => {
+    if (id === 'peso') return { label: 'Peso', valor: ctx.peso, unidade: 'kg' };
+    if (id === 'idade') return { label: 'Idade', valor: ctx.idade, unidade: 'anos' };
+    if (id === 'sexo') return { label: 'Sexo', valor: ctx.sexo === 'M' ? 'Masculino' : 'Feminino', unidade: '' };
+    const c = campoCondicionamento(id);
+    return { label: c.label, valor: (aplicacao.valores || {})[id], unidade: c.unidade || '' };
+  }).filter((e) => e.valor !== undefined && e.valor !== null && String(e.valor) !== '');
+  return { formula: f, valor, entradas, emFalta: false };
+}
+
+/* ---------------------------- zonas de treino ---------------------------- */
+
+const ZONAS_PADRAO = [
+  { nome: 'Z1 — Recuperação', de: 50, ate: 60 },
+  { nome: 'Z2 — Base aeróbia', de: 60, ate: 70 },
+  { nome: 'Z3 — Aeróbio', de: 70, ate: 80 },
+  { nome: 'Z4 — Limiar', de: 80, ate: 90 },
+  { nome: 'Z5 — Máximo', de: 90, ate: 100 },
+];
+
+const METODOS_ZONA = [
+  {
+    id: 'fcmax',
+    label: '% da frequência cardíaca máxima',
+    explicacao: 'Cada zona é uma percentagem da FC máxima observada.',
+    precisa: ['fcMaxima'],
+    calcular: (v) => {
+      const max = numDoCampo(v.fcMaxima);
+      if (max == null) return null;
+      return ZONAS_PADRAO.map((z) => ({ ...z, min: Math.round(max * z.de / 100), maxBpm: Math.round(max * z.ate / 100) }));
+    },
+  },
+  {
+    id: 'reserva',
+    label: 'Frequência cardíaca de reserva (Karvonen)',
+    explicacao: 'FC alvo = FC de repouso + percentagem × (FC máxima − FC de repouso).',
+    precisa: ['fcMaxima', 'fcRepouso'],
+    calcular: (v) => {
+      const max = numDoCampo(v.fcMaxima);
+      const rep = numDoCampo(v.fcRepouso);
+      if (max == null || rep == null || max <= rep) return null;
+      const reserva = max - rep;
+      return ZONAS_PADRAO.map((z) => ({
+        ...z,
+        min: Math.round(rep + (reserva * z.de / 100)),
+        maxBpm: Math.round(rep + (reserva * z.ate / 100)),
+      }));
+    },
+  },
+  {
+    id: 'limiar',
+    label: 'Limiar informado',
+    explicacao: 'As zonas saem de uma percentagem da frequência cardíaca de limiar indicada pelo profissional.',
+    precisa: ['limiar'],
+    calcular: (v) => {
+      const lim = numDoCampo(v.limiar);
+      if (lim == null) return null;
+      // Percentagens do limiar, e não da máxima: a escala é outra.
+      const faixas = [[65, 81], [81, 89], [89, 93], [93, 99], [99, 110]];
+      return ZONAS_PADRAO.map((z, i) => ({
+        ...z,
+        min: Math.round(lim * faixas[i][0] / 100),
+        maxBpm: Math.round(lim * faixas[i][1] / 100),
+      }));
+    },
+  },
+  {
+    id: 'potencia',
+    label: '% da potência de referência',
+    explicacao: 'Cada zona é uma percentagem da potência de referência, em watts.',
+    precisa: ['potenciaRef'],
+    unidade: 'W',
+    calcular: (v) => {
+      const p = numDoCampo(v.potenciaRef);
+      if (p == null) return null;
+      return ZONAS_PADRAO.map((z) => ({ ...z, min: Math.round(p * z.de / 100), maxBpm: Math.round(p * z.ate / 100) }));
+    },
+  },
+  {
+    id: 'ritmo',
+    label: '% do ritmo de referência',
+    explicacao: 'O ritmo é registado como texto: um ritmo mais lento é um número maior, e por isso não se calcula como os outros.',
+    precisa: ['ritmoRef'],
+    calcular: () => null,
+  },
+  {
+    id: 'personalizado',
+    label: 'Zonas personalizadas',
+    explicacao: 'Escritas à mão pelo profissional.',
+    precisa: [],
+    calcular: () => null,
+  },
+];
+
+function metodoDeZona(id) { return METODOS_ZONA.find((m) => m.id === id) || METODOS_ZONA[0]; }
+
+/* ---------------------------- aplicações gravadas ---------------------------- */
+
+function novaAplicacao(protocoloId) {
+  return {
+    id: uid(),
+    protocoloId,
+    valores: {},
+    resultado: '',
+    classificacao: '',
+    // A especificação pede a fonte e a versão da tabela normativa usada. Não
+    // vem nenhuma tabela no produto -- a classificação é escrita pelo
+    // profissional -- mas quem use uma tem onde a identificar, e sem isso a
+    // classificação de hoje é indistinguível da de outra tabela qualquer.
+    referenciaFonte: '',
+    referenciaVersao: '',
+    observacoes: '',
+    pressaoArterial: '',
+    profissional: '',
+    // Carimbo da estimativa no momento em que foi calculada. Ver abaixo.
+    estimativa: null,
+    em: new Date().toISOString(),
+  };
+}
+
+// Congela a estimativa no registo. Guardar só os valores de entrada e voltar a
+// calcular mais tarde parece equivalente, mas não é: se a fórmula for trocada
+// ou corrigida, uma avaliação de 2026 passaria a mostrar um número que nunca
+// foi dito ao aluno. A especificação pede a versão da fórmula justamente por
+// isto -- aqui guarda-se a versão e o resultado que ela deu.
+function congelarEstimativa(protocolo, aplicacao, ctx) {
+  const e = estimativaDaAplicacao(protocolo, aplicacao, ctx);
+  if (!e || e.emFalta || e.valor == null) return null;
+  return {
+    valor: e.valor,
+    rotulo: e.formula.rotulo || 'VO₂máx estimado',
+    unidade: e.formula.unidade || 'ml/kg/min',
+    formulaId: e.formula.id,
+    formulaNome: e.formula.nome,
+    formulaVersao: e.formula.versao,
+    expressao: e.formula.expressao,
+    entradas: e.entradas,
+    calculadoEm: new Date().toISOString(),
+  };
+}
+
+// Ao ler, o que vale é o que ficou congelado. Só se calcula de novo quando não
+// há carimbo nenhum -- registos criados antes desta mudança.
+function estimativaParaMostrar(protocolo, aplicacao, ctx) {
+  if (aplicacao && aplicacao.estimativa) return aplicacao.estimativa;
+  return congelarEstimativa(protocolo, aplicacao, ctx);
+}
+
+function aplicacoesDaAvaliacao(a) {
+  return Array.isArray(a && a.assessCondicionamento) ? a.assessCondicionamento : [];
+}
+
+// Uma linha legível, para o histórico e para o papel.
+function descreverAplicacao(protocolo, aplicacao) {
+  if (!protocolo) return '';
+  return (protocolo.campos || [])
+    .map((id) => {
+      const v = (aplicacao.valores || {})[id];
+      if (v === undefined || v === null || String(v).trim() === '') return null;
+      const c = campoCondicionamento(id);
+      return `${c.label}: ${v}${c.unidade ? ` ${c.unidade}` : ''}`;
+    })
+    .filter(Boolean)
+    .join(' · ');
+}
+
 /* ===================== VERSÕES DA AVALIAÇÃO ===================== */
 
 // Uma avaliação nasce rascunho e é finalizada quando o treinador a dá por

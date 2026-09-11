@@ -5447,6 +5447,346 @@ function AddCategoryInline({ onAdd, placeholder, label = 'Adicionar personalizad
 
 /* ============================== ASSESSMENT FIELDS (shared) ============================== */
 
+// Escolher um movimento. Agrupado por região e com rolagem própria: são mais
+// de trinta, e quem vai medir o ombro não quer ler a lista dos pés.
+function EscolherMovimentoModal({ definicoes, jaMedidos, onEscolher, onClose }) {
+  const [procura, setProcura] = useState('');
+  const movimentos = movimentosDe(definicoes);
+  const medidos = new Set(jaMedidos || []);
+
+  const porRegiao = useMemo(() => {
+    const termo = chaveBusca(procura.trim());
+    const visiveis = movimentos.filter((m) => !termo
+      || chaveBusca(`${m.nome} ${m.regiao}`).includes(termo));
+    return REGIOES_MOBILIDADE
+      .map((r) => ({ regiao: r, itens: visiveis.filter((m) => m.regiao === r) }))
+      .filter((g) => g.itens.length > 0);
+  }, [movimentos, procura]);
+
+  const total = porRegiao.reduce((s, g) => s + g.itens.length, 0);
+
+  return (
+    <Modal title="Escolher movimento" onClose={onClose} largura={560}>
+      <div className="flex flex-col gap-3">
+        <div className="relative min-w-0">
+          <Search size={15} className="absolute text-faint" style={{ left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+          <input
+            value={procura}
+            onChange={(e) => setProcura(e.target.value)}
+            placeholder="Procurar movimento ou região..."
+            aria-label="Procurar movimento"
+            className="input-field"
+            style={{ paddingLeft: 34 }}
+            autoFocus
+          />
+        </div>
+        <div className="text-2xs font-body text-faint">{plural(total, 'movimento', 'movimentos')}</div>
+
+        {total === 0 ? (
+          <EmptyState icon={Activity} message="Nenhum movimento encontrado." hint="Experimente outro termo." />
+        ) : (
+          <div className="flex flex-col gap-3" style={{ maxHeight: '52vh', overflowY: 'auto' }}>
+            {porRegiao.map((g) => (
+              <div key={g.regiao} className="flex flex-col gap-1.5">
+                <div className="text-2xs uppercase tracking-wide text-faint font-body sticky top-0 py-1" style={{ backgroundColor: 'var(--bg-surface)' }}>
+                  {g.regiao}
+                </div>
+                {g.itens.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => onEscolher(m)}
+                    className="flex items-center justify-between gap-2 text-left px-3 py-2.5 rounded-lg border border-hair btn-surface min-w-0"
+                    style={{ backgroundColor: 'var(--bg-elevated)' }}
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-sm font-body text-primary truncate">{m.nome}</span>
+                      <span className="block text-2xs font-body text-faint">
+                        em {m.unidade}{m.bilateral ? ' · dois lados' : ''}
+                        {medidos.has(m.id) ? ' · já medido nesta avaliação' : ''}
+                      </span>
+                    </span>
+                    <Plus size={15} className="text-brass flex-shrink-0" />
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// As tentativas de um lado. O número, o melhor e a média saem da lista — não
+// se escrevem à parte, senão deixam de bater certo com os valores.
+function TentativasDoLado({ rotulo, unidade, valores, onMudar }) {
+  const lista = valores || [];
+  const resumo = resumoDoLado(lista);
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-2xs uppercase tracking-wide text-faint font-body">{rotulo}</span>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {lista.map((v, i) => (
+          <span key={i} className="flex items-center gap-1">
+            <input
+              type="number"
+              inputMode="decimal"
+              value={v}
+              onChange={(e) => onMudar((antes) => antes.map((x, k) => (k === i ? e.target.value : x)))}
+              aria-label={`${rotulo}, tentativa ${i + 1} (${unidade})`}
+              className="input-field"
+              style={{ width: 82 }}
+            />
+            <button
+              type="button"
+              onClick={() => onMudar((antes) => antes.filter((_, k) => k !== i))}
+              aria-label={`Remover a tentativa ${i + 1} de ${rotulo}`}
+              className="p-1 rounded btn-surface flex-shrink-0"
+            >
+              <X size={12} className="text-muted" style={{ display: 'block' }} />
+            </button>
+          </span>
+        ))}
+        <button
+          type="button"
+          onClick={() => onMudar((antes) => [...antes, ''])}
+          className="btn btn-ghost flex-shrink-0"
+          style={{ padding: '5px 9px', fontSize: 11 }}
+        >
+          <Plus size={12} /> Tentativa
+        </button>
+      </div>
+      {resumo && (
+        <span className="text-2xs font-body text-muted">
+          {plural(resumo.tentativas, 'tentativa', 'tentativas')} · melhor{' '}
+          <strong>{nPT(resumo.melhor)} {unidade}</strong> · média {nPT(resumo.media)} {unidade}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// Uma medição de mobilidade dentro da avaliação.
+function MedicaoMobilidade({ medicao, movimento, anterior, photosById, uploading, onMudar, onRemover, onUploadPhotos, onRemovePhoto }) {
+  if (!movimento) {
+    return (
+      <div className="rounded-lg border border-hair p-3 flex items-center justify-between gap-2" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+        <span className="text-2xs font-body text-faint">Movimento removido. As medidas ficam guardadas.</span>
+        <button type="button" onClick={onRemover} className="p-1.5 rounded btn-surface flex-shrink-0" aria-label="Remover medição">
+          <Trash2 size={13} className="text-rust" style={{ display: 'block' }} />
+        </button>
+      </div>
+    );
+  }
+
+  function set(campo, v) { onMudar((atual) => ({ ...atual, [campo]: v })); }
+  function setTentativas(lado, mudar) {
+    onMudar((atual) => {
+      const antes = (atual.tentativas || {})[lado] || [];
+      return { ...atual, tentativas: { ...atual.tentativas, [lado]: mudar(antes) } };
+    });
+  }
+
+  const dif = diferencaEntreLados(medicao);
+  const evo = evolucaoDaMedicao(medicao, anterior);
+  const meta = faltaParaMetaMobilidade(medicao);
+  const fotos = (medicao.fotoIds || []).map((id) => photosById[id]).filter(Boolean);
+
+  return (
+    <div className="rounded-lg border border-hair p-3 flex flex-col gap-3 min-w-0" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+      <div className="flex items-start justify-between gap-2">
+        <span className="min-w-0">
+          <span className="block text-sm font-body font-semibold text-primary">{movimento.nome}</span>
+          <span className="block text-2xs font-body text-faint">{movimento.regiao} · em {movimento.unidade}</span>
+        </span>
+        <button type="button" onClick={onRemover} className="p-1.5 rounded btn-surface flex-shrink-0" aria-label={`Remover ${movimento.nome}`}>
+          <Trash2 size={13} className="text-rust" style={{ display: 'block' }} />
+        </button>
+      </div>
+
+      <div className="flex gap-1.5 flex-wrap">
+        {TIPOS_MEDICAO.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => set('tipo', t.id)}
+            aria-pressed={medicao.tipo === t.id}
+            className="px-3 py-1.5 rounded-lg border text-xs font-body"
+            style={{
+              borderColor: medicao.tipo === t.id ? 'var(--brass)' : 'var(--border-hair)',
+              backgroundColor: medicao.tipo === t.id ? 'var(--brass-soft)' : 'var(--bg-surface)',
+              color: medicao.tipo === t.id ? 'var(--brass)' : 'var(--text-muted)',
+              fontWeight: medicao.tipo === t.id ? 600 : 400,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {movimento.bilateral ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <TentativasDoLado rotulo="Direito" unidade={movimento.unidade}
+            valores={(medicao.tentativas || {}).direito}
+            onMudar={(mudar) => setTentativas('direito', mudar)} />
+          <TentativasDoLado rotulo="Esquerdo" unidade={movimento.unidade}
+            valores={(medicao.tentativas || {}).esquerdo}
+            onMudar={(mudar) => setTentativas('esquerdo', mudar)} />
+        </div>
+      ) : (
+        <TentativasDoLado rotulo="Medição" unidade={movimento.unidade}
+          valores={(medicao.tentativas || {}).bilateral}
+          onMudar={(mudar) => setTentativas('bilateral', mudar)} />
+      )}
+
+      {(dif || evo || meta) && (
+        <div className="rounded-lg border p-2.5 flex flex-col gap-1" style={{ borderColor: 'var(--sky)', backgroundColor: 'color-mix(in srgb, var(--sky) 10%, transparent)' }}>
+          {dif && (
+            <span className="text-2xs font-body text-primary">
+              Diferença entre lados: <strong>{nPT(Math.abs(dif.absoluta))} {movimento.unidade}</strong>
+              {dif.percentagem != null ? ` (${nPT(dif.percentagem)}%)` : ''}
+              {dif.ladoMenor ? ` · menor do lado ${dif.ladoMenor}` : ' · iguais'}
+            </span>
+          )}
+          {evo && (
+            <span className="text-2xs font-body text-primary">
+              Desde a avaliação anterior: {nPT(evo.antes)} → <strong>{nPT(evo.agora)} {movimento.unidade}</strong>
+              {' '}({evo.absoluta > 0 ? '+' : evo.absoluta < 0 ? '−' : ''}{nPT(Math.abs(evo.absoluta))}
+              {evo.percentagem != null ? `, ${evo.percentagem > 0 ? '+' : '−'}${nPT(Math.abs(evo.percentagem))}%` : ''})
+            </span>
+          )}
+          {meta && (
+            <span className="text-2xs font-body text-primary">
+              Meta {nPT(meta.meta)} {movimento.unidade}:{' '}
+              {meta.atingida ? <strong>atingida</strong> : `faltam ${nPT(meta.falta)} ${movimento.unidade}`}
+            </span>
+          )}
+          <span className="text-2xs font-body text-faint">
+            Números medidos e comparados. A aplicação não diz se uma amplitude é
+            pouca ou muita — isso lê-se com o profissional.
+          </span>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <FormField label="Dispositivo utilizado">
+          <input value={medicao.dispositivo || ''} onChange={(e) => set('dispositivo', e.target.value)} className="input-field" placeholder="Ex.: goniómetro" />
+        </FormField>
+        <FormField label="Posição inicial">
+          <input value={medicao.posicaoInicial || ''} onChange={(e) => set('posicaoInicial', e.target.value)} className="input-field" placeholder="Ex.: deitado, anca a 90°" />
+        </FormField>
+      </div>
+
+      <div className="flex gap-4 flex-wrap">
+        <label className="flex items-center gap-2 text-sm font-body text-primary">
+          <input type="checkbox" checked={Boolean(medicao.dor)} onChange={(e) => set('dor', e.target.checked)} style={{ accentColor: 'var(--brass)' }} />
+          Dor
+        </label>
+        <label className="flex items-center gap-2 text-sm font-body text-primary">
+          <input type="checkbox" checked={Boolean(medicao.desconforto)} onChange={(e) => set('desconforto', e.target.checked)} style={{ accentColor: 'var(--brass)' }} />
+          Desconforto
+        </label>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <FormField label="Compensação observada">
+          <input value={medicao.compensacao || ''} onChange={(e) => set('compensacao', e.target.value)} className="input-field" placeholder="Ex.: roda a bacia" />
+        </FormField>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-body text-muted">Qualidade do movimento</span>
+          <select value={medicao.qualidade || ''} onChange={(e) => set('qualidade', e.target.value)} aria-label="Qualidade do movimento" className="input-field">
+            <option value="">Não indicada</option>
+            {QUALIDADES_MOVIMENTO.map((q) => <option key={q} value={q}>{q}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <FormField label={`Meta (${movimento.unidade})`}>
+          <input type="number" inputMode="decimal" value={medicao.meta || ''} onChange={(e) => set('meta', e.target.value)} className="input-field" />
+        </FormField>
+        <FormField label="Classificação (escrita por si)">
+          <input value={medicao.classificacao || ''} onChange={(e) => set('classificacao', e.target.value)} className="input-field" />
+        </FormField>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <FormField label="Fonte da referência">
+          <input value={medicao.referenciaFonte || ''} onChange={(e) => set('referenciaFonte', e.target.value)} className="input-field" placeholder="Ex.: AAOS" />
+        </FormField>
+        <FormField label="Versão / ano da referência">
+          <input value={medicao.referenciaVersao || ''} onChange={(e) => set('referenciaVersao', e.target.value)} className="input-field" />
+        </FormField>
+      </div>
+
+      <PhotoPicker
+        photoIds={medicao.fotoIds || []}
+        photosById={photosById}
+        busy={uploading}
+        onAdd={async (files) => {
+          const ids = await onUploadPhotos(files);
+          set('fotoIds', [...(medicao.fotoIds || []), ...ids]);
+        }}
+        onRemove={(id) => {
+          onRemovePhoto(id);
+          set('fotoIds', (medicao.fotoIds || []).filter((x) => x !== id));
+        }}
+      />
+
+      <FormField label="Observações">
+        <textarea value={medicao.observacoes || ''} onChange={(e) => set('observacoes', e.target.value)} className="input-field" rows={2} />
+      </FormField>
+    </div>
+  );
+}
+
+// O resumo do §8.1: o que salta à vista depois de medir.
+function ResumoMobilidade({ retrato }) {
+  if (!retrato || retrato.linhas.length === 0) return null;
+  const { maiorAssimetria, maisLongeDaMeta, comDor, comCompensacao, regioesPorAvaliar } = retrato;
+
+  return (
+    <div className="rounded-lg border border-hair p-3 flex flex-col gap-1.5" style={{ backgroundColor: 'var(--bg-surface)' }}>
+      <span className="text-2xs uppercase tracking-wide text-faint font-body">O que sai desta avaliação</span>
+
+      {maiorAssimetria && maiorAssimetria.diferenca && (
+        <span className="text-2xs font-body text-muted">
+          <strong>Maior assimetria:</strong> {maiorAssimetria.movimento.nome} —{' '}
+          {nPT(maiorAssimetria.diferenca.percentagem)}% entre lados
+          {maiorAssimetria.diferenca.ladoMenor ? `, menor à ${maiorAssimetria.diferenca.ladoMenor}` : ''}
+        </span>
+      )}
+      {maisLongeDaMeta && (
+        <span className="text-2xs font-body text-muted">
+          <strong>Mais longe da meta:</strong> {maisLongeDaMeta.movimento.nome} —{' '}
+          faltam {nPT(maisLongeDaMeta.meta.falta)} {maisLongeDaMeta.movimento.unidade}
+        </span>
+      )}
+      {comDor.length > 0 && (
+        <span className="text-2xs font-body text-muted">
+          <strong>Com dor:</strong> {comDor.map((l) => l.movimento && l.movimento.nome).filter(Boolean).join(', ')}
+        </span>
+      )}
+      {comCompensacao.length > 0 && (
+        <span className="text-2xs font-body text-muted">
+          <strong>Com compensação:</strong> {comCompensacao.map((l) => l.movimento && l.movimento.nome).filter(Boolean).join(', ')}
+        </span>
+      )}
+      {regioesPorAvaliar.length > 0 && (
+        <span className="text-2xs font-body text-faint">
+          Por avaliar: {regioesPorAvaliar.join(', ')}
+        </span>
+      )}
+      <span className="text-2xs font-body text-faint">
+        «Maior assimetria» e «mais longe da meta» saem dos próprios números
+        medidos. Não são um juízo sobre se a amplitude é normal — isso exigiria
+        uma tabela de referência, e essa escolhe-a o profissional.
+      </span>
+    </div>
+  );
+}
+
 // Escolher um protocolo. A lista rola dentro da própria caixa e está agrupada
 // por categoria: são vinte e tal, e uma lista corrida obrigava a ler tudo para
 // encontrar o teste de degrau.
@@ -5767,11 +6107,21 @@ function ZonasDeTreino({ zonas, onMudar }) {
   );
 }
 
-function AssessmentFields({ form, set, studentHeight, studentSex, definicoes }) {
+function AssessmentFields({ form, set, studentHeight, studentSex, definicoes, anterior, photosById, uploadingPhotos, onUploadPhotos, onRemovePhoto }) {
   const bmi = bmiOf(form.assessWeight, studentHeight);
   const [escolherProtocolo, setEscolherProtocolo] = useState(false);
+  const [escolherMovimento, setEscolherMovimento] = useState(false);
   const aplicacoes = aplicacoesDaAvaliacao(form);
   const ctxTeste = contextoDaAvaliacao(form, studentSex);
+  const medicoes = medicoesDaAvaliacao(form);
+  const anterioresPorMovimento = useMemo(
+    () => new Map(medicoesDaAvaliacao(anterior).map((m) => [m.movimentoId, m])),
+    [anterior],
+  );
+  const retratoMob = useMemo(
+    () => retratoDeMobilidade(form, anterior, definicoes),
+    [form, anterior, definicoes],
+  );
   const protocol = FOLD_PROTOCOLS.find((p) => p.id === form.assessProtocol) || FOLD_PROTOCOLS[0];
   const sexKey = studentSex === 'F' ? 'F' : 'M';
   const activeSites = protocol.sites[sexKey];
@@ -5952,10 +6302,46 @@ function AssessmentFields({ form, set, studentHeight, studentSex, definicoes }) 
                 aplicacao={ap}
                 protocolo={protocoloPorId(definicoes, ap.protocoloId)}
                 ctx={ctxTeste}
-                onMudar={(nova) => set('assessCondicionamento', aplicacoes.map((x) => (x.id === ap.id ? nova : x)))}
-                onRemover={() => set('assessCondicionamento', aplicacoes.filter((x) => x.id !== ap.id))}
+                onMudar={(nova) => set('assessCondicionamento', (atual) => (atual || []).map((x) => (x.id === ap.id ? nova : x)))}
+                onRemover={() => set('assessCondicionamento', (atual) => (atual || []).filter((x) => x.id !== ap.id))}
               />
             ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-elevated rounded-lg p-3 border border-hair flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-2xs uppercase tracking-wide text-faint font-mono">
+            Mobilidade articular
+          </span>
+          <button type="button" onClick={() => setEscolherMovimento(true)} className="btn btn-ghost" style={{ padding: '5px 10px', fontSize: 11 }}>
+            <Plus size={12} /> Medir movimento
+          </button>
+        </div>
+
+        {medicoes.length === 0 ? (
+          <span className="text-2xs font-body text-faint">
+            Sem medições nesta avaliação. Escolha um movimento e registe as
+            tentativas de cada lado.
+          </span>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {medicoes.map((m) => (
+              <MedicaoMobilidade
+                key={m.id}
+                medicao={m}
+                movimento={movimentoPorId(definicoes, m.movimentoId)}
+                anterior={anterioresPorMovimento.get(m.movimentoId)}
+                photosById={photosById || {}}
+                uploading={uploadingPhotos}
+                onUploadPhotos={onUploadPhotos}
+                onRemovePhoto={onRemovePhoto}
+                onMudar={(mudar) => set('assessMobilidade', (atual) => (atual || []).map((x) => (x.id === m.id ? mudar(x) : x)))}
+                onRemover={() => set('assessMobilidade', (atual) => (atual || []).filter((x) => x.id !== m.id))}
+              />
+            ))}
+            <ResumoMobilidade retrato={retratoMob} />
           </div>
         )}
       </div>
@@ -5974,12 +6360,24 @@ function AssessmentFields({ form, set, studentHeight, studentSex, definicoes }) 
         <textarea value={form.assessNotes || ''} onChange={(e) => set('assessNotes', e.target.value)} className="input-field" rows={2} placeholder="Evolução, orientações, observações..." />
       </FormField>
 
+      {escolherMovimento && (
+        <EscolherMovimentoModal
+          definicoes={definicoes}
+          jaMedidos={medicoes.map((m) => m.movimentoId)}
+          onClose={() => setEscolherMovimento(false)}
+          onEscolher={(mov) => {
+            set('assessMobilidade', (atual) => [...(atual || []), novaMedicaoMobilidade(mov.id)]);
+            setEscolherMovimento(false);
+          }}
+        />
+      )}
+
       {escolherProtocolo && (
         <EscolherProtocoloModal
           definicoes={definicoes}
           onClose={() => setEscolherProtocolo(false)}
           onEscolher={(proto) => {
-            set('assessCondicionamento', [...aplicacoes, novaAplicacao(proto.id)]);
+            set('assessCondicionamento', (atual) => [...(atual || []), novaAplicacao(proto.id)]);
             setEscolherProtocolo(false);
           }}
         />
@@ -7403,7 +7801,9 @@ function StudentFormModal({ student, sessions, customCategories, treinoCount = 0
   const [error, setError] = useState('');
   const allPlanTypes = [...PLAN_TYPES, ...customCategories.planTypes];
 
-  function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
+  function set(field, value) {
+    setForm((f) => ({ ...f, [field]: typeof value === 'function' ? value(f[field]) : value }));
+  }
   const currentMonthKey = monthKeyOf(new Date());
   const quinzenaMarks = form.quinzenasPagas?.[currentMonthKey] || [false, false, false, false];
   function toggleQuinzena(i) {
@@ -7663,7 +8063,9 @@ function SessionFormModal({ session, students, sessions, defaultDate, reposicaoD
   // Ao editar uma ocorrência de uma série: 'uma' ou 'serie'.
   const [escopo, setEscopo] = useState('uma');
 
-  function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
+  function set(field, value) {
+    setForm((f) => ({ ...f, [field]: typeof value === 'function' ? value(f[field]) : value }));
+  }
   const selectedStudent = students.find((s) => s.id === form.studentId);
   const isEvento = form.kind === 'evento';
   // Lista do select por ordem alfabética portuguesa (não pela ordem de registo).
@@ -9257,7 +9659,7 @@ function temMedida(f) {
   return Boolean(String(f.assessWeight || '').trim() || String(f.assessBodyFat || '').trim());
 }
 
-function AssessmentForm({ student, assessment, onSave, onCancel, photosById, onUploadPhotos, onRemovePhoto, uploadingPhotos, definicoes }) {
+function AssessmentForm({ student, assessment, onSave, onCancel, photosById, onUploadPhotos, onRemovePhoto, uploadingPhotos, definicoes, avaliacaoAnterior }) {
   const isEdit = Boolean(assessment);
   const eraFinal = isEdit && !ehRascunho(assessment);
   const [form, setForm] = useState(() => ({
@@ -9279,7 +9681,9 @@ function AssessmentForm({ student, assessment, onSave, onCancel, photosById, onU
   const onSaveRef = useRef(onSave);
   onSaveRef.current = onSave;
 
-  function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
+  function set(field, value) {
+    setForm((f) => ({ ...f, [field]: typeof value === 'function' ? value(f[field]) : value }));
+  }
 
   // Guardar sozinho enquanto é rascunho. Uma avaliação tem trinta e tal campos
   // e mede-se no ginásio, com o telemóvel na mão: perder isto por um toque em
@@ -9308,7 +9712,18 @@ function AssessmentForm({ student, assessment, onSave, onCancel, photosById, onU
       <FormField label="Data da avaliação">
         <input type="date" value={form.date} onChange={(e) => set('date', e.target.value)} className="input-field" />
       </FormField>
-      <AssessmentFields form={form} set={set} studentHeight={student.height} studentSex={student.sex} definicoes={definicoes} />
+      <AssessmentFields
+        form={form}
+        set={set}
+        studentHeight={student.height}
+        studentSex={student.sex}
+        definicoes={definicoes}
+        anterior={avaliacaoAnterior}
+        photosById={photosById}
+        uploadingPhotos={uploadingPhotos}
+        onUploadPhotos={onUploadPhotos}
+        onRemovePhoto={onRemovePhoto}
+      />
       <PhotoPicker photoIds={form.photoIds} photosById={photosById} busy={uploadingPhotos}
         onAdd={async (files) => { const ids = await onUploadPhotos(files); set('photoIds', [...form.photoIds, ...ids]); }}
         onRemove={(id) => { onRemovePhoto(id); set('photoIds', form.photoIds.filter((x) => x !== id)); }} />
@@ -11758,10 +12173,30 @@ function AssessmentDetail({ student, sessions, photosById, definicoes, iniciarNo
   // `iniciarNova` deixa a vista abrir já no formulário, para o botão do topo
   // levar a algum lado em vez de só escolher o aluno e parar ali.
   const [editando, setEditando] = useState(iniciarNova ? 'nova' : null);
+  // O id devolvido pela gravação da avaliação que está a ser escrita agora.
+  const [idEmCurso, setIdEmCurso] = useState(null);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [historicoId, setHistoricoId] = useState(null);
   const assessments = sessions.filter((s) => s.studentId === student.id && s.type === 'avaliacao' && (s.assessWeight || s.assessBodyFat)).sort((a, b) => b.date.localeCompare(a.date));
+
+  // Todas as avaliações do aluno, incluindo as que ainda não têm peso nem
+  // percentagem: uma medição de mobilidade sozinha também conta como anterior.
+  const todasAsAvaliacoes = useMemo(
+    () => sessions
+      .filter((s) => s.studentId === student.id && s.type === 'avaliacao')
+      .sort((a, b) => b.date.localeCompare(a.date)),
+    [sessions, student.id],
+  );
+
+  function avaliacaoAnteriorA(atual, idEmCurso) {
+    // O autosave de uma avaliação nova cria-a na agenda enquanto se escreve.
+    // Sem a excluir, ela passava a ser «a anterior» de si própria, e a
+    // evolução dava sempre zero.
+    const outras = todasAsAvaliacoes.filter((s) => s.id !== idEmCurso);
+    if (atual === 'nova' || !atual) return outras[0] || null;
+    return outras.find((s) => s.id !== atual.id && s.date <= atual.date) || null;
+  }
   const comHistorico = assessments.find((a) => a.id === historicoId) || null;
 
   async function handleUpload(files) {
@@ -11798,16 +12233,18 @@ function AssessmentDetail({ student, sessions, photosById, definicoes, iniciarNo
             student={student}
             definicoes={definicoes}
             assessment={editando === 'nova' ? null : editando}
-            onCancel={() => setEditando(null)}
+            avaliacaoAnterior={avaliacaoAnteriorA(editando, idEmCurso)}
+            onCancel={() => { setEditando(null); setIdEmCurso(null); }}
             photosById={photosById}
             uploadingPhotos={uploadingPhotos}
             onUploadPhotos={handleUpload}
             onRemovePhoto={onRemovePhoto}
             onSave={(form, opcoes) => {
               const id = onSaveAssessment(student.id, form, opcoes);
+              if (id) setIdEmCurso(id);
               // O autosave grava por baixo do formulário; fechá-lo aqui tirava
               // o teclado ao utilizador a meio de escrever.
-              if (!opcoes || !opcoes.silencioso) setEditando(null);
+              if (!opcoes || !opcoes.silencioso) { setEditando(null); setIdEmCurso(null); }
               return id;
             }}
           />
@@ -12033,7 +12470,9 @@ function RegistarFaltaModal({ students, sessions, definicoes, onSave, onClose })
     validadeTocada: false,
   });
   const [error, setError] = useState('');
-  function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
+  function set(field, value) {
+    setForm((f) => ({ ...f, [field]: typeof value === 'function' ? value(f[field]) : value }));
+  }
 
   function setData(iso) {
     setForm((f) => ({
@@ -12866,7 +13305,9 @@ function TransactionFormModal({ tx, defaultType, customCategories, onAddCategory
   }));
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState('');
-  function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
+  function set(field, value) {
+    setForm((f) => ({ ...f, [field]: typeof value === 'function' ? value(f[field]) : value }));
+  }
 
   function setType(type) {
     const catList = type === 'entrada' ? [...INCOME_CATEGORIES, ...customCategories.income] : [...EXPENSE_CATEGORIES, ...customCategories.expense];

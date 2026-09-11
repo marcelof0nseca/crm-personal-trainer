@@ -465,6 +465,8 @@ const EMPTY_ASSESS_FIELDS = {
   assessFoldChest: '', assessFoldMidaxillary: '', assessFoldTriceps: '', assessFoldBiceps: '',
   assessFoldSubscapular: '', assessFoldAbdominal: '', assessFoldSuprailiac: '', assessFoldThigh: '',
   assessNotes: '', photoIds: [],
+  // Aplicações de protocolos de condicionamento, e as zonas de treino.
+  assessCondicionamento: [], assessZonas: null,
 };
 
 /* ===================== CONDICIONAMENTO FÍSICO =====================
@@ -5184,8 +5186,331 @@ function AddCategoryInline({ onAdd, placeholder, label = 'Adicionar personalizad
 
 /* ============================== ASSESSMENT FIELDS (shared) ============================== */
 
-function AssessmentFields({ form, set, studentHeight, studentSex }) {
+// Escolher um protocolo. A lista rola dentro da própria caixa e está agrupada
+// por categoria: são vinte e tal, e uma lista corrida obrigava a ler tudo para
+// encontrar o teste de degrau.
+function EscolherProtocoloModal({ definicoes, onEscolher, onClose }) {
+  const [procura, setProcura] = useState('');
+  const protocolos = protocolosDe(definicoes);
+
+  const porCategoria = useMemo(() => {
+    const termo = chaveBusca(procura.trim());
+    const visiveis = protocolos.filter((p) => !termo
+      || chaveBusca(`${p.nome} ${p.categoria} ${p.objetivo || ''}`).includes(termo));
+    return CATEGORIAS_CONDICIONAMENTO
+      .map((c) => ({ categoria: c, itens: visiveis.filter((p) => p.categoria === c) }))
+      .filter((g) => g.itens.length > 0);
+  }, [protocolos, procura]);
+
+  const total = porCategoria.reduce((s, g) => s + g.itens.length, 0);
+
+  return (
+    <Modal title="Escolher protocolo" onClose={onClose} largura={560}>
+      <div className="flex flex-col gap-3">
+        <div className="relative min-w-0">
+          <Search size={15} className="absolute text-faint" style={{ left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+          <input
+            value={procura}
+            onChange={(e) => setProcura(e.target.value)}
+            placeholder="Procurar protocolo..."
+            aria-label="Procurar protocolo"
+            className="input-field"
+            style={{ paddingLeft: 34 }}
+            autoFocus
+          />
+        </div>
+
+        <div className="text-2xs font-body text-faint">
+          {plural(total, 'protocolo', 'protocolos')}
+        </div>
+
+        {total === 0 ? (
+          <EmptyState icon={Activity} message="Nenhum protocolo encontrado." hint="Experimente outro termo." />
+        ) : (
+          // A rolagem é da lista, não da página: o cabeçalho e a procura ficam
+          // à vista enquanto se percorre.
+          <div className="flex flex-col gap-3" style={{ maxHeight: '52vh', overflowY: 'auto' }}>
+            {porCategoria.map((g) => (
+              <div key={g.categoria} className="flex flex-col gap-1.5">
+                <div className="text-2xs uppercase tracking-wide text-faint font-body sticky top-0 py-1" style={{ backgroundColor: 'var(--bg-surface)' }}>
+                  {g.categoria}
+                </div>
+                {g.itens.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => onEscolher(p)}
+                    className="flex items-start justify-between gap-2 text-left px-3 py-2.5 rounded-lg border border-hair btn-surface min-w-0"
+                    style={{ backgroundColor: 'var(--bg-elevated)' }}
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-sm font-body text-primary">{p.nome}</span>
+                      {p.objetivo && (
+                        <span className="block text-2xs font-body text-faint">{p.objetivo}</span>
+                      )}
+                    </span>
+                    <Plus size={15} className="text-brass flex-shrink-0" style={{ marginTop: 2 }} />
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// Um protocolo aplicado, dentro da avaliação. Mostra só os campos que aquele
+// protocolo usa -- e as instruções e contraindicações, que é o que faz falta
+// ler no momento de aplicar, não depois.
+function AplicacaoProtocolo({ aplicacao, protocolo, ctx, onMudar, onRemover }) {
+  const [aberto, setAberto] = useState(false);
+  if (!protocolo) {
+    return (
+      <div className="rounded-lg border border-hair p-3 flex items-center justify-between gap-2" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+        <span className="text-2xs font-body text-faint">
+          Protocolo removido. As medidas ficam guardadas.
+        </span>
+        <button type="button" onClick={onRemover} className="p-1.5 rounded btn-surface flex-shrink-0" aria-label="Remover aplicação">
+          <Trash2 size={13} className="text-rust" style={{ display: 'block' }} />
+        </button>
+      </div>
+    );
+  }
+
+  function mudarValor(id, v) {
+    const proxima = { ...aplicacao, valores: { ...aplicacao.valores, [id]: v } };
+    // O carimbo da estimativa acompanha a medida: assim o que fica gravado é
+    // sempre o que estava à vista quando se escreveu.
+    onMudar({ ...proxima, estimativa: congelarEstimativa(protocolo, proxima, ctx) });
+  }
+  function mudarCampo(id, v) { onMudar({ ...aplicacao, [id]: v }); }
+
+  const estimativa = estimativaParaMostrar(protocolo, aplicacao, ctx);
+
+  return (
+    <div className="rounded-lg border border-hair p-3 flex flex-col gap-3 min-w-0" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+      <div className="flex items-start justify-between gap-2">
+        <span className="min-w-0">
+          <span className="block text-sm font-body font-semibold text-primary">{protocolo.nome}</span>
+          <span className="block text-2xs font-body text-faint">
+            {protocolo.categoria}{protocolo.versao ? ` · versão ${protocolo.versao}` : ''}
+          </span>
+        </span>
+        <button type="button" onClick={onRemover} className="p-1.5 rounded btn-surface flex-shrink-0" aria-label={`Remover ${protocolo.nome}`}>
+          <Trash2 size={13} className="text-rust" style={{ display: 'block' }} />
+        </button>
+      </div>
+
+      {(protocolo.instrucoes || protocolo.contraindicacoes) && (
+        <div className="flex flex-col gap-1">
+          <button
+            type="button"
+            onClick={() => setAberto((a) => !a)}
+            aria-expanded={aberto}
+            className="text-2xs font-body link-sky self-start"
+          >
+            {aberto ? 'Esconder o protocolo' : 'Como se aplica'}
+          </button>
+          {aberto && (
+            <dl className="flex flex-col gap-1.5">
+              {[['Objetivo', protocolo.objetivo], ['Instruções', protocolo.instrucoes],
+                ['Critérios', protocolo.criterios], ['Contraindicações', protocolo.contraindicacoes],
+                ['Equipamento', protocolo.equipamento]]
+                .filter(([, v]) => v)
+                .map(([r, v]) => (
+                  <div key={r} className="flex flex-col">
+                    <dt className="text-2xs uppercase tracking-wide text-faint font-body">{r}</dt>
+                    <dd className="text-2xs font-body text-muted m-0">{v}</dd>
+                  </div>
+                ))}
+            </dl>
+          )}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {(protocolo.campos || []).map((id) => {
+          const c = campoCondicionamento(id);
+          return (
+            <FormField key={id} label={c.unidade ? `${c.label} (${c.unidade})` : c.label}>
+              <input
+                type={c.tipo === 'texto' ? 'text' : 'number'}
+                inputMode={c.tipo === 'texto' ? undefined : 'decimal'}
+                value={(aplicacao.valores || {})[id] || ''}
+                onChange={(e) => mudarValor(id, e.target.value)}
+                className="input-field"
+              />
+            </FormField>
+          );
+        })}
+      </div>
+
+      {estimativa && (
+        <div className="rounded-lg border p-2.5 flex flex-col gap-1" style={{ borderColor: 'var(--sky)', backgroundColor: 'color-mix(in srgb, var(--sky) 10%, transparent)' }}>
+          <span className="text-sm font-body text-primary">
+            {estimativa.rotulo}: <strong>{nPT(estimativa.valor)} {estimativa.unidade}</strong>
+          </span>
+          <span className="text-2xs font-body text-muted">
+            Estimativa, não medição. Obtida por {estimativa.formulaNome} ({estimativa.formulaVersao}).
+          </span>
+          <span className="text-2xs font-mono text-faint" style={{ overflowWrap: 'anywhere' }}>
+            {estimativa.expressao}
+          </span>
+          {estimativa.entradas.length > 0 && (
+            <span className="text-2xs font-body text-faint">
+              Com: {estimativa.entradas.map((e) => `${e.label} ${e.valor}${e.unidade ? ` ${e.unidade}` : ''}`).join(' · ')}
+            </span>
+          )}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {CAMPOS_SEMPRE.map((c) => (
+          <FormField key={c.id} label={c.label}>
+            <input
+              type={c.tipo === 'texto' ? 'text' : 'number'}
+              value={aplicacao[c.id] || ''}
+              onChange={(e) => mudarCampo(c.id, e.target.value)}
+              className="input-field"
+            />
+          </FormField>
+        ))}
+      </div>
+
+      {protocolo.pressaoArterial && (
+        <FormField label="Pressão arterial (só quando aplicável e autorizada)">
+          <input
+            value={aplicacao.pressaoArterial || ''}
+            onChange={(e) => mudarCampo('pressaoArterial', e.target.value)}
+            className="input-field"
+            placeholder="Ex.: 128/82 mmHg"
+          />
+        </FormField>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <FormField label="Resultado">
+          <input value={aplicacao.resultado || ''} onChange={(e) => mudarCampo('resultado', e.target.value)} className="input-field" />
+        </FormField>
+        <FormField label="Profissional responsável">
+          <input value={aplicacao.profissional || ''} onChange={(e) => mudarCampo('profissional', e.target.value)} className="input-field" />
+        </FormField>
+      </div>
+
+      <FormField label="Classificação (escrita por si)">
+        <input
+          value={aplicacao.classificacao || ''}
+          onChange={(e) => mudarCampo('classificacao', e.target.value)}
+          className="input-field"
+          placeholder="Ex.: acima da média para a idade"
+        />
+      </FormField>
+      <p className="text-2xs font-body text-faint" style={{ marginTop: -6 }}>
+        A aplicação não classifica nada sozinha. Se usar uma tabela normativa,
+        identifique-a aqui — sem isso, daqui a dois anos ninguém sabe de onde
+        veio a classificação.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <FormField label="Fonte da tabela">
+          <input value={aplicacao.referenciaFonte || ''} onChange={(e) => mudarCampo('referenciaFonte', e.target.value)} className="input-field" placeholder="Ex.: ACSM" />
+        </FormField>
+        <FormField label="Versão / ano da tabela">
+          <input value={aplicacao.referenciaVersao || ''} onChange={(e) => mudarCampo('referenciaVersao', e.target.value)} className="input-field" placeholder="Ex.: 11.ª edição" />
+        </FormField>
+      </div>
+
+      <FormField label="Observações">
+        <textarea value={aplicacao.observacoes || ''} onChange={(e) => mudarCampo('observacoes', e.target.value)} className="input-field" rows={2} />
+      </FormField>
+    </div>
+  );
+}
+
+// As zonas de treino. O método usado aparece sempre, porque o mesmo número de
+// batimentos significa coisas diferentes conforme o método.
+function ZonasDeTreino({ zonas, onMudar }) {
+  const z = zonas || { metodo: 'fcmax', valores: {}, personalizadas: '' };
+  const metodo = metodoDeZona(z.metodo);
+  const calculadas = typeof metodo.calcular === 'function' ? metodo.calcular(z.valores || {}) : null;
+
+  function mudarValor(id, v) { onMudar({ ...z, valores: { ...z.valores, [id]: v } }); }
+
+  const camposDoMetodo = {
+    fcmax: [['fcMaxima', 'FC máxima de referência (bpm)']],
+    reserva: [['fcMaxima', 'FC máxima de referência (bpm)'], ['fcRepouso', 'FC de repouso de referência (bpm)']],
+    limiar: [['limiar', 'FC de limiar (bpm)']],
+    potencia: [['potenciaRef', 'Potência de referência (W)']],
+    ritmo: [['ritmoRef', 'Ritmo de referência (min/km)']],
+    personalizado: [],
+  }[z.metodo] || [];
+
+  return (
+    <div className="flex flex-col gap-3">
+      <FormField label="Método de cálculo">
+        <select value={z.metodo} onChange={(e) => onMudar({ ...z, metodo: e.target.value })} className="input-field">
+          {METODOS_ZONA.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+        </select>
+      </FormField>
+      <p className="text-2xs font-body text-faint" style={{ marginTop: -6 }}>{metodo.explicacao}</p>
+
+      {camposDoMetodo.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {camposDoMetodo.map(([id, rotulo]) => (
+            <FormField key={id} label={rotulo}>
+              <input
+                type={id === 'ritmoRef' ? 'text' : 'number'}
+                value={(z.valores || {})[id] || ''}
+                onChange={(e) => mudarValor(id, e.target.value)}
+                className="input-field"
+              />
+            </FormField>
+          ))}
+        </div>
+      )}
+
+      {calculadas ? (
+        <div className="flex flex-col gap-1">
+          {calculadas.map((zona) => (
+            <div key={zona.nome} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-hair" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+              <span className="text-xs font-body text-primary min-w-0 truncate">{zona.nome}</span>
+              <span className="font-mono text-xs text-muted nowrap">
+                {zona.min}–{zona.maxBpm} {metodo.unidade || 'bpm'}
+              </span>
+            </div>
+          ))}
+          <span className="text-2xs font-body text-faint">
+            Calculado por <strong>{metodo.label}</strong>. O mesmo valor significa
+            coisas diferentes conforme o método — por isso ele vai sempre junto.
+          </span>
+        </div>
+      ) : (
+        <FormField label="Zonas">
+          <textarea
+            value={z.personalizadas || ''}
+            onChange={(e) => onMudar({ ...z, personalizadas: e.target.value })}
+            className="input-field"
+            rows={4}
+            placeholder={'Z1 — ...\nZ2 — ...'}
+          />
+        </FormField>
+      )}
+      {!calculadas && camposDoMetodo.length > 0 && (
+        <span className="text-2xs font-body text-faint">
+          Faltam dados para calcular por este método. Escreva as zonas à mão, ou
+          preencha os campos acima.
+        </span>
+      )}
+    </div>
+  );
+}
+
+function AssessmentFields({ form, set, studentHeight, studentSex, definicoes }) {
   const bmi = bmiOf(form.assessWeight, studentHeight);
+  const [escolherProtocolo, setEscolherProtocolo] = useState(false);
+  const aplicacoes = aplicacoesDaAvaliacao(form);
+  const ctxTeste = contextoDaAvaliacao(form, studentSex);
   const protocol = FOLD_PROTOCOLS.find((p) => p.id === form.assessProtocol) || FOLD_PROTOCOLS[0];
   const sexKey = studentSex === 'F' ? 'F' : 'M';
   const activeSites = protocol.sites[sexKey];
@@ -5343,9 +5668,61 @@ function AssessmentFields({ form, set, studentHeight, studentSex }) {
         </FormField>
       </div>
 
+      <div className="bg-elevated rounded-lg p-3 border border-hair flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-2xs uppercase tracking-wide text-faint font-mono">
+            Condicionamento físico
+          </span>
+          <button type="button" onClick={() => setEscolherProtocolo(true)} className="btn btn-ghost" style={{ padding: '5px 10px', fontSize: 11 }}>
+            <Plus size={12} /> Aplicar protocolo
+          </button>
+        </div>
+
+        {aplicacoes.length === 0 ? (
+          <span className="text-2xs font-body text-faint">
+            Sem testes nesta avaliação. Escolha um protocolo e aparecem só os
+            campos que ele usa.
+          </span>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {aplicacoes.map((ap) => (
+              <AplicacaoProtocolo
+                key={ap.id}
+                aplicacao={ap}
+                protocolo={protocoloPorId(definicoes, ap.protocoloId)}
+                ctx={ctxTeste}
+                onMudar={(nova) => set('assessCondicionamento', aplicacoes.map((x) => (x.id === ap.id ? nova : x)))}
+                onRemover={() => set('assessCondicionamento', aplicacoes.filter((x) => x.id !== ap.id))}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-elevated rounded-lg p-3 border border-hair flex flex-col gap-3">
+        <span className="text-2xs uppercase tracking-wide text-faint font-mono">
+          Zonas de treino
+        </span>
+        <ZonasDeTreino
+          zonas={form.assessZonas}
+          onMudar={(z) => set('assessZonas', z)}
+        />
+      </div>
+
       <FormField label="Observações da avaliação">
         <textarea value={form.assessNotes || ''} onChange={(e) => set('assessNotes', e.target.value)} className="input-field" rows={2} placeholder="Evolução, orientações, observações..." />
       </FormField>
+
+      {escolherProtocolo && (
+        <EscolherProtocoloModal
+          definicoes={definicoes}
+          onClose={() => setEscolherProtocolo(false)}
+          onEscolher={(proto) => {
+            set('assessCondicionamento', [...aplicacoes, novaAplicacao(proto.id)]);
+            setEscolherProtocolo(false);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -8619,7 +8996,7 @@ function temMedida(f) {
   return Boolean(String(f.assessWeight || '').trim() || String(f.assessBodyFat || '').trim());
 }
 
-function AssessmentForm({ student, assessment, onSave, onCancel, photosById, onUploadPhotos, onRemovePhoto, uploadingPhotos }) {
+function AssessmentForm({ student, assessment, onSave, onCancel, photosById, onUploadPhotos, onRemovePhoto, uploadingPhotos, definicoes }) {
   const isEdit = Boolean(assessment);
   const eraFinal = isEdit && !ehRascunho(assessment);
   const [form, setForm] = useState(() => ({
@@ -8670,7 +9047,7 @@ function AssessmentForm({ student, assessment, onSave, onCancel, photosById, onU
       <FormField label="Data da avaliação">
         <input type="date" value={form.date} onChange={(e) => set('date', e.target.value)} className="input-field" />
       </FormField>
-      <AssessmentFields form={form} set={set} studentHeight={student.height} studentSex={student.sex} />
+      <AssessmentFields form={form} set={set} studentHeight={student.height} studentSex={student.sex} definicoes={definicoes} />
       <PhotoPicker photoIds={form.photoIds} photosById={photosById} busy={uploadingPhotos}
         onAdd={async (files) => { const ids = await onUploadPhotos(files); set('photoIds', [...form.photoIds, ...ids]); }}
         onRemove={(id) => { onRemovePhoto(id); set('photoIds', form.photoIds.filter((x) => x !== id)); }} />
@@ -11115,7 +11492,7 @@ function HistoricoAvaliacaoModal({ avaliacao, onRestaurar, onClose }) {
   );
 }
 
-function AssessmentDetail({ student, sessions, photosById, onBack, onSaveAssessment, onUploadPhotos, onRemovePhoto, onDeleteAssessment, onPrintAssessment }) {
+function AssessmentDetail({ student, sessions, photosById, definicoes, onBack, onSaveAssessment, onUploadPhotos, onRemovePhoto, onDeleteAssessment, onPrintAssessment }) {
   // null = fechado, 'nova' = criar, objeto = editar essa avaliação.
   const [editando, setEditando] = useState(null);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
@@ -11156,6 +11533,7 @@ function AssessmentDetail({ student, sessions, photosById, onBack, onSaveAssessm
           <AssessmentForm
             key={editando === 'nova' ? 'nova' : editando.id}
             student={student}
+            definicoes={definicoes}
             assessment={editando === 'nova' ? null : editando}
             onCancel={() => setEditando(null)}
             photosById={photosById}
@@ -11243,11 +11621,11 @@ function AssessmentDetail({ student, sessions, photosById, onBack, onSaveAssessm
   );
 }
 
-function AssessmentsView({ students, sessions, photosById, onSaveAssessment, onUploadPhotos, onRemovePhoto, onDeleteAssessment, onPrintAssessment, onNoStudents, selectedStudentId, setSelectedStudentId }) {
+function AssessmentsView({ students, sessions, photosById, definicoes, onSaveAssessment, onUploadPhotos, onRemovePhoto, onDeleteAssessment, onPrintAssessment, onNoStudents, selectedStudentId, setSelectedStudentId }) {
   const selected = students.find((s) => s.id === selectedStudentId);
 
   if (selected) {
-    return <AssessmentDetail student={selected} sessions={sessions} photosById={photosById} onBack={() => setSelectedStudentId(null)}
+    return <AssessmentDetail student={selected} sessions={sessions} photosById={photosById} definicoes={definicoes} onBack={() => setSelectedStudentId(null)}
       onSaveAssessment={onSaveAssessment} onUploadPhotos={onUploadPhotos} onRemovePhoto={onRemovePhoto} onDeleteAssessment={onDeleteAssessment}
       onPrintAssessment={onPrintAssessment} />;
   }
@@ -13936,7 +14314,7 @@ function AppInner() {
         {view === 'admin' && isAdmin && <AdminView />}
         {view === 'students' && <StudentsView students={students} sessions={sessions} onEdit={openEditStudent} onNew={openNewStudent} />}
         {view === 'assessments' && (
-          <AssessmentsView students={students} sessions={sessions} photosById={photosById}
+          <AssessmentsView students={students} sessions={sessions} photosById={photosById} definicoes={definicoes}
             selectedStudentId={assessmentsStudentId} setSelectedStudentId={setAssessmentsStudentId}
             onSaveAssessment={saveAssessment} onUploadPhotos={uploadPhotos} onRemovePhoto={removePhoto} onDeleteAssessment={deleteAssessment}
             onPrintAssessment={printAssessment}

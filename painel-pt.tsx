@@ -1951,11 +1951,74 @@ const BLOCO_OMISSAO = 'Principal';
 // escrita e uniformiza o que sai no PDF, mas não fecha a porta: "Personalizado"
 // deixa escrever o que não está aqui.
 const METODOS_TREINO = [
-  'Série tradicional', 'Supersérie', 'Trissérie', 'Giant set', 'Circuito',
+  'Série tradicional', 'Supersérie', 'Bi-set', 'Trissérie', 'Giant set', 'Circuito',
   'EMOM', 'AMRAP', 'Tabata', 'Intervalado', 'For time', 'Rest-pause',
   'Drop-set', 'Série de aproximação', 'Série de trabalho', 'Back-off',
-  'Até à falha', 'Pirâmide',
+  'Até à falha', 'Pirâmide', 'Pré-exaustão', 'Pós-exaustão',
+  'Superset antagonista', 'Série composta', 'Cluster', 'Contraste',
 ];
+
+/* ------------------------- métodos de uma combinação -------------------------
+   Um método como o drop-set vive num exercício só; um bi-set vive na ligação
+   entre dois. Até aqui a aplicação sabia agrupar exercícios mas a combinação
+   não tinha nome -- via-se A1 e A2 e não se sabia se aquilo era uma supersérie
+   ou uma pré-exaustão.
+
+   `ajuda` é o que distingue os que se confundem: pré-exaustão e pós-exaustão
+   são o mesmo par de exercícios por ordem inversa. */
+const METODOS_COMBINACAO = [
+  { id: 'bi_set', nome: 'Bi-set', minimo: 2, maximo: 2, ajuda: 'Dois exercícios seguidos, sem pausa entre eles.' },
+  { id: 'superserie', nome: 'Supersérie', minimo: 2, maximo: 2, ajuda: 'Dois exercícios seguidos. O mesmo que bi-set, com o nome que se usa em Portugal.' },
+  { id: 'superset_antagonista', nome: 'Superset antagonista', minimo: 2, maximo: 2, ajuda: 'Dois exercícios de grupos opostos — enquanto um trabalha, o outro recupera.' },
+  { id: 'pre_exaustao', nome: 'Pré-exaustão', minimo: 2, maximo: 2, ajuda: 'Isolamento primeiro, composto a seguir.' },
+  { id: 'pos_exaustao', nome: 'Pós-exaustão', minimo: 2, maximo: 2, ajuda: 'Composto primeiro, isolamento a seguir.' },
+  { id: 'serie_composta', nome: 'Série composta', minimo: 2, maximo: 2, ajuda: 'Dois exercícios para o mesmo grupo muscular, seguidos.' },
+  { id: 'trisserie', nome: 'Trissérie', minimo: 3, maximo: 3, ajuda: 'Três exercícios seguidos, sem pausa.' },
+  { id: 'giant_set', nome: 'Giant set', minimo: 4, maximo: null, ajuda: 'Quatro ou mais exercícios seguidos.' },
+  { id: 'circuito', nome: 'Circuito', minimo: 2, maximo: null, ajuda: 'Volta completa por todos, e repete.' },
+  { id: 'contraste', nome: 'Contraste', minimo: 2, maximo: 2, ajuda: 'Carga pesada seguida de movimento rápido.' },
+  { id: 'complexo', nome: 'Complexo', minimo: 2, maximo: null, ajuda: 'Vários movimentos sem largar a barra.' },
+];
+
+const CAMPOS_POR_COMBINACAO = {
+  circuito: [['voltas', 'Voltas', '3'], ['pausaVolta', 'Pausa entre voltas (s)', '90']],
+  giant_set: [['pausaRonda', 'Pausa entre rondas (s)', '120']],
+  contraste: [['pausaEntre', 'Pausa entre os dois (s)', '15']],
+  complexo: [['voltas', 'Voltas', '3']],
+  cluster: [['repsPorMini', 'Reps por mini-série', '3'], ['pausaMini', 'Pausa entre mini-séries (s)', '20']],
+};
+
+function metodoDeCombinacao(id) {
+  return METODOS_COMBINACAO.find((m) => m.id === id) || null;
+}
+
+function camposDaCombinacao(id) { return CAMPOS_POR_COMBINACAO[id] || []; }
+
+// O método sugerido pelo número de exercícios. Dois é quase sempre um bi-set;
+// quatro já não cabe em trissérie nenhuma.
+function metodoSugerido(quantos) {
+  if (quantos === 2) return 'bi_set';
+  if (quantos === 3) return 'trisserie';
+  return 'giant_set';
+}
+
+function grupoDoTreino(treino, grupoId) {
+  return ((treino && treino.grupos) || {})[grupoId] || null;
+}
+
+// Descrição legível de uma combinação, para o ecrã e para o papel.
+function descreverCombinacao(combinacao) {
+  if (!combinacao) return '';
+  const m = metodoDeCombinacao(combinacao.metodo);
+  if (!m) return '';
+  const nums = camposDaCombinacao(combinacao.metodo)
+    .map(([campo, rotulo]) => {
+      const v = (combinacao.params || {})[campo];
+      return v ? `${rotulo.toLowerCase()}: ${v}` : null;
+    })
+    .filter(Boolean);
+  return nums.length ? `${m.nome} (${nums.join(', ')})` : m.nome;
+}
 
 /* ---------------------------- séries ----------------------------
    Um exercício deixou de ser "3 séries de 10" e passou a ser uma lista de
@@ -2078,22 +2141,53 @@ function descreverMetodo(ex) {
   return valores.length ? `${ex.metodo} (${valores.join(', ')})` : ex.metodo;
 }
 
-function etiquetasDeGrupo(exercicios) {
+// Cores das combinações. Uma por grupo; dentro dela, cada membro leva um tom
+// mais claro da MESMA cor -- vê-se que são um bloco e distinguem-se sem que a
+// ficha fique aos quadrados.
+const CORES_COMBINACAO = ['#1EA6B4', '#C77DFF', '#6FCF97', '#F5B44C', '#5DA9E9', '#EF88AD'];
+
+// Quanto da cor entra no fundo, por posição dentro da combinação. O primeiro
+// leva o tom cheio; os seguintes vão clareando. Nada disto é forte: serve para
+// diferenciar, não para gritar.
+const TINTAS_COMBINACAO = [17, 11, 7, 5];
+
+function infoDeGrupos(exercicios) {
   const letras = {};
   const quantos = {};
   (exercicios || []).forEach((e) => {
     if (!e.grupo) return;
-    if (!letras[e.grupo]) letras[e.grupo] = String.fromCharCode(65 + Object.keys(letras).length);
+    // `=== undefined`, e não `!letras[...]`: o índice do primeiro grupo é 0,
+    // que é falso, e com a verificação por verdade o segundo exercício do
+    // mesmo grupo reatribuía-lhe a letra seguinte.
+    if (letras[e.grupo] === undefined) letras[e.grupo] = Object.keys(letras).length;
     quantos[e.grupo] = (quantos[e.grupo] || 0) + 1;
   });
   const usados = {};
   const saida = {};
   (exercicios || []).forEach((e) => {
+    // Um exercício sozinho com um grupo não é uma combinação: fica neutro.
     if (!e.grupo || quantos[e.grupo] < 2) return;
     usados[e.grupo] = (usados[e.grupo] || 0) + 1;
-    saida[e.id] = `${letras[e.grupo]}${usados[e.grupo]}`;
+    const indice = letras[e.grupo];
+    const posicao = usados[e.grupo];
+    saida[e.id] = {
+      grupo: e.grupo,
+      etiqueta: `${String.fromCharCode(65 + indice)}${posicao}`,
+      letra: String.fromCharCode(65 + indice),
+      posicao,
+      total: quantos[e.grupo],
+      primeiro: posicao === 1,
+      cor: CORES_COMBINACAO[indice % CORES_COMBINACAO.length],
+      tinta: TINTAS_COMBINACAO[Math.min(posicao - 1, TINTAS_COMBINACAO.length - 1)],
+    };
   });
   return saida;
+}
+
+// Só as etiquetas, para quem não precisa do resto (o PDF, por exemplo).
+function etiquetasDeGrupo(exercicios) {
+  const info = infoDeGrupos(exercicios);
+  return Object.fromEntries(Object.entries(info).map(([id, v]) => [id, v.etiqueta]));
 }
 
 function migrarTreinosParaLinhas(lista) {
@@ -8936,7 +9030,80 @@ function LinhaSerie({ linha, numero, onMudar, onRemover, onNovaLinha, unica }) {
   );
 }
 
-function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, onSubir, onDescer, onAlternativas, temAlternativas, primeiro, ultimo, aoPegar, aArrastar, selecionado, onSelecionar, etiquetaGrupo }) {
+// O cabeçalho de uma combinação: o que aquilo é, e os números do método. Sai
+// uma vez por grupo, sobre o primeiro membro -- repetido em cada exercício
+// seria a mesma informação três vezes.
+function CabecalhoCombinacao({ info, combinacao, onMudar, onSeparar }) {
+  const metodo = combinacao ? metodoDeCombinacao(combinacao.metodo) : null;
+  const campos = combinacao ? camposDaCombinacao(combinacao.metodo) : [];
+  const params = (combinacao && combinacao.params) || {};
+
+  return (
+    <div
+      className="rounded-lg border p-2.5 flex flex-col gap-2"
+      style={{
+        borderColor: info.cor,
+        backgroundColor: `color-mix(in srgb, ${info.cor} 9%, var(--bg-surface))`,
+      }}
+    >
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="font-mono text-xs flex-shrink-0" style={{ color: acentoTexto(info.cor), fontWeight: 600 }}>
+          {info.letra}
+        </span>
+        <select
+          value={(combinacao && combinacao.metodo) || ''}
+          onChange={(e) => onMudar({ metodo: e.target.value, params: {} })}
+          aria-label={`O que é a combinação ${info.letra}`}
+          className="input-field"
+          style={{ flex: '1 1 190px', minWidth: 170, fontSize: 13 }}
+        >
+          <option value="">Combinação sem nome</option>
+          {METODOS_COMBINACAO.map((m) => (
+            <option key={m.id} value={m.id}>{m.nome}</option>
+          ))}
+        </select>
+        <span className="text-2xs font-body text-faint nowrap">
+          {plural(info.total, 'exercício', 'exercícios')}
+        </span>
+        <button type="button" onClick={onSeparar} className="text-2xs font-body link-sky flex-shrink-0" style={{ marginLeft: 'auto' }}>
+          Separar
+        </button>
+      </div>
+
+      {metodo && metodo.ajuda && (
+        <span className="text-2xs font-body text-faint">
+          {metodo.ajuda}
+          {metodo.maximo && info.total > metodo.maximo
+            ? ` — tem ${info.total}, e isto costuma ser com ${metodo.maximo}.`
+            : ''}
+          {info.total < metodo.minimo
+            ? ` — tem ${info.total}, e isto costuma ser com ${metodo.minimo} ou mais.`
+            : ''}
+        </span>
+      )}
+
+      {campos.length > 0 && (
+        <div className="flex gap-2 flex-wrap">
+          {campos.map(([campo, rotulo, exemplo]) => (
+            <div key={campo} className="flex flex-col gap-1" style={{ flex: '1 1 120px', minWidth: 110 }}>
+              <span className="text-2xs font-body text-faint">{rotulo}</span>
+              <input
+                value={params[campo] || ''}
+                onChange={(e) => onMudar({ ...combinacao, params: { ...params, [campo]: e.target.value } })}
+                aria-label={`${rotulo} da combinação ${info.letra}`}
+                className="input-field"
+                placeholder={exemplo}
+                style={{ fontSize: 13 }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, onSubir, onDescer, onAlternativas, temAlternativas, primeiro, ultimo, aoPegar, aArrastar, selecionado, onSelecionar, grupoInfo }) {
   const daBiblioteca = biblioteca.find((b) => b.id === ex.exercicioId);
   const naLista = METODOS_TREINO.includes(ex.metodo);
   // Guarda-se se está em modo livre em vez de o deduzir do texto: apagar o que
@@ -8969,8 +9136,16 @@ function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, 
       data-ex-indice={indice}
       className="rounded-lg border p-3 flex flex-col gap-2"
       style={{
-        backgroundColor: 'var(--bg-elevated)',
-        borderColor: aArrastar ? 'var(--brass)' : 'var(--border-hair)',
+        // Dentro de uma combinação, cada membro leva um tom mais claro da
+        // mesma cor. Lê-se como um bloco, e distinguem-se uns dos outros sem
+        // que a ficha fique aos quadrados.
+        backgroundColor: grupoInfo
+          ? `color-mix(in srgb, ${grupoInfo.cor} ${grupoInfo.tinta}%, var(--bg-elevated))`
+          : 'var(--bg-elevated)',
+        borderColor: aArrastar ? 'var(--brass)' : (grupoInfo ? `color-mix(in srgb, ${grupoInfo.cor} 35%, transparent)` : 'var(--border-hair)'),
+        // A tira da esquerda é a mesma em todos os membros: é o que os liga.
+        borderLeftWidth: grupoInfo ? 3 : 1,
+        borderLeftColor: grupoInfo ? grupoInfo.cor : undefined,
         opacity: aArrastar ? 0.65 : 1,
       }}
     >
@@ -8998,8 +9173,8 @@ function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, 
           </button>
           <div className="min-w-0">
             <div className="text-sm font-body text-primary truncate" style={{ fontWeight: 500 }}>
-              {etiquetaGrupo && (
-                <span className="font-mono text-2xs mr-1.5" style={{ color: 'var(--brass)' }}>{etiquetaGrupo}</span>
+              {grupoInfo && (
+                <span className="font-mono text-2xs mr-1.5" style={{ color: acentoTexto(grupoInfo.cor), fontWeight: 600 }}>{grupoInfo.etiqueta}</span>
               )}
               {ex.nome || 'Exercício'}
             </div>
@@ -9230,8 +9405,34 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
     const marcados = escolhidos.map((e) => ({ ...e, grupo }));
     const lista = [...resto];
     lista.splice(Math.min(primeiroIndice, resto.length), 0, ...marcados);
-    mudarTreino(treinoId, { ...t, exercicios: lista });
+    mudarTreino(treinoId, {
+      ...t,
+      exercicios: lista,
+      // O método vem sugerido pelo número: dois exercícios são quase sempre um
+      // bi-set. Fica alterável, mas não obriga a parar para escolher.
+      grupos: { ...(t.grupos || {}), [grupo]: { metodo: metodoSugerido(escolhidos.length), params: {} } },
+    });
     setSelecao([]);
+  }
+
+  function mudarCombinacao(treinoId, grupoId, combinacao) {
+    const t = prescricao.treinos.find((x) => x.id === treinoId);
+    if (!t) return;
+    mudarTreino(treinoId, { ...t, grupos: { ...(t.grupos || {}), [grupoId]: combinacao } });
+  }
+
+  // Desfazer uma combinação inteira: os exercícios ficam, soltos e pela mesma
+  // ordem. O método desaparece com ela.
+  function separarGrupo(treinoId, grupoId) {
+    const t = prescricao.treinos.find((x) => x.id === treinoId);
+    if (!t) return;
+    const grupos = { ...(t.grupos || {}) };
+    delete grupos[grupoId];
+    mudarTreino(treinoId, {
+      ...t,
+      exercicios: t.exercicios.map((e) => (e.grupo === grupoId ? { ...e, grupo: '' } : e)),
+      grupos,
+    });
   }
 
   function separarSelecionados(treinoId) {
@@ -9330,12 +9531,22 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
             <EmptyState icon={Dumbbell} message="Sem exercícios neste treino." />
           ) : (
             <div className="flex flex-col gap-2">
-              {t.exercicios.map((ex, i, todos) => (
+              {t.exercicios.map((ex, i, todos) => {
+                const info = infoDeGrupos(todos)[ex.id];
+                return (
+                <React.Fragment key={ex.id}>
+                {info && info.primeiro && (
+                  <CabecalhoCombinacao
+                    info={info}
+                    combinacao={grupoDoTreino(t, info.grupo)}
+                    onMudar={(c) => mudarCombinacao(t.id, info.grupo, c)}
+                    onSeparar={() => separarGrupo(t.id, info.grupo)}
+                  />
+                )}
                 <ExercicioRow
-                  key={ex.id}
                   ex={ex}
                   indice={i}
-                  etiquetaGrupo={etiquetasDeGrupo(todos)[ex.id]}
+                  grupoInfo={info}
                   selecionado={selecao.includes(ex.id)}
                   onSelecionar={() => setSelecao((s) => (s.includes(ex.id) ? s.filter((x) => x !== ex.id) : [...s, ex.id]))}
                   biblioteca={biblioteca}
@@ -9351,7 +9562,9 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
                   onMudar={(novo) => mudarTreino(t.id, { ...t, exercicios: t.exercicios.map((x) => (x.id === ex.id ? novo : x)) })}
                   onRemover={() => mudarTreino(t.id, { ...t, exercicios: t.exercicios.filter((x) => x.id !== ex.id) })}
                 />
-              ))}
+                </React.Fragment>
+                );
+              })}
             </div>
           )}
 
@@ -11271,7 +11484,7 @@ function TreinoPrintDoc({ student, prescricao, biblioteca, trainerName, userEmai
           ) : (
             // Agrupado por bloco e pela ordem por que se treina, não pela ordem
             // por que foi escrito. Com um bloco só, o cabeçalho é ruído: omite-se.
-            (() => { const etiquetas = etiquetasDeGrupo(t.exercicios); return agruparPorBloco(t.exercicios).map(([bloco, doBloco], bi, todos) => (
+            (() => { const infos = infoDeGrupos(t.exercicios); const etiquetas = etiquetasDeGrupo(t.exercicios); return agruparPorBloco(t.exercicios).map(([bloco, doBloco], bi, todos) => (
               <div key={bloco} style={{ marginTop: bi === 0 ? 0 : 8 }}>
                 {todos.length > 1 && <div className="print-bloco">{bloco}</div>}
                 <table className="print-table">
@@ -11288,7 +11501,15 @@ function TreinoPrintDoc({ student, prescricao, biblioteca, trainerName, userEmai
                       const daBiblioteca = biblioteca.find((b) => b.id === ex.exercicioId);
                       // As instrucoes vivem na biblioteca: o treinador escreve uma
                       // vez e saem em todos os treinos onde usar o exercicio.
+                      // O nome da combinação sai no primeiro exercício do
+                      // grupo: quem recebe a folha tem de saber que aquilo se
+                      // faz seguido, e não com pausa pelo meio.
+                      const infoEx = infos[ex.id];
+                      const combinacao = infoEx && infoEx.primeiro
+                        ? descreverCombinacao(grupoDoTreino(t, infoEx.grupo))
+                        : null;
                       const cabecalho = [
+                        combinacao ? `${infoEx.letra}: ${combinacao}` : null,
                         descreverMetodo(ex),
                         ...extrasPreenchidos(ex).map(([campo, rotulo]) => `${rotulo}: ${ex[campo]}`),
                         ex.notas,

@@ -467,6 +467,8 @@ const EMPTY_ASSESS_FIELDS = {
   assessNotes: '', photoIds: [],
   // Aplicações de protocolos de condicionamento, e as zonas de treino.
   assessCondicionamento: [], assessZonas: null,
+  // Medições de mobilidade articular.
+  assessMobilidade: [],
 };
 
 /* ===================== CONDICIONAMENTO FÍSICO =====================
@@ -1063,6 +1065,265 @@ function descreverAplicacao(protocolo, aplicacao) {
     })
     .filter(Boolean)
     .join(' · ');
+}
+
+/* ===================== MOBILIDADE ARTICULAR =====================
+ *
+ * Os movimentos de origem vivem no código; os que o treinador criar ficam em
+ * `definicoes.movimentosMobilidade`, como os protocolos.
+ *
+ * REGRA QUE MANDA AQUI, e que a especificação diz por palavras suas: **nenhuma
+ * amplitude é classificada automaticamente como patológica**. A aplicação
+ * mede, compara com a medição anterior e com a meta combinada, e cala-se. Uma
+ * classificação é escrita pelo profissional, com a fonte e a versão da
+ * referência que usou.
+ *
+ * O vídeo fica de fora, por decisão já tomada no produto: o aluno não tem
+ * acesso à aplicação, e guardar vídeo muda o alojamento e o preço. Fotografia
+ * há, e usa o mesmo caminho das outras.
+ */
+
+const REGIOES_MOBILIDADE = [
+  'Coluna cervical', 'Ombros', 'Escápulas', 'Cotovelos', 'Punhos',
+  'Coluna torácica', 'Coluna lombar', 'Anca', 'Joelhos', 'Tornozelos',
+  'Pés', 'Cadeia posterior', 'Movimentos combinados', 'Personalizado',
+];
+
+// `bilateral: false` marca o que só tem uma medida (a flexão lombar mede-se
+// uma vez, não uma por lado).
+const MOVIMENTOS_MOBILIDADE = [
+  { id: 'm:cerv_flexao', nome: 'Flexão cervical', regiao: 'Coluna cervical', unidade: 'graus', bilateral: false },
+  { id: 'm:cerv_extensao', nome: 'Extensão cervical', regiao: 'Coluna cervical', unidade: 'graus', bilateral: false },
+  { id: 'm:cerv_rotacao', nome: 'Rotação cervical', regiao: 'Coluna cervical', unidade: 'graus', bilateral: true },
+  { id: 'm:cerv_inclinacao', nome: 'Inclinação lateral cervical', regiao: 'Coluna cervical', unidade: 'graus', bilateral: true },
+
+  { id: 'm:ombro_flexao', nome: 'Flexão de ombro', regiao: 'Ombros', unidade: 'graus', bilateral: true },
+  { id: 'm:ombro_extensao', nome: 'Extensão de ombro', regiao: 'Ombros', unidade: 'graus', bilateral: true },
+  { id: 'm:ombro_abducao', nome: 'Abdução de ombro', regiao: 'Ombros', unidade: 'graus', bilateral: true },
+  { id: 'm:ombro_rot_int', nome: 'Rotação interna do ombro', regiao: 'Ombros', unidade: 'graus', bilateral: true },
+  { id: 'm:ombro_rot_ext', nome: 'Rotação externa do ombro', regiao: 'Ombros', unidade: 'graus', bilateral: true },
+
+  { id: 'm:escapula_costas', nome: 'Mãos nas costas (distância entre dedos)', regiao: 'Escápulas', unidade: 'cm', bilateral: true },
+  { id: 'm:escapula_elevacao', nome: 'Elevação e depressão escapular', regiao: 'Escápulas', unidade: 'cm', bilateral: true },
+
+  { id: 'm:cotovelo_flexao', nome: 'Flexão do cotovelo', regiao: 'Cotovelos', unidade: 'graus', bilateral: true },
+  { id: 'm:cotovelo_extensao', nome: 'Extensão do cotovelo', regiao: 'Cotovelos', unidade: 'graus', bilateral: true },
+
+  { id: 'm:punho_flexao', nome: 'Flexão do punho', regiao: 'Punhos', unidade: 'graus', bilateral: true },
+  { id: 'm:punho_extensao', nome: 'Extensão do punho', regiao: 'Punhos', unidade: 'graus', bilateral: true },
+
+  { id: 'm:torac_rotacao', nome: 'Rotação torácica', regiao: 'Coluna torácica', unidade: 'graus', bilateral: true },
+  { id: 'm:torac_extensao', nome: 'Extensão torácica', regiao: 'Coluna torácica', unidade: 'graus', bilateral: false },
+
+  { id: 'm:lombar_flexao', nome: 'Flexão lombar (dedos ao chão)', regiao: 'Coluna lombar', unidade: 'cm', bilateral: false },
+  { id: 'm:lombar_extensao', nome: 'Extensão lombar', regiao: 'Coluna lombar', unidade: 'graus', bilateral: false },
+  { id: 'm:lombar_inclinacao', nome: 'Inclinação lateral lombar', regiao: 'Coluna lombar', unidade: 'cm', bilateral: true },
+
+  { id: 'm:anca_flexao', nome: 'Flexão da anca', regiao: 'Anca', unidade: 'graus', bilateral: true },
+  { id: 'm:anca_extensao', nome: 'Extensão da anca', regiao: 'Anca', unidade: 'graus', bilateral: true },
+  { id: 'm:anca_abducao', nome: 'Abdução da anca', regiao: 'Anca', unidade: 'graus', bilateral: true },
+  { id: 'm:anca_rot_int', nome: 'Rotação interna da anca', regiao: 'Anca', unidade: 'graus', bilateral: true },
+  { id: 'm:anca_rot_ext', nome: 'Rotação externa da anca', regiao: 'Anca', unidade: 'graus', bilateral: true },
+
+  { id: 'm:joelho_flexao', nome: 'Flexão do joelho', regiao: 'Joelhos', unidade: 'graus', bilateral: true },
+  { id: 'm:joelho_extensao', nome: 'Extensão do joelho', regiao: 'Joelhos', unidade: 'graus', bilateral: true },
+
+  { id: 'm:torn_dorsiflexao', nome: 'Dorsiflexão do tornozelo', regiao: 'Tornozelos', unidade: 'graus', bilateral: true },
+  { id: 'm:torn_joelho_parede', nome: 'Joelho à parede', regiao: 'Tornozelos', unidade: 'cm', bilateral: true },
+  { id: 'm:torn_plantar', nome: 'Flexão plantar', regiao: 'Tornozelos', unidade: 'graus', bilateral: true },
+
+  { id: 'm:pe_arco', nome: 'Mobilidade do primeiro dedo (hálux)', regiao: 'Pés', unidade: 'graus', bilateral: true },
+
+  { id: 'm:posterior_perna', nome: 'Elevação da perna estendida', regiao: 'Cadeia posterior', unidade: 'graus', bilateral: true },
+  { id: 'm:posterior_senta', nome: 'Senta-e-alcança', regiao: 'Cadeia posterior', unidade: 'cm', bilateral: false },
+
+  { id: 'm:comb_alcance', nome: 'Alcance funcional', regiao: 'Movimentos combinados', unidade: 'cm', bilateral: false },
+  { id: 'm:comb_agachamento', nome: 'Agachamento profundo', regiao: 'Movimentos combinados', unidade: 'cm', bilateral: false },
+  { id: 'm:comb_personalizado', nome: 'Movimento personalizado', regiao: 'Personalizado', unidade: 'graus', bilateral: true },
+];
+
+const TIPOS_MEDICAO = [
+  { id: 'ativo', label: 'Ativo' },
+  { id: 'passivo', label: 'Passivo' },
+];
+
+const LADOS_MEDICAO = [
+  { id: 'bilateral', label: 'Bilateral' },
+  { id: 'direito', label: 'Direito' },
+  { id: 'esquerdo', label: 'Esquerdo' },
+];
+
+const QUALIDADES_MOVIMENTO = [
+  'Sem alterações', 'Ligeira hesitação', 'Compensação visível', 'Movimento limitado',
+];
+
+function movimentosDe(definicoes) {
+  const meus = (definicoes && definicoes.movimentosMobilidade) || [];
+  return [...MOVIMENTOS_MOBILIDADE, ...meus];
+}
+
+function movimentoPorId(definicoes, id) {
+  return movimentosDe(definicoes).find((m) => m.id === id) || null;
+}
+
+function novaMedicaoMobilidade(movimentoId) {
+  return {
+    id: uid(),
+    movimentoId,
+    tipo: 'ativo',
+    // Tentativas por lado. O número de tentativas é o tamanho da lista, e o
+    // melhor e a média saem daqui -- pedi-los à parte convidava a que não
+    // batessem certo com os valores.
+    tentativas: { direito: [], esquerdo: [], bilateral: [] },
+    dispositivo: '',
+    posicaoInicial: '',
+    dor: false,
+    desconforto: false,
+    compensacao: '',
+    qualidade: '',
+    observacoes: '',
+    meta: '',
+    fotoIds: [],
+    classificacao: '',
+    referenciaFonte: '',
+    referenciaVersao: '',
+    em: new Date().toISOString(),
+  };
+}
+
+function medicoesDaAvaliacao(a) {
+  return Array.isArray(a && a.assessMobilidade) ? a.assessMobilidade : [];
+}
+
+// O melhor e a média de um lado. Sem tentativas, devolve null -- e não zero,
+// que seria um valor a fingir que foi medido.
+function resumoDoLado(tentativas) {
+  const nums = (tentativas || [])
+    .map((v) => numDoCampo(v))
+    .filter((v) => v != null);
+  if (nums.length === 0) return null;
+  return {
+    tentativas: nums.length,
+    melhor: Math.max(...nums),
+    media: nums.reduce((s, v) => s + v, 0) / nums.length,
+  };
+}
+
+// Qual dos lados se usa para comparar: o bilateral quando existe, senão os
+// dois lados.
+function ladosMedidos(medicao) {
+  return LADOS_MEDICAO
+    .map((l) => ({ lado: l, resumo: resumoDoLado((medicao.tentativas || {})[l.id]) }))
+    .filter((x) => x.resumo);
+}
+
+/* ---------------------------- 8.1 comparação ---------------------------- */
+
+// Diferença entre lados, em valor e em percentagem. Devolve null quando não há
+// os dois -- comparar um lado consigo próprio não diz nada.
+function diferencaEntreLados(medicao) {
+  const d = resumoDoLado((medicao.tentativas || {}).direito);
+  const e = resumoDoLado((medicao.tentativas || {}).esquerdo);
+  if (!d || !e) return null;
+  const maior = Math.max(d.melhor, e.melhor);
+  const menor = Math.min(d.melhor, e.melhor);
+  const absoluta = d.melhor - e.melhor;
+  return {
+    direito: d.melhor,
+    esquerdo: e.melhor,
+    absoluta,
+    // Percentagem sobre o lado maior: é a leitura habitual de assimetria.
+    percentagem: maior > 0 ? ((maior - menor) / maior) * 100 : null,
+    ladoMenor: d.melhor < e.melhor ? 'direito' : (e.melhor < d.melhor ? 'esquerdo' : ''),
+  };
+}
+
+// O melhor valor de uma medição, seja de que lado for: serve para comparar com
+// a avaliação anterior e com a meta.
+function melhorDaMedicao(medicao) {
+  const todos = ladosMedidos(medicao).map((x) => x.resumo.melhor);
+  return todos.length ? Math.max(...todos) : null;
+}
+
+// Evolução face à medição do mesmo movimento numa avaliação anterior.
+function evolucaoDaMedicao(medicao, medicaoAnterior) {
+  const agora = melhorDaMedicao(medicao);
+  const antes = medicaoAnterior ? melhorDaMedicao(medicaoAnterior) : null;
+  if (agora == null || antes == null) return null;
+  return {
+    antes,
+    agora,
+    absoluta: agora - antes,
+    percentagem: antes !== 0 ? ((agora - antes) / Math.abs(antes)) * 100 : null,
+  };
+}
+
+// Quanto falta para a meta combinada. A meta é do profissional; a aplicação só
+// faz a subtração.
+function faltaParaMetaMobilidade(medicao) {
+  const meta = numDoCampo(medicao.meta);
+  const agora = melhorDaMedicao(medicao);
+  if (meta == null || agora == null) return null;
+  return { meta, agora, falta: meta - agora, atingida: agora >= meta };
+}
+
+// O retrato de mobilidade de uma avaliação, com o que a §8.1 pede.
+//
+// Nota sobre «movimento mais limitado»: sem tabelas normativas não há forma
+// honesta de dizer que uma amplitude é pouca. O que se pode dizer, e é o que
+// se diz, é qual tem a maior assimetria entre lados e qual está mais longe da
+// meta combinada -- dois critérios que saem dos próprios dados.
+function retratoDeMobilidade(avaliacao, anterior, definicoes) {
+  const medicoes = medicoesDaAvaliacao(avaliacao);
+  const antes = medicoesDaAvaliacao(anterior);
+  const porMovimento = new Map(antes.map((m) => [m.movimentoId, m]));
+
+  const linhas = medicoes.map((m) => ({
+    medicao: m,
+    movimento: movimentoPorId(definicoes, m.movimentoId),
+    diferenca: diferencaEntreLados(m),
+    evolucao: evolucaoDaMedicao(m, porMovimento.get(m.movimentoId)),
+    meta: faltaParaMetaMobilidade(m),
+  }));
+
+  const comAssimetria = linhas
+    .filter((l) => l.diferenca && l.diferenca.percentagem != null)
+    .sort((a, b) => b.diferenca.percentagem - a.diferenca.percentagem);
+
+  const longeDaMeta = linhas
+    .filter((l) => l.meta && !l.meta.atingida)
+    .sort((a, b) => b.meta.falta - a.meta.falta);
+
+  const avaliados = new Set(medicoes.map((m) => m.movimentoId));
+  const regioesTocadas = new Set(linhas.map((l) => l.movimento && l.movimento.regiao).filter(Boolean));
+
+  return {
+    linhas,
+    maiorAssimetria: comAssimetria[0] || null,
+    maisLongeDaMeta: longeDaMeta[0] || null,
+    regioes: [...regioesTocadas],
+    // Regiões inteiras por avaliar: é o que falta olhar, e é mais útil do que
+    // listar os trinta e tal movimentos que não foram feitos.
+    regioesPorAvaliar: REGIOES_MOBILIDADE
+      .filter((r) => r !== 'Personalizado')
+      .filter((r) => !movimentosDe(definicoes).some((m) => m.regiao === r && avaliados.has(m.id))),
+    comDor: linhas.filter((l) => l.medicao.dor),
+    comCompensacao: linhas.filter((l) => l.medicao.compensacao),
+  };
+}
+
+// Uma linha legível, para o histórico e para o papel.
+function descreverMedicao(movimento, medicao) {
+  if (!movimento) return '';
+  const partes = ladosMedidos(medicao).map((x) => {
+    const nome = x.lado.id === 'bilateral' ? '' : `${x.lado.label.toLowerCase()} `;
+    return `${nome}${nPT(x.resumo.melhor)} ${movimento.unidade}`;
+  });
+  const tipo = (TIPOS_MEDICAO.find((t) => t.id === medicao.tipo) || {}).label;
+  return [tipo ? tipo.toLowerCase() : null, partes.join(' · '),
+    medicao.dor ? 'com dor' : null,
+    medicao.compensacao ? `compensação: ${medicao.compensacao}` : null]
+    .filter(Boolean).join(' · ');
 }
 
 /* ===================== VERSÕES DA AVALIAÇÃO ===================== */

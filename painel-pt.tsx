@@ -11492,9 +11492,11 @@ function HistoricoAvaliacaoModal({ avaliacao, onRestaurar, onClose }) {
   );
 }
 
-function AssessmentDetail({ student, sessions, photosById, definicoes, onBack, onSaveAssessment, onUploadPhotos, onRemovePhoto, onDeleteAssessment, onPrintAssessment }) {
+function AssessmentDetail({ student, sessions, photosById, definicoes, iniciarNova, onBack, onSaveAssessment, onUploadPhotos, onRemovePhoto, onDeleteAssessment, onPrintAssessment }) {
   // null = fechado, 'nova' = criar, objeto = editar essa avaliação.
-  const [editando, setEditando] = useState(null);
+  // `iniciarNova` deixa a vista abrir já no formulário, para o botão do topo
+  // levar a algum lado em vez de só escolher o aluno e parar ali.
+  const [editando, setEditando] = useState(iniciarNova ? 'nova' : null);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [historicoId, setHistoricoId] = useState(null);
@@ -11621,11 +11623,71 @@ function AssessmentDetail({ student, sessions, photosById, definicoes, onBack, o
   );
 }
 
+// Escolher um aluno. Com muitos na lista, procurar é mais rápido do que rolar.
+function EscolherAlunoModal({ students, titulo, ajuda, onEscolher, onClose }) {
+  const [procura, setProcura] = useState('');
+  const ordenados = useMemo(
+    () => [...students].sort((a, b) => byNamePt(a.name, b.name)),
+    [students],
+  );
+  const visiveis = useMemo(() => {
+    const termo = chaveBusca(procura.trim());
+    return ordenados.filter((s) => !termo || chaveBusca(s.name).includes(termo));
+  }, [ordenados, procura]);
+
+  return (
+    <Modal title={titulo} onClose={onClose}>
+      <div className="flex flex-col gap-3">
+        {ajuda && <p className="text-sm font-body text-muted">{ajuda}</p>}
+        {ordenados.length > 6 && (
+          <div className="relative min-w-0">
+            <Search size={15} className="absolute text-faint" style={{ left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+            <input
+              value={procura}
+              onChange={(e) => setProcura(e.target.value)}
+              placeholder="Procurar aluno..."
+              aria-label="Procurar aluno"
+              className="input-field"
+              style={{ paddingLeft: 34 }}
+              autoFocus
+            />
+          </div>
+        )}
+        {visiveis.length === 0 ? (
+          <EmptyState icon={Users} message="Nenhum aluno com esse nome." />
+        ) : (
+          <div className="flex flex-col gap-1.5" style={{ maxHeight: '48vh', overflowY: 'auto' }}>
+            {visiveis.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => onEscolher(s)}
+                className="flex items-center gap-2 text-left px-3 py-2.5 rounded-lg border border-hair btn-surface min-w-0"
+                style={{ backgroundColor: 'var(--bg-elevated)' }}
+              >
+                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
+                <span className="text-sm font-body text-primary truncate">{s.name}</span>
+                {!s.active && <span className="text-2xs font-body text-faint flex-shrink-0">(inativo)</span>}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 function AssessmentsView({ students, sessions, photosById, definicoes, onSaveAssessment, onUploadPhotos, onRemovePhoto, onDeleteAssessment, onPrintAssessment, onNoStudents, selectedStudentId, setSelectedStudentId }) {
   const selected = students.find((s) => s.id === selectedStudentId);
+  // Uma avaliação é sempre de alguém: o botão de cima pergunta de quem, e
+  // depois abre o formulário já aberto nesse aluno.
+  const [aEscolherAluno, setAEscolherAluno] = useState(false);
+  const [abrirFormulario, setAbrirFormulario] = useState(false);
 
   if (selected) {
-    return <AssessmentDetail student={selected} sessions={sessions} photosById={photosById} definicoes={definicoes} onBack={() => setSelectedStudentId(null)}
+    return <AssessmentDetail student={selected} sessions={sessions} photosById={photosById} definicoes={definicoes}
+      iniciarNova={abrirFormulario}
+      onBack={() => { setSelectedStudentId(null); setAbrirFormulario(false); }}
       onSaveAssessment={onSaveAssessment} onUploadPhotos={onUploadPhotos} onRemovePhoto={onRemovePhoto} onDeleteAssessment={onDeleteAssessment}
       onPrintAssessment={onPrintAssessment} />;
   }
@@ -11634,7 +11696,21 @@ function AssessmentsView({ students, sessions, photosById, definicoes, onSaveAss
     <div className="px-4 py-4 max-w-4xl mx-auto flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="font-display font-semibold text-2xl text-primary tracking-wide">Avaliações Físicas</h1>
-        <button onClick={() => { if (students.length === 0) onNoStudents(); }} type="button" className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
+        <button
+          onClick={() => {
+            if (students.length === 0) { onNoStudents(); return; }
+            // Com um aluno só não vale a pena perguntar: vai-se direto.
+            if (students.length === 1) {
+              setAbrirFormulario(true);
+              setSelectedStudentId(students[0].id);
+              return;
+            }
+            setAEscolherAluno(true);
+          }}
+          type="button"
+          className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-body font-medium"
+          style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}
+        >
           <Plus size={15} /> Nova Avaliação
         </button>
       </div>
@@ -11658,6 +11734,20 @@ function AssessmentsView({ students, sessions, photosById, definicoes, onSaveAss
             );
           })}
         </div>
+      )}
+
+      {aEscolherAluno && (
+        <EscolherAlunoModal
+          students={students}
+          titulo="Nova avaliação"
+          ajuda="De quem é esta avaliação?"
+          onEscolher={(aluno) => {
+            setAEscolherAluno(false);
+            setAbrirFormulario(true);
+            setSelectedStudentId(aluno.id);
+          }}
+          onClose={() => setAEscolherAluno(false)}
+        />
       )}
     </div>
   );
@@ -14318,7 +14408,12 @@ function AppInner() {
             selectedStudentId={assessmentsStudentId} setSelectedStudentId={setAssessmentsStudentId}
             onSaveAssessment={saveAssessment} onUploadPhotos={uploadPhotos} onRemovePhoto={removePhoto} onDeleteAssessment={deleteAssessment}
             onPrintAssessment={printAssessment}
-            onNoStudents={() => showToast('Registe um aluno antes de fazer uma avaliação física.', 'error')} />
+            onNoStudents={() => {
+              // Avisar e ficar no mesmo sítio deixava o utilizador sem saída.
+              // Uma avaliação precisa de um aluno: leva-se lá.
+              showToast('Registe um aluno antes de fazer uma avaliação física.');
+              mudarVista('students');
+            }} />
         )}
         {view === 'finances' && <FinancesView finances={finances} students={students} monthCursor={financeMonthCursor} setMonthCursor={setFinanceMonthCursor} onOpenTransaction={openEditTransaction} onNewTransaction={openNewTransaction} onQuickComplete={quickCompleteTransaction} customCategories={customCategories} />}
         </>

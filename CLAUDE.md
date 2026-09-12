@@ -470,7 +470,8 @@ Combinado por níveis, do mais barato ao mais caro:
 2. ~~Agenda: vista de dia, lista, filtros, desfazer~~ **feito**
 3. ~~Prescrição: métodos como lista, blocos, campos novos, duplicar e arrastar~~ **feito**
 4. ~~Segurança: dois fatores e fechar sessão em todo o lado~~ **feito**
-   — falta correr a política `app_data_exige_aal2` no Supabase
+   — SQL corrido: `aal_suficiente()` e as duas políticas restritivas estão
+   aplicadas (`polpermissive = false` nas duas)
 5. ~~Fotografias para o Storage~~ **feito** — falta correr o SQL do balde
 6. ~~Avaliações: perímetros, cintura-anca, metas, comparação~~ **feito**
 7. ~~Séries individuais, campos por método, combinar em supersérie~~ **feito**
@@ -488,7 +489,7 @@ Combinado por níveis, do mais barato ao mais caro:
     disco e com ele foi-se o `name_en`. Se voltar a aparecer, o gerador pode
     passar a guardá-lo
 12. ~~Anamnese, PAR-Q e consentimentos — construtor de formulários~~ **feito**
-    — **falta correr o SQL do schema** para a chave `formularios`
+    — SQL corrido: `formularios` já está no `check` do `data_key`
 13. ~~Ficha 360º com linha temporal pesquisável~~ **feito**
     — sem os pagamentos: uma transação não tem `studentId`
 14. ~~Progresso e relatórios — só o que existe sem área do aluno~~ **feito**

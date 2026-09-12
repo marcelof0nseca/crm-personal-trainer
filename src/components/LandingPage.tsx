@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import {
   MessageCircle, CalendarDays, RotateCcw, ClipboardCheck, Images, Wallet, TrendingDown,
   ShieldCheck, LogIn, RefreshCcw, Lock, ChevronDown, CheckCircle2, TrendingUp, ArrowRight, UserPlus, Gift, Mail,
@@ -156,7 +156,13 @@ const FEATURE_SECTIONS = [
 
 /* ============================== MOCKUP ATOMS ============================== */
 
-function MockupFrame({ label, children }) {
+// `chromeless` despe a moldura de janela (os tres pontos fazem sentido numa
+// pagina, nao dentro de um ecra de telemovel) e reduz o padding, para o mesmo
+// conteudo caber num PhoneFrame sem parecer encolhido a forca.
+function MockupFrame({ label, chromeless, children }) {
+  if (chromeless) {
+    return <div className="w-full h-full" style={{ backgroundColor: 'var(--bg-base)', padding: '14px 12px' }}>{children}</div>;
+  }
   return (
     <div
       className="bg-surface border border-hair rounded-2xl p-4 sm:p-5 card-hover"
@@ -173,19 +179,62 @@ function MockupFrame({ label, children }) {
   );
 }
 
-function DashboardMockup() {
+// Os quatro numeros do resumo sobem ao ecra em vez de aparecerem prontos: e
+// a primeira coisa que se ve na pagina, e um numero que "chega" da mais
+// sensacao de um produto vivo do que um numero que simplesmente esta la.
+function useContagem(alvo, ativo, duracaoMs = 900) {
+  const [valor, setValor] = useState(ativo ? 0 : alvo);
+  useEffect(() => {
+    if (!ativo) return undefined;
+    const reduzido = typeof window !== 'undefined' && window.matchMedia
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduzido) { setValor(alvo); return undefined; }
+    let quadro;
+    const inicio = performance.now();
+    function passo(agora) {
+      const t = Math.min(1, (agora - inicio) / duracaoMs);
+      const suave = 1 - (1 - t) ** 3;
+      setValor(Math.round(alvo * suave));
+      if (t < 1) quadro = requestAnimationFrame(passo);
+    }
+    quadro = requestAnimationFrame(passo);
+    return () => cancelAnimationFrame(quadro);
+  }, [ativo, alvo, duracaoMs]);
+  return valor;
+}
+
+// "24", "18" ou "€2.340" -- extrai o numero, mantem o € e o separador de
+// milhar ao estilo português.
+function numeroDoStat(texto) { return parseInt(texto.replace(/[^\d]/g, ''), 10) || 0; }
+function formatarStat(valor, modelo) {
+  const texto = valor.toLocaleString('pt-PT');
+  return modelo.trim().startsWith('€') ? `€${texto}` : texto;
+}
+
+function StatMock({ s, ativo }) {
+  const alvo = numeroDoStat(s.value);
+  const valor = useContagem(alvo, ativo);
   return (
-    <MockupFrame label="painel · hoje">
+    <div className="bg-elevated border border-hair rounded-xl p-3 flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-2xs uppercase tracking-wide text-muted font-body">{s.label}</span>
+        <s.icon size={14} className="text-brass" />
+      </div>
+      <span className="font-mono text-lg text-primary font-semibold tabular-nums">{formatarStat(valor, s.value)}</span>
+    </div>
+  );
+}
+
+function DashboardMockup({ chromeless } = {}) {
+  const [ativo, setAtivo] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setAtivo(true), 260);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <MockupFrame label="painel · hoje" chromeless={chromeless}>
       <div className="grid grid-cols-2 gap-2.5 mb-3">
-        {MOCK_STATS.map((s) => (
-          <div key={s.label} className="bg-elevated border border-hair rounded-xl p-3 flex flex-col gap-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-2xs uppercase tracking-wide text-muted font-body">{s.label}</span>
-              <s.icon size={14} className="text-brass" />
-            </div>
-            <span className="font-mono text-lg text-primary font-semibold">{s.value}</span>
-          </div>
-        ))}
+        {MOCK_STATS.map((s) => <StatMock key={s.label} s={s} ativo={ativo} />)}
       </div>
       <div className="bg-elevated border border-hair rounded-xl p-3 flex flex-col gap-2">
         {MOCK_SESSIONS.map((s) => (
@@ -201,9 +250,9 @@ function DashboardMockup() {
   );
 }
 
-function StudentsMockup() {
+function StudentsMockup({ chromeless } = {}) {
   return (
-    <MockupFrame label="alunos · 24 ativos">
+    <MockupFrame label="alunos · 24 ativos" chromeless={chromeless}>
       <div className="flex flex-col gap-2">
         {MOCK_STUDENTS.map((s) => (
           <div key={s.name} className="bg-elevated border border-hair rounded-lg pl-3 pr-2.5 py-2.5 flex items-center gap-2.5" style={{ borderLeftWidth: '3px', borderLeftColor: s.color }}>
@@ -222,10 +271,10 @@ function StudentsMockup() {
   );
 }
 
-function AgendaMockup() {
+function AgendaMockup({ chromeless } = {}) {
   const activeDay = 3;
   return (
-    <MockupFrame label="agenda · semana de 3 a 9 de agosto">
+    <MockupFrame label="agenda · semana de 3 a 9 de agosto" chromeless={chromeless}>
       {/* Seletor de dia da semana, com o nº de marcações de cada dia */}
       <div className="grid grid-cols-7 gap-1.5 mb-3">
         {WEEK_DAYS.map((d, i) => {
@@ -278,14 +327,14 @@ function AgendaMockup() {
   );
 }
 
-function AssessmentMockup() {
+function AssessmentMockup({ chromeless } = {}) {
   // Escala com margem em vez de partir do zero: entre 22% e 18,2% a diferença
   // é pequena em absoluto, e a partir do zero a descida ficaria invisível.
   const lo = Math.min(...FAT_TREND) - 1.5;
   const hi = Math.max(...FAT_TREND) + 0.5;
   const heightPct = (v) => ((v - lo) / (hi - lo)) * 100;
   return (
-    <MockupFrame label="avaliação física · Rita Almeida">
+    <MockupFrame label="avaliação física · Rita Almeida" chromeless={chromeless}>
       {/* Escolha do método, tal como no painel */}
       <div className="text-2xs uppercase tracking-wide text-faint font-body mb-1.5">Método de avaliação</div>
       <div className="grid grid-cols-2 gap-2 mb-3.5">
@@ -383,9 +432,9 @@ function AssessmentMockup() {
   );
 }
 
-function PhotosMockup() {
+function PhotosMockup({ chromeless } = {}) {
   return (
-    <MockupFrame label="fotos de progresso · Rita Almeida">
+    <MockupFrame label="fotos de progresso · Rita Almeida" chromeless={chromeless}>
       <div className="grid grid-cols-4 gap-2">
         {PHOTO_DATES.map((d, i) => (
           <div key={d} className="flex flex-col gap-1.5">
@@ -398,9 +447,9 @@ function PhotosMockup() {
   );
 }
 
-function FinanceMockup() {
+function FinanceMockup({ chromeless } = {}) {
   return (
-    <MockupFrame label="finanças · este mês">
+    <MockupFrame label="finanças · este mês" chromeless={chromeless}>
       <div className="grid grid-cols-3 gap-2 mb-3">
         <div className="bg-elevated border border-hair rounded-lg p-2.5 flex flex-col gap-0.5">
           <span className="text-2xs uppercase text-faint font-body">Bruto</span>
@@ -427,9 +476,9 @@ function FinanceMockup() {
   );
 }
 
-function AccountMockup() {
+function AccountMockup({ chromeless } = {}) {
   return (
-    <MockupFrame label="perfil · plano">
+    <MockupFrame label="perfil · plano" chromeless={chromeless}>
       <div className="bg-elevated border border-hair rounded-lg p-3.5 flex flex-col gap-2.5 mb-3">
         <div className="flex items-center justify-between">
           <span className="text-2xs uppercase text-faint font-body">Plano atual</span>

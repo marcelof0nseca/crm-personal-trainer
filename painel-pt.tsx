@@ -2129,12 +2129,16 @@ function migrarExercicioParaLinhas(ex) {
 // pode acontecer depois de apagar o par.
 // Uma linha de série numa frase: "10 × 40 kg · RPE 8". É o que o aluno lê no
 // PDF, e por isso não leva rótulos que ele não precise de decifrar.
-function descreverLinha(linha) {
+// `semCarga` serve a vista de treino, onde a carga tem coluna propria e
+// editavel: reperti-la na descricao punha o mesmo numero duas vezes na linha.
+function descreverLinha(linha, opcoes) {
   if (!linha) return '';
   const tipo = tipoDeSerie(linha.tipo);
   if (tipo.id === 'observacao') return linha.notas || '';
+  const semCarga = Boolean(opcoes && opcoes.semCarga);
   const partes = tipo.campos
     .map((campo) => {
+      if (semCarga && campo === 'carga') return null;
       const valor = String(linha[campo] || '').trim();
       if (!valor) return null;
       if (campo === 'reps') return valor;
@@ -2288,6 +2292,49 @@ function clonarTreinos(lista) {
     id: uid(),
     exercicios: (t.exercicios || []).map((ex) => ({ ...ex, id: uid() })),
   }));
+}
+
+// Um numero simples, com ou sem unidade de peso. "8-10" e "ate a falha" nao
+// sao numeros, e e de proposito que nao passam: somar o 8 de "8-10" daria um
+// total errado com ar de exato.
+function numeroSimples(valor) {
+  const t = String(valor === undefined || valor === null ? '' : valor).trim().replace(',', '.');
+  const m = t.match(/^(\d+(?:\.\d+)?)\s*(kg|kgs|k)?$/i);
+  return m ? parseFloat(m[1]) : null;
+}
+
+// Segundos de uma pausa escrita como "90", "90 s" ou "2 min".
+function segundosDe(valor) {
+  const t = String(valor === undefined || valor === null ? '' : valor).trim().toLowerCase().replace(',', '.');
+  const m = t.match(/^(\d+(?:\.\d+)?)\s*(s|seg|segs|segundos|min|mins|minutos)?$/);
+  if (!m) return null;
+  const n = parseFloat(m[1]);
+  return m[2] && m[2].startsWith('min') ? n * 60 : n;
+}
+
+// O retrato de um treino em numeros. `comCarga` diz de quantas series saiu o
+// volume, para o total nao passar por ser o do treino inteiro quando metade
+// das series esta escrita em intervalos.
+function resumoDoTreino(treino) {
+  let series = 0;
+  let comCarga = 0;
+  let volume = 0;
+  let descanso = 0;
+  (treino && treino.exercicios ? treino.exercicios : []).forEach((ex) => {
+    const linhas = Array.isArray(ex.linhas) && ex.linhas.length ? ex.linhas : [];
+    linhas.forEach((l) => {
+      series += 1;
+      const reps = numeroSimples(l.reps);
+      const carga = numeroSimples(l.carga);
+      if (reps !== null && carga !== null) { volume += reps * carga; comCarga += 1; }
+      const s = segundosDe(l.descanso);
+      if (s !== null) descanso += s;
+    });
+  });
+  return {
+    exercicios: (treino && treino.exercicios ? treino.exercicios : []).length,
+    series, comCarga, volume, descanso,
+  };
 }
 
 // Quantos exercicios tem o programa todo. Serve de resumo na ficha do aluno.
@@ -9578,7 +9625,407 @@ function useArrastarExercicio(onReordenar) {
 }
 
 // Construtor de um programa: cabecalho, treinos e exercicios.
-function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivar, onGuardarModelo, onImprimir, onEliminar }) {
+/* ========================== VISTA DE TREINO ==========================
+   O construtor e para escrever o programa; isto e para o ver. Sao coisas
+   diferentes: a escrever precisa-se de todos os campos a vista, e a ver
+   precisa-se do treino de relance -- muitas vezes com o telemovel na mao, no
+   meio da sala, entre duas series.
+
+   O que se mexe daqui e o que muda mesmo de sessao para sessao: a carga de
+   cada serie e os numeros do metodo prescrito. O resto -- que exercicio,
+   quantas series, em que bloco -- muda-se no construtor, que esta a um clique.
+   -------------------------------------------------------------------- */
+
+// A carga de uma serie, editavel no sitio. Enter salta para a seguinte: quem
+// esta a atualizar as cargas de um treino inteiro faz isso doze vezes seguidas.
+function CargaDaSerie({ valor, rotulo, onMudar }) {
+  return (
+    <input
+      value={valor || ''}
+      data-carga-vista=""
+      onChange={(e) => onMudar(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const todos = Array.from(document.querySelectorAll('[data-carga-vista]'));
+        const proximo = todos[todos.indexOf(e.currentTarget) + 1];
+        if (proximo) { proximo.focus(); proximo.select(); } else e.currentTarget.blur();
+      }}
+      aria-label={rotulo}
+      className="input-field font-mono"
+      placeholder="—"
+      style={{ fontSize: 13, textAlign: 'right', padding: '4px 8px' }}
+    />
+  );
+}
+
+// Os numeros de um metodo, na vista. Sao os mesmos campos do construtor, mas
+// so aparecem depois de se tocar na etiqueta: fechados, o treino le-se.
+function NumerosDoMetodo({ campos, params, prefixo, onMudar }) {
+  if (campos.length === 0) return null;
+  return (
+    <div className="flex gap-2 flex-wrap" style={{ paddingTop: 2 }}>
+      {campos.map(([campo, rotulo, exemplo]) => (
+        <div key={campo} className="flex flex-col gap-1" style={{ flex: '1 1 118px', minWidth: 104 }}>
+          <span className="text-2xs font-body text-faint">{rotulo}</span>
+          <input
+            value={params[campo] || ''}
+            onChange={(e) => onMudar({ ...params, [campo]: e.target.value })}
+            aria-label={`${rotulo} ${prefixo}`}
+            className="input-field"
+            placeholder={exemplo}
+            style={{ fontSize: 13 }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// A barra de uma combinacao, sobre o primeiro membro. A cor e a mesma dos
+// exercicios que ela junta -- e o que os liga a olho.
+function BarraCombinacao({ info, combinacao, onMudar }) {
+  const [aberto, setAberto] = useState(false);
+  const metodo = combinacao ? metodoDeCombinacao(combinacao.metodo) : null;
+  const campos = combinacao ? camposDaCombinacao(combinacao.metodo) : [];
+  const params = (combinacao && combinacao.params) || {};
+  const nome = metodo ? metodo.nome : 'Em conjunto';
+
+  return (
+    <div
+      className="rounded-lg px-2.5 py-1.5 flex flex-col gap-1.5"
+      style={{
+        backgroundColor: `color-mix(in srgb, ${info.cor} 12%, var(--bg-surface))`,
+        borderLeft: `3px solid ${info.cor}`,
+      }}
+    >
+      <div className="flex items-center gap-2 flex-wrap min-w-0">
+        <span className="font-mono text-2xs flex-shrink-0" style={{ color: acentoTexto(info.cor), fontWeight: 700 }}>
+          {info.letra}
+        </span>
+        <span className="text-xs font-body text-primary truncate" style={{ fontWeight: 500 }}>{nome}</span>
+        <span className="text-2xs font-body text-faint nowrap">
+          {plural(info.total, 'exercício seguido', 'exercícios seguidos')}
+        </span>
+        {campos.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setAberto((a) => !a)}
+            aria-expanded={aberto}
+            className="text-2xs font-body link-sky flex-shrink-0"
+            style={{ marginLeft: 'auto' }}
+          >
+            {aberto ? 'Fechar números' : 'Números'}
+          </button>
+        )}
+      </div>
+      {aberto && (
+        <NumerosDoMetodo
+          campos={campos}
+          params={params}
+          prefixo={`da combinação ${info.letra}`}
+          onMudar={(novos) => onMudar({ ...combinacao, params: novos })}
+        />
+      )}
+    </div>
+  );
+}
+
+function ExercicioVista({ ex, biblioteca, grupoInfo, onMudar, comCabecalho }) {
+  const [numeros, setNumeros] = useState(false);
+  const daBiblioteca = biblioteca.find((b) => b.id === ex.exercicioId);
+  const linhas = Array.isArray(ex.linhas) && ex.linhas.length ? ex.linhas : [];
+  const camposMetodo = camposDoMetodo(ex.metodo);
+  const extras = extrasPreenchidos(ex);
+  const subtitulo = [daBiblioteca && daBiblioteca.grupo, daBiblioteca && daBiblioteca.equipamento]
+    .filter(Boolean).join(' · ');
+
+  function mudarLinha(id, campo, valor) {
+    onMudar({ ...ex, linhas: linhas.map((l) => (l.id === id ? { ...l, [campo]: valor } : l)) });
+  }
+
+  return (
+    <div
+      className="rounded-lg px-3 py-2.5 flex flex-col gap-2 min-w-0"
+      style={{
+        // Sem borda a toda a volta: com uma dúzia de exercícios, doze caixas
+        // fechadas viram uma grelha. O que separa é o fundo e a tira da cor.
+        backgroundColor: grupoInfo
+          ? `color-mix(in srgb, ${grupoInfo.cor} ${grupoInfo.tinta}%, var(--bg-elevated))`
+          : 'var(--bg-elevated)',
+        borderLeft: grupoInfo ? `3px solid ${grupoInfo.cor}` : '3px solid transparent',
+      }}
+    >
+      <div className="flex items-baseline gap-2 flex-wrap min-w-0">
+        {grupoInfo && (
+          <span className="font-mono text-2xs flex-shrink-0" style={{ color: acentoTexto(grupoInfo.cor), fontWeight: 700 }}>
+            {grupoInfo.etiqueta}
+          </span>
+        )}
+        <span className="font-body text-sm text-primary min-w-0" style={{ fontWeight: 600 }}>
+          {ex.nome || 'Exercício'}
+        </span>
+        {subtitulo && <span className="text-2xs font-body text-faint truncate">{subtitulo}</span>}
+        {ex.metodo && (
+          camposMetodo.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setNumeros((n) => !n)}
+              aria-expanded={numeros}
+              className="badge flex-shrink-0"
+              style={{
+                marginLeft: 'auto',
+                color: 'var(--brass)',
+                backgroundColor: 'var(--brass-soft)',
+                cursor: 'pointer',
+              }}
+              title="Ver e mudar os números deste método"
+            >
+              {ex.metodo}
+            </button>
+          ) : (
+            <span className="badge flex-shrink-0" style={{ marginLeft: 'auto', color: 'var(--brass)', backgroundColor: 'var(--brass-soft)' }}>
+              {ex.metodo}
+            </span>
+          )
+        )}
+      </div>
+
+      {numeros && (
+        <NumerosDoMetodo
+          campos={camposMetodo}
+          params={ex.metodoParams || {}}
+          prefixo={`de ${ex.nome || 'exercício'}`}
+          onMudar={(novos) => onMudar({ ...ex, metodoParams: novos })}
+        />
+      )}
+
+      {linhas.length === 0 ? (
+        <span className="text-2xs font-body text-faint">Sem séries escritas.</span>
+      ) : (
+        <div className="flex flex-col gap-1">
+          {comCabecalho && (
+            <div className="flex items-center gap-2 text-2xs font-body text-faint" style={{ paddingRight: 2 }}>
+              <span style={{ width: 16, flexShrink: 0 }} />
+              <span className="flex-1 min-w-0">Prescrição</span>
+              <span className="nowrap" style={{ width: 92, textAlign: 'right' }}>Carga</span>
+              <span className="nowrap" style={{ width: 56, textAlign: 'right' }}>Descanso</span>
+            </div>
+          )}
+          {linhas.map((linha, i) => {
+            const tipo = tipoDeSerie(linha.tipo);
+            const temCarga = tipo.campos.includes('carga');
+            const texto = descreverLinha(linha, { semCarga: true });
+            return (
+              <div key={linha.id} className="flex items-center gap-2 min-w-0" style={{ paddingRight: 2 }}>
+                <span className="font-mono text-2xs text-faint flex-shrink-0" style={{ width: 16 }}>{i + 1}</span>
+                <span className="text-xs font-body text-primary flex-1 min-w-0 truncate" title={texto}>
+                  {texto || '—'}
+                </span>
+                <span style={{ width: 92, flexShrink: 0 }}>
+                  {temCarga ? (
+                    <CargaDaSerie
+                      valor={linha.carga}
+                      rotulo={`Carga da série ${i + 1} de ${ex.nome || 'exercício'}`}
+                      onMudar={(v) => mudarLinha(linha.id, 'carga', v)}
+                    />
+                  ) : (
+                    <span className="block font-mono text-2xs text-faint" style={{ textAlign: 'right' }}>—</span>
+                  )}
+                </span>
+                <span className="font-mono text-2xs text-muted flex-shrink-0 nowrap" style={{ width: 56, textAlign: 'right' }}>
+                  {linha.descanso ? `${linha.descanso}${/^\d+$/.test(String(linha.descanso).trim()) ? ' s' : ''}` : '—'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {(ex.notas || extras.length > 0) && (
+        <div className="text-2xs font-body text-faint min-w-0">
+          {[ex.notas, ...extras.map(([campo, rotulo]) => `${rotulo}: ${ex[campo]}`)].filter(Boolean).join(' · ')}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Um número do resumo. Não é um cartão: o programa já é a página, e cartões
+// dentro de cartões é o que as regras de desenho proíbem.
+function NumeroDoResumo({ rotulo, valor, nota }) {
+  return (
+    <div className="flex flex-col gap-0.5 min-w-0">
+      <span className="font-mono text-lg text-primary nowrap" style={{ fontWeight: 600, lineHeight: 1.1 }}>{valor}</span>
+      <span className="text-2xs font-body text-muted nowrap">{rotulo}</span>
+      {nota && <span className="text-2xs font-body text-faint truncate" title={nota}>{nota}</span>}
+    </div>
+  );
+}
+
+function TreinoVista({ prescricao, biblioteca, onMudar, onEditar, onImprimir }) {
+  const treinos = prescricao.treinos || [];
+  const [abertoId, setAbertoId] = useState(treinos[0] ? treinos[0].id : null);
+  // Um treino apagado no construtor não pode deixar a vista sem nada aberto.
+  const treino = treinos.find((t) => t.id === abertoId) || treinos[0] || null;
+  const resumo = useMemo(() => resumoDoTreino(treino), [treino]);
+  const infos = useMemo(() => infoDeGrupos(treino ? treino.exercicios : []), [treino]);
+  const blocos = useMemo(() => agruparPorBloco(treino ? treino.exercicios : []), [treino]);
+  // O primeiro exercício a ser desenhado -- não o primeiro da lista, que os
+  // blocos reordenam. É o único que leva o cabeçalho das colunas.
+  const primeiroId = blocos[0] && blocos[0][1][0] ? blocos[0][1][0].id : null;
+
+  const periodo = [
+    prescricao.inicio ? fmtDateLong(prescricao.inicio + 'T00:00:00') : null,
+    prescricao.fim ? fmtDateLong(prescricao.fim + 'T00:00:00') : null,
+  ].filter(Boolean).join(' a ');
+
+  function mudarExercicio(novo) {
+    onMudar({
+      ...prescricao,
+      treinos: treinos.map((t) => (t.id === treino.id
+        ? { ...t, exercicios: t.exercicios.map((x) => (x.id === novo.id ? novo : x)) }
+        : t)),
+    });
+  }
+
+  function mudarCombinacao(grupoId, combinacao) {
+    onMudar({
+      ...prescricao,
+      treinos: treinos.map((t) => (t.id === treino.id
+        ? { ...t, grupos: { ...(t.grupos || {}), [grupoId]: combinacao } }
+        : t)),
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-4 min-w-0">
+      {/* Cabeçalho do programa: o que é, para quando, e o que se pode fazer. */}
+      <div className="flex items-start justify-between gap-3 flex-wrap min-w-0">
+        <div className="min-w-0">
+          <h2 className="font-display font-semibold text-lg text-primary tracking-wide min-w-0">
+            {prescricao.nome || 'Programa de treino'}
+          </h2>
+          {(prescricao.objetivo || periodo) && (
+            <p className="text-2xs font-body text-faint min-w-0">
+              {[prescricao.objetivo, periodo].filter(Boolean).join(' · ')}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
+          <button type="button" onClick={onImprimir} className="btn btn-ghost" style={{ fontSize: 12 }}>
+            <Printer size={14} /> Exportar PDF
+          </button>
+          <button type="button" onClick={onEditar} className="btn btn-ghost" style={{ fontSize: 12 }}>
+            <Pencil size={14} /> Editar programa
+          </button>
+        </div>
+      </div>
+
+      {treinos.length === 0 ? (
+        <EmptyState icon={Dumbbell} message="Este programa ainda não tem treinos." />
+      ) : (
+        <>
+          {/* Um treino de cada vez. Entre duas séries ninguém quer percorrer
+              o A, o B e o C para chegar ao que está a fazer. */}
+          {treinos.length > 1 && (
+            <div className="flex gap-1.5 overflow-x-auto" role="tablist" aria-label="Treinos do programa" style={{ paddingBottom: 2 }}>
+              {treinos.map((t) => {
+                const ativo = treino && t.id === treino.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={ativo}
+                    onClick={() => setAbertoId(t.id)}
+                    className="px-3 py-2 rounded-lg border text-sm font-body nowrap flex-shrink-0"
+                    style={{
+                      borderColor: ativo ? 'var(--brass)' : 'var(--border-hair)',
+                      backgroundColor: ativo ? 'var(--brass-soft)' : 'var(--bg-elevated)',
+                      color: ativo ? 'var(--brass)' : 'var(--text-muted)',
+                      fontWeight: ativo ? 600 : 400,
+                    }}
+                  >
+                    {t.nome}
+                    <span className="font-mono text-2xs ml-1.5 opacity-70">{(t.exercicios || []).length}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {treino && (
+            <>
+              <div className="flex items-start gap-5 flex-wrap border-b border-hair" style={{ paddingBottom: 12 }}>
+                <NumeroDoResumo rotulo={resumo.exercicios === 1 ? 'exercício' : 'exercícios'} valor={resumo.exercicios} />
+                <NumeroDoResumo rotulo={resumo.series === 1 ? 'série' : 'séries'} valor={resumo.series} />
+                <NumeroDoResumo
+                  rotulo="de pausa"
+                  valor={resumo.descanso ? textoDeHoras(Math.round(resumo.descanso / 60)) : '—'}
+                  nota={resumo.descanso ? 'somando os descansos escritos' : 'sem descansos com número'}
+                />
+                <NumeroDoResumo
+                  rotulo="de volume"
+                  valor={resumo.volume ? `${Math.round(resumo.volume).toLocaleString('pt-PT')} kg` : '—'}
+                  nota={resumo.comCarga
+                    ? `reps × carga em ${resumo.comCarga} de ${resumo.series} séries`
+                    : 'sem séries com reps e carga em número'}
+                />
+              </div>
+
+              {(treino.exercicios || []).length === 0 ? (
+                <EmptyState icon={Dumbbell} message="Sem exercícios neste treino." />
+              ) : (
+                <div className="flex flex-col gap-4 min-w-0">
+                  {blocos.map(([bloco, doBloco]) => (
+                    <div key={bloco} className="flex flex-col gap-2 min-w-0">
+                      {blocos.length > 1 && (
+                        <div className="text-2xs uppercase tracking-wide text-faint font-mono">{bloco}</div>
+                      )}
+                      {doBloco.map((ex) => {
+                        const info = infos[ex.id];
+                        return (
+                          <React.Fragment key={ex.id}>
+                            {info && info.primeiro && (
+                              <BarraCombinacao
+                                info={info}
+                                combinacao={grupoDoTreino(treino, info.grupo)}
+                                onMudar={(c) => mudarCombinacao(info.grupo, c)}
+                              />
+                            )}
+                            <ExercicioVista
+                              ex={ex}
+                              biblioteca={biblioteca}
+                              grupoInfo={info}
+                              comCabecalho={ex.id === primeiroId}
+                              onMudar={mudarExercicio}
+                            />
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {treino.notas && (
+                <p className="text-xs font-body text-muted min-w-0" style={{ whiteSpace: 'pre-wrap' }}>{treino.notas}</p>
+              )}
+
+              <p className="text-2xs font-body text-faint">
+                A carga de cada série e os números dos métodos mudam-se aqui mesmo. Para trocar
+                exercícios, séries ou blocos, abra o construtor em «Editar programa».
+              </p>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivar, onGuardarModelo, onImprimir, onEliminar, onVerTreino }) {
   const biblioteca = treinos.biblioteca;
   const [picker, setPicker] = useState(null); // id do treino a receber o exercicio
   const [alternativas, setAlternativas] = useState(null); // { treinoId, ex }
@@ -9706,6 +10153,11 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
           confundiam. */}
       <div className="flex items-center justify-end gap-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap justify-end">
+          {onVerTreino && (
+            <button type="button" onClick={onVerTreino} className="btn btn-ghost" style={{ fontSize: 12 }}>
+              <Eye size={14} /> Ver treino
+            </button>
+          )}
           <button type="button" onClick={onImprimir} className="btn btn-ghost" style={{ fontSize: 12 }}>
             <Printer size={14} /> Exportar PDF
           </button>
@@ -9914,6 +10366,9 @@ function LinhaPrograma({ p, onAbrir }) {
 // Lista de programas de um aluno, e a porta de entrada para o construtor.
 function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, onEliminarPrescricao, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivarPrescricao, onGuardarModelo, onCriarDeModelo, onApagarModelo, usosDoExercicio, onImprimir, onVoltar }) {
   const [abertoId, setAbertoId] = useState(null);
+  // Um programa que já tem trabalho escrito abre para ser visto; um acabado de
+  // criar abre no construtor, que é o que falta fazer-lhe.
+  const [modo, setModo] = useState('ver');
   const [verArquivados, setVerArquivados] = useState(false);
   const [modeloAApagar, setModeloAApagar] = useState(null);
   const ativos = useMemo(() => prescricoesDoAluno(treinos, student.id, false), [treinos, student.id]);
@@ -9938,9 +10393,18 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
         </div>
       </div>
 
-      {aberta ? (
+      {aberta && modo === 'ver' ? (
+        <TreinoVista
+          prescricao={aberta}
+          biblioteca={treinos.biblioteca}
+          onMudar={onMudarPrescricao}
+          onEditar={() => setModo('editar')}
+          onImprimir={() => onImprimir(aberta)}
+        />
+      ) : aberta ? (
         <PrescricaoBuilder
           prescricao={aberta}
+          onVerTreino={() => setModo('ver')}
           treinos={treinos}
           onMudar={onMudarPrescricao}
           onCriarExercicio={onCriarExercicio}
@@ -9960,7 +10424,7 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
         <>
           <button
             type="button"
-            onClick={() => { const nova = onCriarPrescricao(student.id); setAbertoId(nova.id); }}
+            onClick={() => { const nova = onCriarPrescricao(student.id); setAbertoId(nova.id); setModo('editar'); }}
             className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-body font-medium"
             style={{ backgroundColor: 'var(--brass)', color: 'var(--on-accent)' }}
           >
@@ -9976,7 +10440,7 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
                   <div key={m.id} className="card flex items-stretch gap-1 min-w-0">
                     <button
                       type="button"
-                      onClick={() => { const nova = onCriarDeModelo(student.id, m); setAbertoId(nova.id); }}
+                      onClick={() => { const nova = onCriarDeModelo(student.id, m); setAbertoId(nova.id); setModo('ver'); }}
                       className="flex-1 flex items-center justify-between gap-3 text-left p-4 min-w-0 btn-surface rounded-l-xl"
                     >
                       <span className="min-w-0">
@@ -10006,7 +10470,13 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
             />
           ) : (
             <div className="flex flex-col gap-2">
-              {ativos.map((p) => <LinhaPrograma key={p.id} p={p} onAbrir={() => setAbertoId(p.id)} />)}
+              {ativos.map((p) => (
+                <LinhaPrograma
+                  key={p.id}
+                  p={p}
+                  onAbrir={() => { setAbertoId(p.id); setModo(contarExercicios(p) > 0 ? 'ver' : 'editar'); }}
+                />
+              ))}
             </div>
           )}
 
@@ -10023,7 +10493,13 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
               </button>
               {verArquivados && (
                 <div className="flex flex-col gap-2" style={{ opacity: 0.7 }}>
-                  {arquivados.map((p) => <LinhaPrograma key={p.id} p={p} onAbrir={() => setAbertoId(p.id)} />)}
+                  {arquivados.map((p) => (
+                    <LinhaPrograma
+                      key={p.id}
+                      p={p}
+                      onAbrir={() => { setAbertoId(p.id); setModo(contarExercicios(p) > 0 ? 'ver' : 'editar'); }}
+                    />
+                  ))}
                 </div>
               )}
             </>

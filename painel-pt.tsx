@@ -7561,9 +7561,9 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
   return (
     <div className="px-4 py-4 max-w-6xl mx-auto flex flex-col gap-6">
       <div className="flex items-end justify-between gap-3 flex-wrap">
-        <div>
-          <div className="text-2xs uppercase tracking-widest text-faint font-mono mb-1">{greeting}</div>
-          <h1 className="font-display font-semibold text-2xl text-primary tracking-wide">Painel Financeiro e Operacional</h1>
+        <div className="min-w-0">
+          <h1 className="font-display font-semibold text-2xl text-primary tracking-wide" style={{ letterSpacing: '-0.015em' }}>{greeting}</h1>
+          <p className="text-xs font-body text-faint mt-0.5">Painel financeiro e operacional</p>
         </div>
         {onRelatorio && (
           <button type="button" onClick={onRelatorio} className="btn btn-ghost flex-shrink-0" style={{ fontSize: 12 }}>
@@ -7917,13 +7917,47 @@ function filtrarSessoes(sessions, students, filtro) {
 
 const FILTRO_AGENDA_VAZIO = { texto: '', tipo: 'todos', estado: 'todos' };
 
+// Procurar esta sempre a vista; os dois filtros abrem-se a pedido. Tres campos
+// de altura de dedo empilhados sao 150px de controlos antes de se ver a
+// primeira aula -- e na maior parte dos dias nenhum deles e usado. O botao diz
+// quantos estao postos, para nunca haver um filtro a agir escondido.
 function AgendaFiltros({ filtro, setFiltro, total, visiveis }) {
-  const ativo = filtro.texto || filtro.tipo !== 'todos' || filtro.estado !== 'todos';
+  const postos = (filtro.tipo !== 'todos' ? 1 : 0) + (filtro.estado !== 'todos' ? 1 : 0);
+  const ativo = filtro.texto || postos > 0;
+  const [aberto, setAberto] = useState(false);
+  const mostrar = aberto || postos > 0;
   const tipos = [...SESSION_TYPES, ...EVENT_TYPES];
   return (
     <div className="flex flex-col gap-2">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <div className="relative min-w-0">
+      <div className="flex gap-2 sm:hidden">
+        <div className="relative min-w-0 flex-1">
+          <Search size={15} className="absolute text-faint" style={{ left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+          <input
+            value={filtro.texto}
+            onChange={(e) => setFiltro((f) => ({ ...f, texto: e.target.value }))}
+            placeholder="Procurar..."
+            aria-label="Procurar na agenda"
+            className="input-field"
+            style={{ paddingLeft: 34 }}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => setAberto((a) => !a)}
+          aria-expanded={mostrar}
+          className="btn btn-ghost flex-shrink-0"
+          style={{
+            fontSize: 12,
+            borderColor: postos ? 'var(--brass)' : undefined,
+            color: postos ? 'var(--brass)' : undefined,
+          }}
+        >
+          <Search size={14} /> Filtros{postos ? ` (${postos})` : ''}
+        </button>
+      </div>
+
+      <div className={`${mostrar ? 'grid' : 'hidden'} sm:grid grid-cols-1 sm:grid-cols-3 gap-2`}>
+        <div className="relative min-w-0 hidden sm:block">
           <Search size={15} className="absolute text-faint" style={{ left: 12, top: '50%', transform: 'translateY(-50%)' }} />
           <input
             value={filtro.texto}
@@ -13798,17 +13832,25 @@ function AssessmentsView({ students, sessions, photosById, definicoes, onSaveAss
       {students.length === 0 ? (
         <EmptyState icon={Users} message="Nenhum aluno registado ainda. Registe um aluno antes de fazer uma avaliação física." />
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="flex flex-col gap-2 sm:grid sm:grid-cols-3 sm:gap-3">
           {[...students].sort((a, b) => byNamePt(a.name, b.name)).map((s) => {
             const count = sessions.filter((x) => x.studentId === s.id && x.type === 'avaliacao' && (x.assessWeight || x.assessBodyFat)).length;
             const last = sessions.filter((x) => x.studentId === s.id && x.type === 'avaliacao' && (x.assessWeight || x.assessBodyFat)).sort((a, b) => b.date.localeCompare(a.date))[0];
             return (
-              <button key={s.id} onClick={() => setSelectedStudentId(s.id)} type="button" className="card card-hover p-3 text-left min-w-0">
-                <div className="flex items-center gap-2 mb-1.5 min-w-0">
-                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
-                  <span className="font-body text-sm font-medium text-primary truncate" title={s.name}>{s.name}</span>
-                </div>
-                <div className="text-2xs text-faint font-body truncate">{plural(count, 'avaliação', 'avaliações')}{last ? ` · última em ${fmtDateBR(new Date(`${last.date}T00:00:00`))}` : ''}</div>
+              <button
+                key={s.id}
+                onClick={() => setSelectedStudentId(s.id)}
+                type="button"
+                className="card card-hover p-3.5 text-left min-w-0 flex items-center gap-3 sm:block"
+              >
+                <span className="min-w-0 flex-1 block">
+                  <span className="flex items-center gap-2 mb-1 min-w-0">
+                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
+                    <span className="font-body text-sm font-medium text-primary truncate" title={s.name}>{s.name}</span>
+                  </span>
+                  <span className="block text-2xs text-faint font-body truncate">{plural(count, 'avaliação', 'avaliações')}{last ? ` · última em ${fmtDateBR(new Date(`${last.date}T00:00:00`))}` : ''}</span>
+                </span>
+                <ChevronRight size={16} className="text-faint flex-shrink-0 sm:hidden" />
               </button>
             );
           })}
@@ -16615,7 +16657,7 @@ function AppInner() {
                       if (id !== 'daily' && id !== 'weekly') sairDaSelecao();
                     }}
                     aria-pressed={agendaScale === id}
-                    className="px-4 py-2 text-sm font-body nowrap"
+                    className="px-3 sm:px-4 py-2.5 text-sm font-body nowrap"
                     style={{
                       backgroundColor: agendaScale === id ? 'var(--bg-elevated)' : 'transparent',
                       color: agendaScale === id ? 'var(--text-primary)' : 'var(--text-muted)',
@@ -16626,15 +16668,21 @@ function AppInner() {
                   </button>
                 ))}
               </div>
+              {/* No telemóvel estas duas passam a ícone: a linha tem de caber ao
+                  lado das quatro escalas, e o texto delas não é o que se lê
+                  primeiro numa agenda. O rótulo continua no nome acessível. */}
               {(agendaScale === 'daily' || agendaScale === 'weekly') && (
                 <button
                   type="button"
                   onClick={() => (modoSelecao ? sairDaSelecao() : setModoSelecao(true))}
                   aria-pressed={modoSelecao}
                   className="btn btn-ghost flex-shrink-0"
-                  style={{ fontSize: 12 }}
+                  style={{ fontSize: 12, color: modoSelecao ? 'var(--brass)' : undefined, borderColor: modoSelecao ? 'var(--brass)' : undefined }}
+                  aria-label={modoSelecao ? 'Sair da seleção' : 'Selecionar várias marcações'}
+                  title={modoSelecao ? 'Sair da seleção' : 'Selecionar várias'}
                 >
-                  <CheckCircle2 size={14} /> {modoSelecao ? 'Sair da seleção' : 'Selecionar várias'}
+                  <CheckCircle2 size={16} />
+                  <span className="hidden sm:inline">{modoSelecao ? 'Sair da seleção' : 'Selecionar várias'}</span>
                 </button>
               )}
               {/* O horário decide o que a agenda esbate e o que ela liberta em
@@ -16645,9 +16693,11 @@ function AppInner() {
                 onClick={() => { setSettingsSeccao('agenda'); setSettingsOpen(true); }}
                 className="btn btn-ghost flex-shrink-0 sm:ml-auto"
                 style={{ fontSize: 12 }}
+                aria-label="Configurar os horários da agenda"
                 title="Horário de funcionamento, exceções e duração dos horários livres"
               >
-                <Clock size={14} /> Horários
+                <Clock size={16} />
+                <span className="hidden sm:inline">Horários</span>
               </button>
             </div>
             <AgendaFiltros filtro={agendaFiltro} setFiltro={setAgendaFiltro} total={sessions.length} visiveis={sessoesVisiveis.length} />

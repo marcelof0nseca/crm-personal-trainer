@@ -173,10 +173,14 @@ function useRevelar() {
 
 // `atraso` da o efeito de cascata a uma lista de cartões sem escrever uma
 // transition-delay por item à mão.
-function Revelar({ children, className = '', atraso = 0 }) {
+function Revelar({ children, className = '', atraso = 0, style }) {
   const [ref, visivel] = useRevelar();
   return (
-    <div ref={ref} className={`revelar ${visivel ? 'revelar-visivel' : ''} ${className}`} style={{ transitionDelay: visivel ? `${atraso}ms` : '0ms' }}>
+    <div
+      ref={ref}
+      className={`revelar ${visivel ? 'revelar-visivel' : ''} ${className}`}
+      style={{ ...style, transitionDelay: visivel ? `${atraso}ms` : '0ms' }}
+    >
       {children}
     </div>
   );
@@ -189,7 +193,9 @@ function Revelar({ children, className = '', atraso = 0 }) {
 // conteudo caber num PhoneFrame sem parecer encolhido a forca.
 function MockupFrame({ label, chromeless, children }) {
   if (chromeless) {
-    return <div className="w-full h-full" style={{ backgroundColor: 'var(--bg-base)', padding: '14px 12px' }}>{children}</div>;
+    // O padding de cima e maior de proposito: e a "safe area" por baixo do
+    // entalhe do telemovel, que se sobrepoe ao ecra nos primeiros ~30px.
+    return <div className="w-full h-full" style={{ backgroundColor: 'var(--bg-base)', padding: '32px 12px 14px' }}>{children}</div>;
   }
   return (
     <div
@@ -596,12 +602,155 @@ function FeatureSection({ heading, body, bullets, Mockup, reverse }) {
   );
 }
 
+/* ============================== TELEMÓVEL INTERATIVO ============================== */
+
+// A moldura em si: entalhe, ecrã e barra de baixo. O conteúdo é sempre um dos
+// Mockups reais da aplicação, em modo `chromeless` -- nada aqui é uma imagem.
+function PhoneFrame({ children }) {
+  return (
+    <div className="phone-moldura">
+      <div className="phone-entalhe" aria-hidden="true" />
+      <div className="phone-ecra">{children}</div>
+      <div className="phone-barra" aria-hidden="true" />
+    </div>
+  );
+}
+
+// Cinco ecrãs bastam para explicar o produto sem repetir o que as secções de
+// funcionalidades mais abaixo já mostram em detalhe -- este é o resumo em
+// movimento; aquelas são a leitura demorada.
+const STORY_SCREENS = [
+  {
+    id: 'painel', label: 'Painel', eyebrow: 'Ao abrir a aplicação',
+    title: 'Tudo à vista, num relance',
+    body: 'Receita do mês, aulas da semana e faltas pendentes no primeiro ecrã — sem ter de ir procurar em três sítios diferentes.',
+    Mockup: DashboardMockup,
+  },
+  {
+    id: 'alunos', label: 'Alunos', eyebrow: 'Cada aluno, organizado',
+    title: 'Contexto completo, num toque',
+    body: 'Plano, estado e valores por aluno, à vista assim que abre a lista — sem histórico de conversas para reconstituir.',
+    Mockup: StudentsMockup,
+  },
+  {
+    id: 'agenda', label: 'Agenda', eyebrow: 'A semana inteira',
+    title: 'A sua agenda, sob controlo',
+    body: 'Nome do aluno e hora de cada aula, com presença, falta ou reposição a um toque de distância.',
+    Mockup: AgendaMockup,
+  },
+  {
+    id: 'avaliacao', label: 'Avaliação', eyebrow: 'Evolução do aluno',
+    title: 'Resultados, documentados',
+    body: 'Bioimpedância ou dobras cutâneas, fotos ligadas à avaliação e o gráfico de evolução sempre atualizado.',
+    Mockup: AssessmentMockup,
+  },
+  {
+    id: 'financas', label: 'Finanças', eyebrow: 'O seu negócio',
+    title: 'Quanto ganha realmente',
+    body: 'Receita bruta, impostos e taxa de ginásio calculados automaticamente, com o líquido sempre em evidência.',
+    Mockup: FinanceMockup,
+  },
+];
+
+// No rato, o texto rola numa coluna comprida e o telemóvel fica fixo ao lado
+// -- o ecrã ativo é o do bloco de texto que estiver mais perto do centro da
+// janela. No telemóvel não há coluna de sobra para os dois lado a lado, por
+// isso quem manda é uma aba tocada, e só o texto do ecrã ativo aparece.
+function FeatureStoryteller() {
+  const [ativo, setAtivo] = useState(0);
+  const blocosRef = useRef([]);
+
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return undefined;
+    const obs = new IntersectionObserver((entradas) => {
+      entradas.forEach((entrada) => {
+        if (entrada.isIntersecting) setAtivo(Number(entrada.target.dataset.storyIndex));
+      });
+    }, { rootMargin: '-45% 0px -45% 0px', threshold: 0 });
+    blocosRef.current.forEach((el) => { if (el) obs.observe(el); });
+    return () => obs.disconnect();
+  }, []);
+
+  const tela = (
+    <PhoneFrame>
+      {STORY_SCREENS.map((s, i) => (
+        <div key={s.id} className="phone-tela" style={{ opacity: i === ativo ? 1 : 0, pointerEvents: i === ativo ? 'auto' : 'none' }}>
+          <s.Mockup chromeless />
+        </div>
+      ))}
+    </PhoneFrame>
+  );
+
+  return (
+    <section className="max-w-6xl mx-auto px-4 py-12 sm:py-20">
+      <Revelar>
+        <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-14">
+          <h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary leading-snug">Assim é usar o PTMANAGER</h2>
+          <p className="text-sm sm:text-base text-muted font-body mt-2">Um ecrã por tarefa, pensado para se usar com uma mão, no meio de uma aula.</p>
+        </div>
+      </Revelar>
+
+      {/* Abas: só se vêem no telemóvel, onde substituem o scroll como forma
+          de escolher o ecrã. */}
+      <div className="lg:hidden flex gap-2 overflow-x-auto pb-1 mb-6 -mx-4 px-4" role="tablist" aria-label="Ecrãs do aplicativo">
+        {STORY_SCREENS.map((s, i) => (
+          <button
+            key={s.id}
+            type="button"
+            role="tab"
+            aria-selected={ativo === i}
+            onClick={() => setAtivo(i)}
+            className="px-3.5 py-2.5 rounded-lg border text-xs font-body nowrap flex-shrink-0 btn-surface"
+            style={{
+              borderColor: ativo === i ? 'var(--brass)' : 'var(--border-hair)',
+              backgroundColor: ativo === i ? 'var(--brass-soft)' : 'transparent',
+              color: ativo === i ? 'var(--brass)' : 'var(--text-muted)',
+              fontWeight: ativo === i ? 600 : 400,
+            }}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="lg:hidden flex flex-col gap-6 items-center">
+        {tela}
+        <div className="text-center max-w-sm">
+          <span className="text-2xs uppercase tracking-widest text-brass font-mono">{STORY_SCREENS[ativo].eyebrow}</span>
+          <h3 className="font-display text-xl font-semibold text-primary mt-1.5 mb-2">{STORY_SCREENS[ativo].title}</h3>
+          <p className="text-sm text-muted font-body">{STORY_SCREENS[ativo].body}</p>
+        </div>
+      </div>
+
+      <div className="hidden lg:grid grid-cols-2 gap-16 items-start">
+        <div className="flex flex-col gap-[26vh] py-8">
+          {STORY_SCREENS.map((s, i) => (
+            <div
+              key={s.id}
+              data-story-index={i}
+              ref={(el) => { blocosRef.current[i] = el; }}
+              style={{ opacity: ativo === i ? 1 : 0.32, transition: 'opacity 320ms var(--ease)' }}
+            >
+              <span className="text-2xs uppercase tracking-widest text-brass font-mono">{s.eyebrow}</span>
+              <h3 className="font-display text-2xl font-semibold text-primary mt-1.5 mb-2">{s.title}</h3>
+              <p className="text-base text-muted font-body max-w-sm">{s.body}</p>
+            </div>
+          ))}
+        </div>
+        <div style={{ position: 'sticky', top: '14vh', alignSelf: 'start' }}>
+          {tela}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /* ============================== LANDING PAGE ============================== */
 
 export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted, onLogin }) {
   const mailto = (subject) => (supportEmail ? `mailto:${supportEmail}?subject=${encodeURIComponent(subject)}` : '');
   const [legalDoc, setLegalDoc] = useState(null);
-  const [openFaq, setOpenFaq] = useState(0);
+  const [openFaq, setOpenFaq] = useState(null);
   const plansRef = useRef(null);
   const featuresRef = useRef(null);
 
@@ -611,7 +760,56 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
 
   return (
     <div className="min-h-screen bg-base flex flex-col">
-      <style>{`html { scroll-behavior: smooth; }`}</style>
+      <style>{`
+        html { scroll-behavior: smooth; }
+
+        .revelar {
+          opacity: 0;
+          transform: translateY(20px);
+          transition: opacity 560ms cubic-bezier(0.16, 1, 0.3, 1), transform 560ms cubic-bezier(0.16, 1, 0.3, 1);
+          will-change: opacity, transform;
+        }
+        .revelar-visivel { opacity: 1; transform: translateY(0); }
+
+        .faq-colapso {
+          display: grid;
+          grid-template-rows: 0fr;
+          transition: grid-template-rows 280ms cubic-bezier(0.32, 0.72, 0, 1);
+        }
+        .faq-colapso.aberto { grid-template-rows: 1fr; }
+        .faq-colapso > div { overflow: hidden; }
+
+        .phone-moldura {
+          position: relative;
+          width: clamp(232px, 74vw, 296px);
+          aspect-ratio: 9 / 19;
+          margin: 0 auto;
+          border-radius: 44px;
+          background: var(--bg-elevated);
+          border: 1px solid var(--border-strong);
+          box-shadow: 0 44px 90px -30px rgba(0,0,0,0.5), 0 10px 26px -14px rgba(0,0,0,0.35);
+          padding: 12px;
+          display: flex;
+          flex-direction: column;
+        }
+        .phone-entalhe {
+          position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+          width: 88px; height: 22px; border-radius: 999px; background: var(--bg-base);
+          z-index: 2;
+        }
+        .phone-ecra {
+          flex: 1; min-height: 0; border-radius: 32px; overflow: hidden;
+          background: var(--bg-base); position: relative;
+        }
+        .phone-tela {
+          position: absolute; inset: 0; overflow-y: auto;
+          transition: opacity 320ms ease;
+        }
+        .phone-barra {
+          position: absolute; bottom: 9px; left: 50%; transform: translateX(-50%);
+          width: 108px; height: 4px; border-radius: 999px; background: var(--border-strong);
+        }
+      `}</style>
 
       {/* Header */}
       <header className="border-b border-hair bg-surface sticky top-0" style={{ zIndex: 30 }}>
@@ -681,25 +879,30 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
 
         {/* Dores */}
         <section className="max-w-4xl mx-auto px-4 py-12 sm:py-16">
-          <h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary text-center leading-snug">Isto soa-lhe familiar?</h2>
+          <Revelar><h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary text-center leading-snug">Isto soa-lhe familiar?</h2></Revelar>
           <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[PAIN_POINTS.slice(0, 4), PAIN_POINTS.slice(4)].map((col, ci) => (
-              <div key={ci} className="border border-hair rounded-2xl bg-surface overflow-hidden">
+              <Revelar key={ci} atraso={ci * 90} className="border border-hair rounded-2xl bg-surface overflow-hidden">
                 {col.map((p, i) => (
                   <div key={p.text} className={`flex items-center gap-3.5 px-5 py-4 ${i > 0 ? 'border-t border-hair' : ''}`}>
                     <p.icon size={16} style={{ color: 'var(--rust)', flexShrink: 0 }} />
                     <span className="text-sm font-body text-muted">{p.text}</span>
                   </div>
                 ))}
-              </div>
+              </Revelar>
             ))}
           </div>
         </section>
 
+        {/* Telemóvel interativo */}
+        <FeatureStoryteller />
+
         {/* Funcionalidades */}
         <div ref={featuresRef} className="scroll-mt-16">
           {FEATURE_SECTIONS.map((f, i) => (
-            <FeatureSection key={f.heading} heading={f.heading} body={f.body} bullets={f.bullets} Mockup={f.Mockup} reverse={i % 2 === 1} />
+            <Revelar key={f.heading}>
+              <FeatureSection heading={f.heading} body={f.body} bullets={f.bullets} Mockup={f.Mockup} reverse={i % 2 === 1} />
+            </Revelar>
           ))}
         </div>
 
@@ -712,9 +915,10 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {plans.map((plan) => (
-              <div
+            {plans.map((plan, pi) => (
+              <Revelar
                 key={plan.id}
+                atraso={pi * 90}
                 className="bg-surface border rounded-2xl p-6 flex flex-col gap-4 relative"
                 style={{
                   borderColor: plan.highlight ? 'var(--brass)' : 'var(--border-hair)',
@@ -762,7 +966,7 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
                   ))}
                 </ul>
                 <PrimaryButton onClick={onGetStarted} className="mt-auto">Começar agora</PrimaryButton>
-              </div>
+              </Revelar>
             ))}
           </div>
           <p className="text-center text-xs text-faint font-body max-w-xl mx-auto">
@@ -777,39 +981,39 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
 
         {/* Confiança / Segurança */}
         <section className="max-w-4xl mx-auto px-4 py-12 sm:py-16">
-          <div className="flex flex-col gap-2 text-center items-center mb-8">
+          <Revelar className="flex flex-col gap-2 text-center items-center mb-8">
             <h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary">Os seus dados, protegidos do início ao fim</h2>
             <p className="text-sm text-muted font-body max-w-xl">
               O acesso ao painel exige sessão iniciada e subscrição ativa — cada conta vê apenas os seus próprios dados.
             </p>
-          </div>
-          <div className="border border-hair rounded-2xl bg-surface overflow-hidden">
+          </Revelar>
+          <Revelar className="border border-hair rounded-2xl bg-surface overflow-hidden">
             {[...TRUST_ITEMS, { icon: Mail, text: 'Suporte por e-mail sempre que precisar' }].map((t, i) => (
               <div key={t.text} className={`flex items-center gap-3.5 px-5 py-4 ${i > 0 ? 'border-t border-hair' : ''}`}>
                 <t.icon size={16} className="text-brass flex-shrink-0" />
                 <span className="text-sm font-body text-muted">{t.text}</span>
               </div>
             ))}
-          </div>
+          </Revelar>
         </section>
 
         {/* FAQ */}
         <section className="max-w-3xl mx-auto px-4 py-12 sm:py-16 flex flex-col gap-6">
-          <h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary text-center">Perguntas frequentes</h2>
-          <div className="flex flex-col gap-2.5">
+          <Revelar><h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary text-center">Perguntas frequentes</h2></Revelar>
+          <Revelar className="flex flex-col gap-2.5">
             {FAQ_ITEMS.map((item, i) => (
-              <FaqItem key={item.q} item={item} open={openFaq === i} onToggle={() => setOpenFaq(openFaq === i ? -1 : i)} />
+              <FaqItem key={item.q} item={item} index={i} open={openFaq === i} onToggle={() => setOpenFaq(openFaq === i ? null : i)} />
             ))}
-          </div>
+          </Revelar>
         </section>
 
         {/* Final CTA */}
         <section className="max-w-6xl mx-auto px-4 pb-16">
-          <div className="border border-hair rounded-2xl p-8 sm:p-12 flex flex-col items-center text-center gap-4" style={{ backgroundColor: 'rgba(30,166,180,0.08)' }}>
+          <Revelar className="border border-hair rounded-2xl p-8 sm:p-12 flex flex-col items-center text-center gap-4" style={{ backgroundColor: 'rgba(30,166,180,0.08)' }}>
             <h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary">Pronto para organizar a sua rotina?</h2>
             <p className="text-sm text-muted font-body max-w-md">Crie a sua conta e comece a usar o PTMANAGER hoje mesmo.</p>
             <PrimaryButton onClick={onGetStarted}>Começar agora</PrimaryButton>
-          </div>
+          </Revelar>
         </section>
       </main>
 

@@ -3527,8 +3527,14 @@ function GlobalStyles() {
 
       .btn-surface { transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease); }
       .btn-surface:hover { background-color: var(--bg-elevated); border-color: var(--border-strong); }
+      .btn-surface:active { background-color: var(--wash-strong); }
+      /* Os alvos pequenos encolhem ao toque. Nos grandes um encolher destes
+         daria a impressao de que a pagina inteira se mexeu. */
+      .tap { transition: transform 90ms ease-out; }
+      .tap:active { transform: scale(0.9); }
       .link-sky { color: var(--brass); transition: opacity var(--dur) var(--ease); background: none; border: none; cursor: pointer; padding: 0; }
       .link-sky:hover { opacity: 0.75; text-decoration: underline; }
+      .link-sky:active { opacity: 0.5; }
 
       /* Vocabulário de botões partilhado por todos os ecrãs. */
       .btn {
@@ -3686,6 +3692,12 @@ function GlobalStyles() {
       /* ---------- Esqueleto ----------
          A forma do que vem a caminho, em vez de um disco a rodar. Quem espera
          já vê onde vai estar cada coisa. */
+      /* O -50% em X e o que a classe de centragem ja poe: repetido aqui porque
+         a animacao escreve a propriedade inteira enquanto corre. */
+      @keyframes avisoSobe { from { opacity: 0; transform: translate(-50%, 14px); } to { opacity: 1; transform: translate(-50%, 0); } }
+      .aviso-entra { animation: avisoSobe 260ms var(--ease-folha); }
+      @media (prefers-reduced-motion: reduce) { .aviso-entra { animation: none; } }
+
       @keyframes brilho { from { background-position: 200% 0; } to { background-position: -200% 0; } }
       .skeleton {
         background-image: linear-gradient(90deg, var(--skeleton) 25%, var(--skeleton-brilho) 50%, var(--skeleton) 75%);
@@ -4081,8 +4093,8 @@ function Toast({ toast }) {
   if (!toast) return null;
   const isError = toast.type === 'error';
   return (
-    <div className="fixed bottom-5 toast-pos left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-lg border font-body text-sm flex items-center gap-2 animate-in" role="status" style={{ backgroundColor: 'var(--bg-elevated)', borderColor: isError ? 'var(--rust)' : 'var(--brass)', color: 'var(--text-primary)', zIndex: 60, maxWidth: '90vw', boxShadow: 'var(--shadow-lg)' }}>
-      {isError ? <AlertTriangle size={15} className="text-rust" style={{flexShrink:0}} /> : <CheckCircle2 size={15} className="text-brass" style={{flexShrink:0}} />}
+    <div className="fixed bottom-5 toast-pos left-1/2 -translate-x-1/2 px-4 py-3 border font-body text-sm flex items-center gap-2.5 aviso-entra" role="status" style={{ backgroundColor: 'var(--bg-elevated)', borderColor: isError ? 'var(--rust)' : 'var(--brass)', borderRadius: 'var(--r-lg)', color: 'var(--text-primary)', zIndex: 60, maxWidth: 'min(92vw, 420px)', boxShadow: 'var(--shadow-lg)' }}>
+      {isError ? <AlertTriangle size={16} className="text-rust" style={{flexShrink:0}} /> : <CheckCircle2 size={16} className="text-brass" style={{flexShrink:0}} />}
       <span className="truncate">{toast.msg}</span>
       {toast.acao && (
         <button
@@ -4100,11 +4112,11 @@ function Toast({ toast }) {
 
 function EmptyState({ message, cta, onCta, icon: Icon = Info, hint }) {
   return (
-    <div className="flex flex-col items-center justify-center text-center py-12 px-4">
-      <span className="rounded-xl p-3 mb-3.5" style={{ backgroundColor: 'var(--wash)', border: '1px solid var(--border-hair)' }}>
+    <div className="flex flex-col items-center justify-center text-center py-14 px-4">
+      <span className="p-3.5 mb-4" style={{ backgroundColor: 'var(--wash)', border: '1px solid var(--border-hair)', borderRadius: 'var(--r-lg)' }}>
         <Icon size={22} className="text-faint" style={{ display: 'block' }} />
       </span>
-      <p className="text-sm text-primary font-body max-w-xs font-medium">{message}</p>
+      <p className="text-sm text-primary font-body max-w-xs font-medium" style={{ lineHeight: 1.5 }}>{message}</p>
       {hint && <p className="text-xs text-faint font-body max-w-sm mt-1.5">{hint}</p>}
       {cta && (
         <button onClick={onCta} type="button" className="btn mt-4" style={{ backgroundColor: 'var(--brass-soft)', borderColor: 'var(--brass)', color: 'var(--brass)' }}>
@@ -4115,12 +4127,27 @@ function EmptyState({ message, cta, onCta, icon: Icon = Info, hint }) {
   );
 }
 
+// Arranque. A marca ao centro e uma barra fina por baixo: um disco a rodar diz
+// "espera", isto diz "ja vem". O texto fica, porque um leitor de ecra nao ve a
+// barra.
 function LoadingScreen() {
   return (
-    <div className="min-h-screen bg-base flex flex-col items-center justify-center gap-4">
+    <div className="min-h-screen bg-base flex flex-col items-center justify-center gap-5 px-6">
       <img src={LOGO_SRC} alt="PTMANAGER" style={{ width: 64, height: 64 }} />
-      <Loader2 size={24} className="text-brass spin" />
-      <span className="font-body text-sm text-muted">A carregar...</span>
+      <span className="skeleton" style={{ width: 132, height: 4, borderRadius: 'var(--r-pill)' }} aria-hidden="true" />
+      <span className="font-body text-sm text-muted" role="status">A carregar...</span>
+    </div>
+  );
+}
+
+// Um bloco de espera com a forma do que vai aparecer. Usa-se onde ja se sabe o
+// desenho da lista que vem a caminho.
+function EsqueletoLinhas({ linhas = 3, altura = 64 }) {
+  return (
+    <div className="flex flex-col gap-2" aria-hidden="true">
+      {Array.from({ length: linhas }).map((_, i) => (
+        <span key={i} className="skeleton" style={{ height: altura, borderRadius: 'var(--r-md)' }} />
+      ))}
     </div>
   );
 }
@@ -14362,9 +14389,14 @@ function AdminView() {
 
   if (carregando) {
     return (
-      <div className="px-4 py-10 max-w-6xl mx-auto flex flex-col items-center gap-3">
-        <Loader2 size={22} className="text-brass spin" />
-        <span className="text-sm font-body text-muted">A carregar dados de administração...</span>
+      <div className="px-4 py-6 max-w-6xl mx-auto flex flex-col gap-4">
+        <span className="text-sm font-body text-muted" role="status">A carregar dados de administração...</span>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" aria-hidden="true">
+          {[0, 1, 2, 3].map((i) => (
+            <span key={i} className="skeleton" style={{ height: 86, borderRadius: 'var(--r-md)' }} />
+          ))}
+        </div>
+        <EsqueletoLinhas linhas={5} altura={72} />
       </div>
     );
   }
@@ -16512,7 +16544,10 @@ function AppInner() {
         <Header view={view} onOpenSettings={() => { setSettingsSeccao(null); setSettingsOpen(true); }} temaResolvido={temaResolvido} onAlternarTema={alternarTema} />
         <NavTabs view={view} setView={mudarVista} isAdmin={isAdmin} />
       </div>
-      <main className="flex-1 pb-10 pb-nav">
+      <main
+        className="flex-1 pb-10 pb-nav"
+        style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}
+      >
         {/* Os treinos vivem dentro do aluno e nao na barra de navegacao: quando
             ha um aluno escolhido, esta vista toma conta do ecra. */}
         {fichaStudentId && students.some((st) => st.id === fichaStudentId) ? (

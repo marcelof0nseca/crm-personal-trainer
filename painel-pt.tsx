@@ -2554,6 +2554,22 @@ function calcFoldBodyFat(form, sex) {
   return typeof result === 'number' && !Number.isNaN(result) ? result : null;
 }
 
+// Uma ocorrencia nova a partir de outra. O que aconteceu nesta -- estado,
+// falta, credito, ligacoes de reposicao e os campos da avaliacao -- nao se
+// copia para a frente: uma aula da proxima semana ainda nao foi dada, e um
+// credito replicado dava ao aluno cinco reposicoes por uma falta so.
+function replicaLimpaDe(sessao, iso) {
+  const {
+    id, seriesId, status,
+    reposicaoDeSessionId, reposicaoSessionId,
+    faltaMotivo, faltaObs, faltaJustificada, faltaPrecisaReposicao,
+    faltaCreditoValidade, faltaCreditoPor, faltaCreditoEm, faltaCreditoLog,
+    assessEstado, assessVersoes,
+    ...resto
+  } = sessao;
+  return { ...resto, id: uid(), date: iso, status: 'agendado' };
+}
+
 // Gera as ocorrencias de uma serie. Devolve null quando nao ha repeticao, para
 // o chamador seguir o caminho de sessao unica.
 //   plano = { semanas }                    -> repete semanalmente na mesma hora
@@ -8294,7 +8310,7 @@ function StudentFormModal({ student, sessions, customCategories, treinoCount = 0
 
 /* ============================== SESSION FORM MODAL ============================== */
 
-function SessionFormModal({ session, students, sessions, defaultDate, reposicaoDe, customCategories, definicoes, serieCount = 0, novaCopia = false, onAddCategory, onSave, onClose, onDelete, onCopy }) {
+function SessionFormModal({ session, students, sessions, defaultDate, reposicaoDe, customCategories, definicoes, serieCount = 0, novaCopia = false, onAddCategory, onSave, onClose, onDelete, onCopy, onReplicar }) {
   // Uma colagem chega com sessao preenchida mas ainda nao existe na agenda: nao
   // e edicao, senao o modal oferecia eliminar algo que nunca foi gravado.
   const isEdit = !!session && !novaCopia;
@@ -8326,6 +8342,8 @@ function SessionFormModal({ session, students, sessions, defaultDate, reposicaoD
   const [error, setError] = useState('');
   // Ao editar uma ocorrência de uma série: 'uma' ou 'serie'.
   const [escopo, setEscopo] = useState('uma');
+  const [replicarSemanas, setReplicarSemanas] = useState(4);
+  const [aReplicar, setAReplicar] = useState(false);
 
   function set(field, value) {
     setForm((f) => ({ ...f, [field]: typeof value === 'function' ? value(f[field]) : value }));
@@ -8536,6 +8554,60 @@ function SessionFormModal({ session, students, sessions, defaultDate, reposicaoD
                   <div className="text-2xs font-body text-faint">
                     A data e o estado de cada ocorrência ficam como estão. Só mudam aluno, tipo, horário e observações.
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* Replicar o que já existe. A repetição de cima só aparece ao
+                criar, e uma aula marcada à pressa numa terça raramente nasce
+                a saber que vai durar dez semanas. */}
+            {isEdit && onReplicar && (
+              <div className="bg-elevated rounded-lg p-3 border border-hair flex flex-col gap-2.5">
+                {!aReplicar ? (
+                  <button
+                    type="button"
+                    onClick={() => setAReplicar(true)}
+                    className="btn btn-ghost self-start"
+                    style={{ fontSize: 12 }}
+                  >
+                    <Repeat size={14} /> Replicar nas semanas seguintes
+                  </button>
+                ) : (
+                  <>
+                    <div className="flex items-end gap-2 flex-wrap">
+                      <FormField label="Por quantas semanas">
+                        <input
+                          type="number"
+                          min="1"
+                          max="52"
+                          value={replicarSemanas}
+                          onChange={(e) => setReplicarSemanas(Math.min(52, Math.max(1, parseInt(e.target.value, 10) || 1)))}
+                          className="input-field"
+                          style={{ minWidth: 96 }}
+                        />
+                      </FormField>
+                      <button
+                        type="button"
+                        onClick={() => onReplicar(form, replicarSemanas)}
+                        className="btn btn-ghost"
+                        style={{ fontSize: 12 }}
+                      >
+                        <Repeat size={14} /> Replicar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAReplicar(false)}
+                        className="text-2xs font-body text-faint"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                    <p className="text-2xs font-body text-faint">
+                      Cria {plural(replicarSemanas, 'ocorrência', 'ocorrências')} no mesmo dia da semana
+                      e à mesma hora, até {fmtDateBR(`${fmtDateISO(addDays(new Date(`${form.date}T00:00:00`), replicarSemanas * 7))}T00:00:00`)}.
+                      Nascem todas por dar: o estado, a falta e o crédito desta não são copiados.
+                    </p>
+                  </>
                 )}
               </div>
             )}
@@ -15183,6 +15255,43 @@ function AppInner() {
 
   // Colar e arrastar abrem sempre o modal em vez de gravar em silencio: e a
   // caixa de confirmacao onde se pode mudar tudo antes de assumir.
+  // Replica uma marcação que já existe pelas X semanas seguintes, no mesmo dia
+  // da semana e à mesma hora. É a repetição que só se podia escolher ao criar:
+  // quem marcou uma aula avulsa e depois quis fixá-la tinha de a apagar e voltar
+  // a marcá-la. As réplicas partilham um `seriesId` novo entre si, e não com a
+  // original -- editar "toda a série" a partir da de origem apanharia também as
+  // ocorrências que ela já tinha.
+  function replicarSessao(sessao, semanas) {
+    const n = Math.min(52, Math.max(1, parseInt(semanas, 10) || 0));
+    if (!sessao || !sessao.date || !n) return;
+    const serie = uid();
+    const partida = new Date(`${sessao.date}T00:00:00`);
+    const novas = [];
+    for (let w = 1; w <= n; w += 1) {
+      novas.push({ ...replicaLimpaDe(sessao, fmtDateISO(addDays(partida, w * 7))), seriesId: serie });
+    }
+    const proximas = [...sessions, ...novas];
+    persistSessions(proximas);
+    setShowSessionModal(false);
+
+    // Conta as que ficam por cima de outra coisa, mas não impede nenhuma: o
+    // treinador está a replicar de propósito e pode arrumar depois.
+    const comChoque = novas.filter((x) => conflitosDe(proximas, x).length).length;
+    const ultima = novas[novas.length - 1];
+    showToast(
+      `${plural(novas.length, 'ocorrência criada', 'ocorrências criadas')}, até ${fmtDateBR(`${ultima.date}T00:00:00`)}`
+      + `${comChoque ? ` · ${plural(comChoque, 'sobreposição', 'sobreposições')}` : ''}.`,
+      comChoque ? 'error' : 'success',
+      { label: 'Desfazer', onClick: () => desfazerReplicas(novas.map((x) => x.id)) },
+    );
+  }
+
+  function desfazerReplicas(ids) {
+    const alvo = new Set(ids);
+    persistSessions(sessionsRef.current.filter((s) => !alvo.has(s.id)));
+    showToast('Réplicas removidas.');
+  }
+
   function pasteSession(dateIso) {
     if (!clipboardSession) return;
     setSessionModal({
@@ -15643,6 +15752,7 @@ function AppInner() {
           customCategories={customCategories}
           definicoes={definicoes}
           novaCopia={Boolean(sessionModal?.novaCopia)}
+          onReplicar={replicarSessao}
           serieCount={sessionModal?.session?.seriesId
             ? sessions.filter((s) => s.seriesId === sessionModal.session.seriesId).length
             : 0}

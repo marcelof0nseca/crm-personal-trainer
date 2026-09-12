@@ -3673,6 +3673,20 @@ function GlobalStyles() {
       /* A area por onde se puxa. O dedo aqui nao rola nem seleciona texto. */
       .folha-puxador { touch-action: none; }
 
+      /* Rodape da folha: a accao principal fica sempre a vista, seja qual for a
+         altura do formulario. As margens negativas furam o padding do corpo
+         para a barra encostar as duas paredes; o espaco do rodape do telemovel
+         ja e dado pelo painel, e somar-lhe safe-area aqui contava-o duas vezes. */
+      .folha-rodape {
+        position: sticky;
+        bottom: 0;
+        z-index: 1;
+        margin: 14px -20px -20px;
+        padding: 12px 20px;
+        background-color: var(--bg-surface);
+        border-top: 1px solid var(--border-hair);
+      }
+
       .folha-pega {
         display: block;
         width: 38px; height: 4px; border-radius: var(--r-pill);
@@ -9279,19 +9293,32 @@ function SessionFormModal({ session, students, sessions, defaultDate, reposicaoD
 
         {error && <div className="text-sm font-body text-rust">{error}</div>}
 
-        <div className="flex gap-2 pt-2 mobile-stack">
+        <div className="folha-rodape flex gap-2 items-stretch">
           {isEdit && (
-            <button onClick={() => setConfirmDelete(true)} type="button" className="px-4 py-2.5 rounded-lg text-sm font-body border border-hair text-rust btn-surface">
-              <Trash2 size={15} className="inline mr-1.5" style={{ marginTop: '-2px' }} />Eliminar
+            <button
+              onClick={() => setConfirmDelete(true)}
+              type="button"
+              className="btn btn-ghost flex-shrink-0"
+              style={{ color: 'var(--rust)' }}
+              aria-label={isEvento ? 'Eliminar evento' : 'Eliminar aula'}
+              title="Eliminar"
+            >
+              <Trash2 size={16} /><span className="hidden sm:inline">Eliminar</span>
             </button>
           )}
           {isEdit && onCopy && (
-            <button onClick={() => onCopy(form)} type="button" className="px-4 py-2.5 rounded-lg text-sm font-body border border-hair text-muted btn-surface" title="Copiar para colar noutro dia">
-              <Copy size={15} className="inline mr-1.5" style={{ marginTop: '-2px' }} />Copiar
+            <button
+              onClick={() => onCopy(form)}
+              type="button"
+              className="btn btn-ghost flex-shrink-0"
+              aria-label="Copiar para colar noutro dia"
+              title="Copiar para colar noutro dia"
+            >
+              <Copy size={16} /><span className="hidden sm:inline">Copiar</span>
             </button>
           )}
           {(isEvento || students.length > 0) && (
-            <button onClick={handleSubmit} type="button" className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
+            <button onClick={handleSubmit} type="button" className="btn btn-primary flex-1">
               {isEvento ? 'Guardar Evento' : 'Guardar Aula'}
             </button>
           )}

@@ -17,7 +17,7 @@ saber por esta ordem:
 
 1. **A aplicação está viva e a ser vendida** em `ptmanagerapp.com`. Não é um
    protótipo. Não partir nada.
-2. **Quase tudo está num ficheiro:** `painel-pt.tsx`, ~9 900 linhas. É
+2. **Quase tudo está num ficheiro:** `painel-pt.tsx`, ~16 500 linhas. É
    deliberado. Procure por nome de função com `grep`, não abra o ficheiro
    inteiro.
 3. **O modelo de dados não é relacional** e isso decide quase todas as decisões
@@ -61,7 +61,7 @@ técnica — é uma decisão de produto, e condiciona metade do que se pode ofer
 
 | Ficheiro | |
 |---|---|
-| `painel-pt.tsx` | **A aplicação quase toda** (~9 900 linhas): componentes, helpers, modelo de dados, `AppInner` |
+| `painel-pt.tsx` | **A aplicação quase toda** (~16 500 linhas): componentes, helpers, modelo de dados, `AppInner` |
 | `src/components/LandingPage.tsx` | Página pública de vendas |
 | `src/components/LegalDocs.tsx` | Termos e política de privacidade. **Contém declarações legais** |
 | `src/components/Turnstile.tsx` | CAPTCHA do registo |
@@ -117,6 +117,15 @@ Consequências que decidem quase tudo:
   corre em `normalizarTreinos`. O método pode levar números próprios em
   `ex.metodoParams` (`CAMPOS_POR_METODO`), e `ex.grupo` liga os exercícios de
   uma supersérie, que ganham etiqueta A1/A2 por `etiquetasDeGrupo`.
+- **Um horário livre é um evento**, `kind: 'evento'` com `type: 'horario_livre'`.
+  `type: 'bloqueado'` é o mesmo espaço marcado como indisponível — apagar não
+  chegava, porque «Libertar horários da semana» voltava a encher o buraco. A
+  conversão entre aula e evento só se abre nos dois casos em que não há
+  ligação viva a perder: um horário livre passa a aula, e uma aula
+  **cancelada** volta a horário livre.
+- **As exceções de horário vivem em `definicoes.excecoes`**, uma por data, e
+  ganham ao dia da semana (`horarioDoDia`). Estiveram meses a ser lidas sem
+  que houvesse por onde escrevê-las.
 - **O crédito de reposição é a falta.** Não há entidade "crédito": a sessão
   com `status: 'falta'` leva `faltaPrecisaReposicao`, `faltaCreditoValidade`,
   `faltaCreditoPor`, `faltaCreditoEm` e `faltaCreditoLog` (o registo de
@@ -246,14 +255,10 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   Guardar um segundo nome para cada um dos 2076 custaria memória sem ganhar
   nada. **Os pares pt-BR são os mesmos de `SUBSTITUICOES` no gerador, lidos ao
   contrário — um termo novo acrescenta-se aos dois sítios.**
-- **Este ficheiro é CRLF.** Um script que faça `texto.replace('
-', '
-')`
-  sobre uma cadeia que já tem `
-` produz `
-`, e **um único `` a
-  mais faz o git dar o ficheiro inteiro como reescrito** — 11 mil linhas de
-  diff por causa de um byte. Escrever sempre com `newline=''` e verificar o
+- **Este ficheiro é CRLF.** Um script que substitua `\n` por `\r\n` numa
+  cadeia que já tem `\r\n` produz `\r\r\n`, e **um único `\r` a mais faz o
+  git dar o ficheiro inteiro como reescrito** — 11 mil linhas de diff por
+  causa de um byte. Escrever sempre com `newline=''` e verificar o
   `git diff --stat` antes de commitar.
 - **Listas de dois mil elementos não se desenham inteiras.** O seletor de
   exercícios mostra 60 e diz quantos ficaram de fora. A pesquisa usa um campo
@@ -279,6 +284,12 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   dados» de «não consegui ler os dados» e levanta um aviso fixo no segundo
   caso. Sem isso, uma política mal escrita passou semanas sem dar sinal: o
   servidor recusava tudo e a aplicação mostrava uma conta limpa.
+- **Botões dentro de um `role="button"` partem mesmo.** Não é teoria de
+  acessibilidade: o nome acessível do cartão passa a incluir o rótulo de cada
+  ação, e um clique no botão abre o formulário do cartão. Já aconteceu com os
+  botões de estado do `SessionCard`. O padrão certo estava ao lado, na pega de
+  arrastar: **irmão** do cartão, sobreposto em `position: absolute`, com o
+  cartão a abrir-lhe um vão da mesma largura para o texto não passar por baixo.
 - **Funções escritas e nunca chamadas.** Já aconteceu com `sessoesChocam`, que
   esteve meses no ficheiro sem ninguém a invocar. Antes de escrever uma
   utilidade, `grep` para ver se já existe.
@@ -375,6 +386,11 @@ Duas armadilhas de teste já apanhadas:
   antes de ler o `boundingBox()`.
 - `fullPage: true` redimensiona a viewport e reinicia a animação do Recharts:
   parece que o gráfico está vazio quando não está.
+- **`getByRole(..., { name })` compara por subcadeia, não por igualdade.**
+  `name: 'Acrescentar'` apanha o «Acrescentar intervalo» que está mais acima
+  na página. Usar `exact: true` quando o rótulo é prefixo de outro.
+- **`.first()` não chega se o primeiro estiver escondido.** A agenda desenha
+  mais do que uma escala ao mesmo tempo: usar `locator('[role="button"]:visible')`.
 
 ---
 
@@ -388,9 +404,10 @@ existe de verdade.
 
 | Área | |
 |---|---|
-| **Agenda** | Dia, semana, mês, lista · procura e filtros · horário de abertura por dia com exceções · horários livres em lote · arrastar com confirmação e desfazer · **selecionar e mover várias de uma vez** · copiar/colar · recorrência com "só esta / toda a série" · **aviso de conflito** |
+| **Agenda** | Dia, semana, mês, lista · procura e filtros · **botão de horários na própria agenda**, com horário por dia, **exceções por data** e pré-visualização da semana · horários livres em lote · **arrastar larga e move, com desfazer** · **selecionar várias e mover, mudar a duração, bloquear ou apagar de uma vez** · copiar/colar · recorrência com "só esta / toda a série" · **replicar uma marcação por X semanas** · **três botões de confirmação com cor cheia: dada, falta, e falta com direito a reposição** · **aviso de conflito** |
 | **Faltas** | Estados, direito a reposição, crédito ligado à aula de origem · **validade do crédito, estado "Expirada" e registo de auditoria** (quem concedeu, quando, o que aconteceu desde então) |
-| **Prescrição** | Treinos A/B/C, 2 076 exercícios, modelos, arquivo, PDF timbrado agrupado por bloco. Blocos, métodos como lista, 15 campos por exercício, duplicar, arrastar para reordenar |
+| **Prescrição** | Treinos A/B/C, 2 076 exercícios, modelos, arquivo, PDF timbrado agrupado por bloco. Blocos, métodos como lista, 15 campos por exercício, duplicar, arrastar para reordenar · **combinações com nome e cor** (bi-set, supersérie, trissérie e mais nove), cada membro num tom da cor do grupo |
+| **Vista de treino** | O programa como se lê, e não como se escreve: um treino de cada vez, por bloco, com o resumo em números (exercícios, séries, pausa somada, volume). **A carga de cada série e os números do método editam-se ali mesmo**; o resto é no construtor. `TreinoVista`, ao lado de `PrescricaoBuilder` |
 | **Biblioteca** | Procura que traduz o termo escrito (pt-BR e inglês de ginásio) · sinónimos por exercício · favoritos · pastas · progressões, regressões e substituições, com **troca de exercício num clique dentro do treino** |
 | **Avaliações** | Dobras, % massa gorda, perímetros, fotografias, gráfico de evolução, PDF · **rascunho e final, autosave, revisões com motivo, comparar e repor** |
 | **Documentos** | Timbre com logótipo próprio, estúdio, nº profissional e contactos · aviso de confidencialidade em todas as folhas · escolher que secções saem · **pré-visualizar antes de imprimir** · abrir o e-mail para o aluno |

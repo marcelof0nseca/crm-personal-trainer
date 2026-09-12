@@ -3812,14 +3812,6 @@ function LoadingScreen() {
   );
 }
 
-function DeveloperCredit() {
-  return (
-    <div className="px-4 py-4 text-center text-2xs font-body text-faint" style={{ opacity: 0.55 }}>
-      Developed by Marcelo Fonseca
-    </div>
-  );
-}
-
 const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_LOCKOUT_SECONDS = 60;
 
@@ -4071,7 +4063,6 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
         <span className="text-faint">·</span>
         <button type="button" onClick={() => setLegalDoc('privacidade')} className="link-sky">Privacidade</button>
       </div>
-      <DeveloperCredit />
       {legalDoc && <LegalModal docId={legalDoc} supportEmail={SUPPORT_EMAIL} onClose={() => setLegalDoc(null)} />}
     </div>
   );
@@ -4249,7 +4240,6 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
           <button onClick={onRefresh} type="button" className="px-3.5 py-2 rounded-lg text-xs font-body border border-hair btn-surface text-muted">Verificar subscrição</button>
         </div>
       </main>
-      <DeveloperCredit />
     </div>
   );
 }
@@ -5578,7 +5568,6 @@ function SettingsModal({
                     <Mail size={14} /> Contactar o suporte
                   </a>
                 )}
-                <p className="text-2xs font-body text-faint">Developed by Marcelo Fonseca</p>
               </SettingsBlock>
             )}
           </div>
@@ -16318,7 +16307,6 @@ function AppInner() {
         </>
         )}
       </main>
-      <DeveloperCredit />
 
       {confirmLibertar && (
         <ConfirmDialog

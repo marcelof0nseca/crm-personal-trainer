@@ -728,7 +728,6 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
           <span className="text-faint">·</span>
           <button type="button" onClick={() => setLegalDoc('privacidade')} className="link-sky">Política de Privacidade</button>
         </div>
-        <div className="text-2xs font-body text-faint" style={{ opacity: 0.55 }}>Developed by Marcelo Fonseca</div>
       </footer>
 
       {legalDoc && <LegalModal docId={legalDoc} supportEmail={supportEmail} onClose={() => setLegalDoc(null)} />}

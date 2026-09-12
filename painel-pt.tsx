@@ -3236,6 +3236,11 @@ const TOKENS_CLAROS = `
         /* Sobre branco, uma cor clara a 13% e quase branco: o claro precisa de
            mais tinta do que o escuro para a celula se ler de relance. */
         --celula-tinta: 26%;
+        --chrome: rgba(255, 255, 255, 0.80);
+        --chrome-solido: #FFFFFF;
+        --grabber: rgba(16, 24, 40, 0.22);
+        --skeleton: rgba(16, 24, 40, 0.06);
+        --skeleton-brilho: rgba(16, 24, 40, 0.11);
 `;
 
 // As regras da folha impressa, com prefixo de escopo. Servem dois sítios: o
@@ -3390,6 +3395,44 @@ function GlobalStyles() {
         --celula-tinta: 15%;
         --dur: 160ms;
         --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+        /* ---------- Escala de forma ----------
+           Um raio por tamanho de superfície, em vez de um número escolhido de
+           novo em cada componente. No telemóvel sobe tudo um degrau (ver a
+           consulta de 640px): o canto apertado lê-se como janela de programa,
+           e o canto largo lê-se como aplicação. */
+        --r-xs: 8px;
+        --r-sm: 10px;
+        --r-md: 12px;
+        --r-lg: 16px;
+        --r-xl: 22px;
+        --r-pill: 999px;
+
+        /* ---------- Escala de toque ----------
+           44px é o mínimo que um polegar acerta sem falhar. Vale para a altura
+           dos controlos; para os ícones pequenos há a classe .tap, que
+           alarga a área sensível sem engordar o desenho. */
+        --tap: 44px;
+        --nav-h: 58px;
+        --topbar-h: 52px;
+
+        /* ---------- Escala de movimento ----------
+           A curva das folhas do iOS: arranca depressa e assenta devagar, sem
+           ressalto. Um ease-out normal chega ao fim e pára a direito, e é
+           isso que faz um painel parecer uma caixa de diálogo em vez de uma
+           folha que se puxou. */
+        --ease-folha: cubic-bezier(0.32, 0.72, 0, 1);
+        --dur-folha: 340ms;
+
+        /* ---------- Materiais ----------
+           As barras são vidro, não tapume: o conteúdo passa por baixo e
+           vê-se. Sem backdrop-filter (ou com transparência reduzida ligada)
+           a mesma variável cai para a superfície opaca. */
+        --chrome: rgba(19, 21, 25, 0.78);
+        --chrome-solido: #131519;
+        --grabber: rgba(255, 255, 255, 0.22);
+        --skeleton: rgba(255, 255, 255, 0.06);
+        --skeleton-brilho: rgba(255, 255, 255, 0.12);
       }
 
       /* Sem escolha feita, manda o sistema. Corre antes do JavaScript, por isso
@@ -3461,12 +3504,26 @@ function GlobalStyles() {
       .card {
         background-color: var(--bg-surface);
         border: 1px solid var(--border-hair);
-        border-radius: 12px;
+        border-radius: var(--r-md);
         box-shadow: var(--shadow-sm);
       }
-      .card-hover { transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease), transform var(--dur) var(--ease); }
+      .card-hover { transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease), transform 90ms ease-out; }
       .card-hover:hover { border-color: var(--border-strong); background-color: var(--bg-elevated); }
-      .card-hover:active { transform: scale(0.995); }
+      /* A resposta é no premir, não no largar: esperar pelo clique para dar
+         sinal é o que faz uma página parecer morta ao toque. */
+      .card-hover:active { transform: scale(0.985); }
+
+      /* Alarga a área sensível de um ícone pequeno sem lhe mexer no desenho.
+         Um botão de 26px continua a ler-se como 26px e passa a acertar-se
+         como 44px. */
+      .tap { position: relative; }
+      .tap::after {
+        content: '';
+        position: absolute;
+        top: 50%; left: 50%;
+        width: max(100%, var(--tap)); height: max(100%, var(--tap));
+        transform: translate(-50%, -50%);
+      }
 
       .btn-surface { transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease); }
       .btn-surface:hover { background-color: var(--bg-elevated); border-color: var(--border-strong); }
@@ -3476,11 +3533,12 @@ function GlobalStyles() {
       /* Vocabulário de botões partilhado por todos os ecrãs. */
       .btn {
         display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-        border-radius: 9px; font-size: 14px; font-weight: 500; line-height: 1;
-        padding: 10px 14px; border: 1px solid transparent; cursor: pointer;
+        border-radius: var(--r-sm); font-size: 14px; font-weight: 500; line-height: 1;
+        padding: 10px 14px; min-height: 40px; border: 1px solid transparent; cursor: pointer;
         font-family: inherit; white-space: nowrap;
-        transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease), opacity var(--dur) var(--ease);
+        transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease), opacity var(--dur) var(--ease), transform 90ms ease-out;
       }
+      .btn:active:not(:disabled) { transform: scale(0.97); }
       .btn:disabled { opacity: 0.55; cursor: not-allowed; }
       .btn-primary { background-color: var(--brass); color: var(--on-accent); font-weight: 600; }
       .btn-primary:hover:not(:disabled) { background-color: #23BCCC; }
@@ -3497,7 +3555,7 @@ function GlobalStyles() {
 
       .badge {
         display: inline-flex; align-items: center; gap: 4px;
-        padding: 3px 8px; border-radius: 999px;
+        padding: 3px 8px; border-radius: var(--r-pill);
         font-size: 0.6875rem; line-height: 1.1; font-weight: 500; white-space: nowrap;
       }
 
@@ -3505,14 +3563,16 @@ function GlobalStyles() {
         width: 100%;
         background-color: var(--bg-inset);
         border: 1px solid var(--border-hair);
-        border-radius: 9px;
+        border-radius: var(--r-sm);
         padding: 10px 12px;
+        min-height: 40px;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         font-size: 14px;
         color: var(--text-primary);
         outline: none;
         transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
       }
+      .input-compacto { min-height: 30px; padding: 4px 8px; }
       .input-field:hover:not(:focus) { border-color: var(--border-strong); }
       .input-field:focus { border-color: var(--brass); box-shadow: 0 0 0 3px var(--brass-soft); }
       .input-field::placeholder { color: var(--text-faint); }
@@ -3534,6 +3594,67 @@ function GlobalStyles() {
 
       @keyframes fadeSlideIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
       .animate-in { animation: fadeSlideIn 0.2s ease-out; }
+
+      /* ---------- Vidro das barras ----------
+         A barra é uma camada por cima do conteúdo, não uma faixa que lhe rouba
+         espaço: o que está por baixo vê-se a passar. Sem suporte a
+         backdrop-filter, ou com transparência reduzida pedida pelo sistema,
+         cai para a superfície opaca -- que continua legível. */
+      .vidro {
+        background-color: var(--chrome-solido);
+      }
+      @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+        .vidro {
+          background-color: var(--chrome);
+          -webkit-backdrop-filter: blur(20px) saturate(180%);
+          backdrop-filter: blur(20px) saturate(180%);
+        }
+      }
+      @media (prefers-reduced-transparency: reduce) {
+        .vidro {
+          background-color: var(--chrome-solido);
+          -webkit-backdrop-filter: none;
+          backdrop-filter: none;
+        }
+      }
+
+      /* ---------- Folha ----------
+         Entra de baixo, com a curva do sistema. Enquanto o dedo a arrasta, a
+         transição sai do caminho (.a-puxar) para o painel seguir a mão 1:1 --
+         uma transição por cima de um arrasto dá o atraso de um fotograma que
+         se sente logo. */
+      @keyframes folhaSobe { from { transform: translateY(100%); } to { transform: translateY(0); } }
+      @keyframes folhaAparece { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
+      .folha { animation: folhaSobe var(--dur-folha) var(--ease-folha); }
+      .folha.a-puxar { animation: none; transition: none; }
+      .folha-pega {
+        display: block;
+        width: 38px; height: 4px; border-radius: var(--r-pill);
+        background-color: var(--grabber);
+        margin: 0 auto;
+      }
+      @media (min-width: 640px) {
+        /* No rato não se puxa nada: a folha passa a painel, e cresce do sítio
+           em vez de subir do fundo do ecrã. */
+        .folha { animation: folhaAparece 200ms var(--ease); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .folha { animation: none; }
+      }
+
+      /* ---------- Esqueleto ----------
+         A forma do que vem a caminho, em vez de um disco a rodar. Quem espera
+         já vê onde vai estar cada coisa. */
+      @keyframes brilho { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+      .skeleton {
+        background-image: linear-gradient(90deg, var(--skeleton) 25%, var(--skeleton-brilho) 50%, var(--skeleton) 75%);
+        background-size: 200% 100%;
+        animation: brilho 1.4s linear infinite;
+        border-radius: var(--r-sm);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .skeleton { animation: none; background-image: none; background-color: var(--skeleton); }
+      }
       @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       .spin { animation: spin 0.8s linear infinite; }
 
@@ -3545,11 +3666,22 @@ function GlobalStyles() {
       input[type="color"]::-webkit-color-swatch { border: 2px solid var(--border-hair); border-radius: 999px; }
 
       @media (max-width: 640px) {
+        /* Um degrau acima em tudo o que é canto: é a diferença entre uma
+           janela de programa e uma aplicação. */
+        :root {
+          --r-xs: 10px;
+          --r-sm: 12px;
+          --r-md: 16px;
+          --r-lg: 20px;
+          --r-xl: 26px;
+        }
         /* 16px evita o zoom automático do iOS ao focar um campo. */
-        .input-field { font-size: 16px; }
-        /* Espaço para a barra de navegação fixa no fundo (56px + safe-area). */
-        .pb-nav { padding-bottom: calc(56px + 20px + env(safe-area-inset-bottom)); }
-        .toast-pos { bottom: calc(56px + 16px + env(safe-area-inset-bottom)); }
+        .input-field { font-size: 16px; min-height: var(--tap); padding: 12px 14px; }
+        .input-compacto { min-height: 34px; padding: 6px 8px; font-size: 15px; }
+        .btn { min-height: var(--tap); padding: 12px 16px; }
+        /* Espaço para a barra de navegação fixa no fundo. */
+        .pb-nav { padding-bottom: calc(var(--nav-h) + 20px + env(safe-area-inset-bottom)); }
+        .toast-pos { bottom: calc(var(--nav-h) + 16px + env(safe-area-inset-bottom)); }
         /* Grelhas de 3 colunas caem para 2 (não para 1): mantém a leitura
            comparativa dos números sem os empilhar numa coluna interminável. */
         .grid.grid-cols-3 {
@@ -3561,9 +3693,10 @@ function GlobalStyles() {
         .max-w-2xl {
           max-width: 100%;
         }
-        .px-4 { padding-left: 14px; padding-right: 14px; }
-        .py-4 { padding-top: 14px; padding-bottom: 14px; }
-        .rounded-xl { border-radius: 10px; }
+        .px-4 { padding-left: 16px; padding-right: 16px; }
+        .py-4 { padding-top: 16px; padding-bottom: 16px; }
+        .rounded-xl { border-radius: var(--r-md); }
+        .rounded-lg { border-radius: var(--r-sm); }
         .text-3xl { font-size: 1.75rem; line-height: 2.15rem; }
         .mobile-stack {
           flex-direction: column !important;

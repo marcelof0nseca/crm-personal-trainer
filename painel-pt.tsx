@@ -3639,12 +3639,41 @@ function GlobalStyles() {
       .tab-fundo:active .tab-icone { transform: scale(0.9); }
       .tab-topo { transition: color var(--dur) var(--ease), background-color var(--dur) var(--ease); }
 
+      /* Colada ao fundo do ecra, a folha nao tem canto de baixo para
+         arredondar -- arredondado, deixava passar o veu por dois triangulos.
+         Com rato ela flutua ao centro, e ai tem os quatro. */
+      @media (min-width: 640px) {
+        .folha, .dialogo { border-radius: var(--r-xl) !important; }
+      }
+      /* Ordem inversa no telemovel: a accao que se veio fazer fica em cima e a
+         de desistir fica em baixo, encostada ao polegar. A ordem no HTML nao se
+         mexe -- Cancelar continua a ser o primeiro no teclado e no leitor de
+         ecra, que e o que protege de um engano. */
+      .acoes-folha { flex-direction: row; }
+      @media (max-width: 640px) {
+        .acoes-folha { flex-direction: column-reverse; align-items: stretch; }
+        .acoes-folha > * { width: 100%; justify-content: center; }
+      }
+
+      .dialogo { animation: folhaAparece 180ms var(--ease); }
+      @media (max-width: 640px) {
+        /* No telemovel a caixa e uma folha: sobe do fundo e encosta-se la. */
+        .dialogo { animation: folhaSobe var(--dur-folha) var(--ease-folha); }
+      }
+      @media (prefers-reduced-motion: reduce) { .dialogo { animation: none; } }
+      /* A rolagem da folha nao contagia a pagina por baixo: chegar ao fim de
+         uma lista dentro da folha nao deve pos a agenda a andar. */
+      .folha-corpo { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+      /* A area por onde se puxa. O dedo aqui nao rola nem seleciona texto. */
+      .folha-puxador { touch-action: none; }
+
       .folha-pega {
         display: block;
         width: 38px; height: 4px; border-radius: var(--r-pill);
         background-color: var(--grabber);
         margin: 0 auto;
       }
+      @media (min-width: 640px) { .folha-pega { display: none; } }
       @media (min-width: 640px) {
         /* No rato não se puxa nada: a folha passa a painel, e cresce do sítio
            em vez de subir do fundo do ecrã. */
@@ -3843,6 +3872,110 @@ function FormField({ label, children }) {
   );
 }
 
+// Resistencia progressiva para la do limite. Puxar a folha para cima nao tem
+// para onde ir, e parar a seco le-se como encravado; o que existe no mundo
+// abranda antes de parar.
+function elastico(excesso, dimensao, constante = 0.55) {
+  return (excesso * dimensao * constante) / (dimensao + constante * Math.abs(excesso));
+}
+
+// Onde e que um lancamento ia parar sozinho, com a travagem do sistema. E a
+// projeccao -- e nao a distancia ja percorrida -- que decide fechar ou voltar:
+// um piparote curto e rapido fecha, um arrasto longo e parado volta.
+function projetar(velocidade, travagem = 0.998) {
+  return (velocidade / 1000) * travagem / (1 - travagem);
+}
+
+function deslocamentoY(el) {
+  if (!el) return 0;
+  const t = getComputedStyle(el).transform;
+  if (!t || t === 'none') return 0;
+  const n = t.match(/matrix3d\(([^)]+)\)/) ? 13 : 5;
+  const v = t.slice(t.indexOf('(') + 1, -1).split(',').map((x) => parseFloat(x));
+  return v[n] || 0;
+}
+
+// Puxar a folha para baixo fecha-a. So pelo cabecalho: o corpo rola, e disputar
+// o mesmo dedo entre rolar e arrastar faz as duas coisas mal.
+function useFolhaArrastavel(onFechar) {
+  const painelRef = useRef(null);
+  const veuRef = useRef(null);
+  const gesto = useRef(null);
+
+  function pintar(y, altura) {
+    const el = painelRef.current;
+    if (!el) return;
+    el.style.transform = y ? `translate3d(0, ${y}px, 0)` : '';
+    if (veuRef.current) {
+      veuRef.current.style.opacity = String(Math.max(0, 1 - (y / (altura || 1)) * 0.9));
+    }
+  }
+
+  function comecar(e) {
+    // So no telemovel: com rato isto e um painel, nao uma folha.
+    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 640px)').matches) return;
+    if (e.button > 0) return;
+    // Um botao no cabecalho nao e uma pega.
+    if (e.target && e.target.closest && e.target.closest('button')) return;
+    const el = painelRef.current;
+    if (!el) return;
+    // Sai da animacao de entrada e de qualquer transicao a meio: a partir daqui
+    // quem manda e o dedo, e uma transicao por cima poe um fotograma de atraso.
+    // Comeca do valor que esta no ecra, e nao de zero, para nao dar o salto.
+    el.classList.add('a-puxar');
+    el.style.transition = 'none';
+    if (veuRef.current) veuRef.current.style.transition = 'none';
+    gesto.current = {
+      id: e.pointerId,
+      origem: e.clientY - deslocamentoY(el),
+      altura: el.offsetHeight || 400,
+      historia: [{ y: e.clientY, t: performance.now() }],
+    };
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* sem captura segue na mesma */ }
+  }
+
+  function mover(e) {
+    const g = gesto.current;
+    if (!g || e.pointerId !== g.id) return;
+    let dy = e.clientY - g.origem;
+    if (dy < 0) dy = -elastico(-dy, g.altura);
+    pintar(dy, g.altura);
+    g.historia.push({ y: e.clientY, t: performance.now() });
+    if (g.historia.length > 6) g.historia.shift();
+  }
+
+  function largar(e) {
+    const g = gesto.current;
+    if (!g || e.pointerId !== g.id) return;
+    gesto.current = null;
+    const el = painelRef.current;
+    if (!el) return;
+
+    // Ler a posição primeiro, e só depois mexer em estilos.
+    const y = deslocamentoY(el);
+
+    // Velocidade dos ultimos milissegundos, nao do gesto inteiro: o que conta e
+    // para onde a mao ia no instante em que largou.
+    const prim = g.historia[0];
+    const ult = g.historia[g.historia.length - 1];
+    const v = ((ult.y - prim.y) / Math.max(1, ult.t - prim.t)) * 1000;
+
+    el.style.transition = 'transform var(--dur-folha) var(--ease-folha)';
+    if (veuRef.current) veuRef.current.style.transition = 'opacity 180ms linear';
+
+    if (y + projetar(v) > g.altura * 0.4) {
+      el.style.transform = `translate3d(0, ${g.altura}px, 0)`;
+      if (veuRef.current) veuRef.current.style.opacity = '0';
+      window.setTimeout(onFechar, 190);
+    } else {
+      pintar(0, g.altura);
+      if (veuRef.current) veuRef.current.style.opacity = '1';
+    }
+  }
+
+  return { painelRef, veuRef, puxar: { onPointerDown: comecar, onPointerMove: mover, onPointerUp: largar, onPointerCancel: largar } };
+}
+
 // `largura` serve os poucos casos que nao cabem na coluna estreita -- a
 // pre-visualizacao de uma folha A4, por exemplo. Por omissao nada muda.
 function Modal({ title, onClose, children, onBack, largura, semPadding, acoes, camada }) {
@@ -3853,31 +3986,57 @@ function Modal({ title, onClose, children, onBack, largura, semPadding, acoes, c
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  const { painelRef, veuRef, puxar } = useFolhaArrastavel(onClose);
+
   return (
     <div
-      className="fixed inset-0 flex items-end sm:items-center justify-center animate-in px-0 sm:px-4"
-      style={{ backgroundColor: 'var(--overlay)', backdropFilter: 'blur(3px)', zIndex: camada || 40 }}
-      onClick={onClose}
+      className="fixed inset-0 flex items-end sm:items-center justify-center px-0 sm:px-4"
+      style={{ zIndex: camada || 40 }}
       role="dialog"
       aria-modal="true"
       aria-label={title}
     >
+      {/* O véu é irmão da folha e não pai: a opacidade dele acompanha o dedo
+          enquanto se puxa, e sendo pai levava a folha atrás no desvanecer. */}
       <div
+        ref={veuRef}
+        className="absolute inset-0 animate-in"
+        style={{ backgroundColor: 'var(--overlay)', backdropFilter: 'blur(3px)' }}
+        onClick={onClose}
+      />
+      <div
+        ref={painelRef}
         onClick={(e) => e.stopPropagation()}
-        className={`border border-hair rounded-t-2xl sm:rounded-2xl w-full overflow-y-auto ${largura ? '' : 'sm:max-w-md'}`}
-        style={{ backgroundColor: 'var(--bg-surface)', maxWidth: largura || undefined, maxHeight: 'min(92dvh, 760px)', paddingBottom: 'env(safe-area-inset-bottom)', boxShadow: 'var(--shadow-lg)' }}
+        className={`folha relative border border-hair w-full overflow-y-auto folha-corpo ${largura ? '' : 'sm:max-w-md'}`}
+        style={{
+          backgroundColor: 'var(--bg-surface)',
+          borderRadius: 'var(--r-xl) var(--r-xl) 0 0',
+          maxWidth: largura || undefined,
+          maxHeight: 'min(92dvh, 760px)',
+          paddingBottom: 'env(safe-area-inset-bottom)',
+          boxShadow: 'var(--shadow-lg)',
+          willChange: 'transform',
+        }}
       >
-        <div className="flex items-center justify-between gap-2 px-5 py-4 border-b border-hair sticky top-0" style={{ backgroundColor: 'var(--bg-surface)', zIndex: 1 }}>
-          <div className="flex items-center gap-2 min-w-0">
-            {onBack && <button onClick={onBack} type="button" className="p-1.5 rounded-lg btn-surface flex-shrink-0" aria-label="Voltar"><ArrowLeft size={16} className="text-muted" style={{ display: 'block' }} /></button>}
-            <h2 className="font-display font-semibold text-lg text-primary truncate">{title}</h2>
+        {/* Cabeçalho e pega são a mesma peça: é por aqui que a folha se puxa. */}
+        <div
+          className="sticky top-0 folha-puxador"
+          style={{ backgroundColor: 'var(--bg-surface)', zIndex: 1, borderTopLeftRadius: 'inherit', borderTopRightRadius: 'inherit' }}
+          {...puxar}
+        >
+          <span className="folha-pega" style={{ marginTop: 8, marginBottom: 2 }} aria-hidden="true" />
+          <div className="flex items-center justify-between gap-2 px-5 py-3.5 border-b border-hair">
+            <div className="flex items-center gap-2 min-w-0">
+              {onBack && <button onClick={onBack} type="button" className="p-1.5 rounded-lg btn-surface flex-shrink-0 tap" aria-label="Voltar"><ArrowLeft size={16} className="text-muted" style={{ display: 'block' }} /></button>}
+              <h2 className="font-display font-semibold text-lg text-primary truncate" style={{ letterSpacing: '-0.01em' }}>{title}</h2>
+            </div>
+            <span className="flex items-center gap-2 flex-shrink-0">
+              {acoes}
+              <button onClick={onClose} type="button" className="p-1.5 rounded-lg btn-surface flex-shrink-0 tap" aria-label="Fechar">
+                <X size={18} className="text-muted" style={{ display: 'block' }} />
+              </button>
+            </span>
           </div>
-          <span className="flex items-center gap-2 flex-shrink-0">
-            {acoes}
-            <button onClick={onClose} type="button" className="p-1.5 rounded-lg btn-surface flex-shrink-0" aria-label="Fechar">
-              <X size={18} className="text-muted" style={{ display: 'block' }} />
-            </button>
-          </span>
         </div>
         <div className={semPadding ? '' : 'p-5'}>{children}</div>
       </div>
@@ -3896,11 +4055,20 @@ function ConfirmDialog({ title, message, onConfirm, onCancel, confirmLabel = 'El
   }, [onCancel]);
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center px-4 animate-in" style={{ backgroundColor: 'var(--overlay-strong)', backdropFilter: 'blur(3px)', zIndex: 50 }} onClick={onCancel} role="alertdialog" aria-modal="true" aria-label={title}>
-      <div onClick={(e) => e.stopPropagation()} className="border border-hair rounded-2xl w-full max-w-sm p-5" style={{ backgroundColor: 'var(--bg-surface)', boxShadow: 'var(--shadow-lg)' }}>
-        <h3 className="font-display font-semibold text-base text-primary mb-2">{title}</h3>
-        <p className="text-sm text-muted font-body mb-5" style={{ whiteSpace: 'pre-line' }}>{message}</p>
-        <div className="flex gap-2 justify-end mobile-stack">
+    <div className="fixed inset-0 flex items-end sm:items-center justify-center px-0 sm:px-4 animate-in" style={{ backgroundColor: 'var(--overlay-strong)', backdropFilter: 'blur(3px)', zIndex: 50 }} onClick={onCancel} role="alertdialog" aria-modal="true" aria-label={title}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="dialogo border border-hair w-full sm:max-w-sm p-5"
+        style={{
+          backgroundColor: 'var(--bg-surface)',
+          boxShadow: 'var(--shadow-lg)',
+          borderRadius: 'var(--r-xl) var(--r-xl) 0 0',
+          paddingBottom: 'calc(20px + env(safe-area-inset-bottom))',
+        }}
+      >
+        <h3 className="font-display font-semibold text-base text-primary mb-2" style={{ letterSpacing: '-0.01em' }}>{title}</h3>
+        <p className="text-sm text-muted font-body mb-5" style={{ whiteSpace: 'pre-line', lineHeight: 1.5 }}>{message}</p>
+        <div className="flex gap-2 justify-end acoes-folha">
           <button onClick={onCancel} type="button" className="btn btn-ghost">{cancelLabel}</button>
           <button onClick={onConfirm} type="button" className="btn" style={{ backgroundColor: `var(--${tone})`, color: 'var(--on-accent)', fontWeight: 600 }}>{confirmLabel}</button>
         </div>

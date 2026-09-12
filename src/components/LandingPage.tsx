@@ -154,6 +154,34 @@ const FEATURE_SECTIONS = [
   },
 ];
 
+/* ============================== MOVIMENTO ============================== */
+
+function useRevelar() {
+  const ref = useRef(null);
+  const [visivel, setVisivel] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === 'undefined') { setVisivel(true); return undefined; }
+    const obs = new IntersectionObserver(([entrada]) => {
+      if (entrada.isIntersecting) { setVisivel(true); obs.disconnect(); }
+    }, { threshold: 0.15, rootMargin: '0px 0px -8% 0px' });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+  return [ref, visivel];
+}
+
+// `atraso` da o efeito de cascata a uma lista de cartões sem escrever uma
+// transition-delay por item à mão.
+function Revelar({ children, className = '', atraso = 0 }) {
+  const [ref, visivel] = useRevelar();
+  return (
+    <div ref={ref} className={`revelar ${visivel ? 'revelar-visivel' : ''} ${className}`} style={{ transitionDelay: visivel ? `${atraso}ms` : '0ms' }}>
+      {children}
+    </div>
+  );
+}
+
 /* ============================== MOCKUP ATOMS ============================== */
 
 // `chromeless` despe a moldura de janela (os tres pontos fazem sentido numa
@@ -502,8 +530,8 @@ function PrimaryButton({ children, onClick, className = '' }) {
     <button
       type="button"
       onClick={onClick}
-      className={`px-5 py-3 rounded-lg text-sm font-body font-semibold transition-transform active:scale-[0.98] ${className}`}
-      style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}
+      className={`btn btn-primary ${className}`}
+      style={{ padding: '13px 22px', fontSize: 14, fontWeight: 600 }}
     >
       {children}
     </button>
@@ -512,20 +540,34 @@ function PrimaryButton({ children, onClick, className = '' }) {
 
 function SecondaryButton({ children, onClick, className = '' }) {
   return (
-    <button type="button" onClick={onClick} className={`px-5 py-3 rounded-lg text-sm font-body font-medium border border-hair btn-surface text-primary text-center ${className}`}>
+    <button type="button" onClick={onClick} className={`btn btn-ghost ${className}`} style={{ padding: '13px 22px', fontSize: 14 }}>
       {children}
     </button>
   );
 }
 
-function FaqItem({ item, open, onToggle }) {
+function FaqItem({ item, open, onToggle, index }) {
+  const painelId = `faq-painel-${index}`;
   return (
     <div className="border border-hair rounded-xl bg-surface overflow-hidden">
-      <button type="button" onClick={onToggle} className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={painelId}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left btn-surface"
+      >
         <span className="text-sm font-body font-medium text-primary">{item.q}</span>
-        <ChevronDown size={16} className="text-faint flex-shrink-0" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
+        <ChevronDown size={16} className="text-faint flex-shrink-0" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 220ms var(--ease)' }} />
       </button>
-      {open && <div className="px-4 pb-4 text-sm font-body text-muted animate-in">{item.a}</div>}
+      {/* `grid-template-rows: 0fr -> 1fr` anima uma altura que ninguem mediu
+          a mao -- a alternativa a max-height, que ou corta cedo de mais ou
+          deixa um resto de tempo morto no fim da transição. */}
+      <div id={painelId} role="region" className={`faq-colapso ${open ? 'aberto' : ''}`}>
+        <div>
+          <p className="px-4 pb-4 text-sm font-body text-muted" style={{ lineHeight: 1.6 }}>{item.a}</p>
+        </div>
+      </div>
     </div>
   );
 }

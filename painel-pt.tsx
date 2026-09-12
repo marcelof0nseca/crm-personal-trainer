@@ -8,7 +8,7 @@ import {
   Camera, ArrowLeft, LineChart as LineChartIcon, Tag,
   Coffee, Dumbbell, UtensilsCrossed, Stethoscope, Gift, CreditCard, Mail, CircleUser, KeyRound, ShieldCheck,
   RefreshCcw, Printer, Pencil, Copy, ClipboardPaste, GripVertical, Bell, Archive, BookMarked,
-  Sun, Moon, Monitor, Send, ImagePlus, Eye, History, Star,
+  Sun, Moon, Monitor, Send, ImagePlus, Eye, History, Star, Clock,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
@@ -265,6 +265,23 @@ function horarioDoDia(definicoes, iso) {
 function textoDoHorario(h) {
   if (!h || !h.aberto) return 'Fechado';
   return (h.intervalos || []).map((i) => `${i.inicio}–${i.fim}`).join(' · ');
+}
+
+// Minutos abertos num dia, somando os intervalos. Serve a pré-visualização:
+// ver "11 h" ao lado de segunda-feira apanha um fecho às 13:00 que devia ser
+// às 21:00 antes de ele dar pela falta de espaço na agenda.
+function minutosAbertos(h) {
+  if (!h || !h.aberto) return 0;
+  return (h.intervalos || []).reduce((t, i) => t + Math.max(0, minutosDe(i.fim) - minutosDe(i.inicio)), 0);
+}
+
+// "7 h 30" em vez de "450 min": o treinador pensa em horas.
+function textoDeHoras(minutos) {
+  if (!minutos) return '—';
+  const h = Math.floor(minutos / 60);
+  const m = minutos % 60;
+  if (!h) return `${m} min`;
+  return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`;
 }
 
 function dentroDoHorario(definicoes, iso, startTime, endTime) {
@@ -4527,8 +4544,10 @@ function SettingsModal({
   onCopiarHorario, onRestaurarHorario, onSaveDuracaoSlot, onSaveReposicao,
   onSaveTimbre, onSaveSeccao, onCarregarLogo, onPreverTimbre,
   tema, onMudarTema, temaResolvido, onToast, onSignOutGlobal,
+  seccaoInicial, onSaveExcecao, onRemoverExcecao,
 }) {
-  const [section, setSection] = useState('conta');
+  // Quem entra pelo botão da agenda quer o horário, não a conta.
+  const [section, setSection] = useState(seccaoInicial || 'conta');
   const [nome, setNome] = useState(trainerName || '');
   const [nomeEstado, setNomeEstado] = useState('');
   const [portalBusy, setPortalBusy] = useState(false);
@@ -4538,6 +4557,7 @@ function SettingsModal({
   const [restoreError, setRestoreError] = useState('');
   const [legalDoc, setLegalDoc] = useState(null);
   const [backupBusy, setBackupBusy] = useState(false);
+  const [excecaoData, setExcecaoData] = useState('');
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -4872,9 +4892,146 @@ function SettingsModal({
                     })}
                   </div>
 
+                  {/* O resultado das escolhas de cima, numa linha por dia. Ver
+                      a semana inteira de uma vez apanha o dia que ficou com
+                      duas horas por engano antes de a agenda o mostrar. */}
+                  <div className="rounded-lg border border-hair p-3 flex flex-col gap-1.5" style={{ backgroundColor: 'var(--bg-base)' }}>
+                    <span className="text-2xs font-body text-faint uppercase tracking-wide">Como fica a semana</span>
+                    {DIAS_SEMANA.map((d) => {
+                      const h = definicoes.horarios[d.id];
+                      return (
+                        <div key={d.id} className="flex items-baseline justify-between gap-3 text-xs font-body min-w-0">
+                          <span className="text-muted flex-shrink-0" style={{ minWidth: 64 }}>{d.label}</span>
+                          <span className={`font-mono truncate ${h.aberto ? 'text-primary' : 'text-faint'}`} title={textoDoHorario(h)}>
+                            {textoDoHorario(h)}
+                          </span>
+                          <span className="text-faint nowrap flex-shrink-0" style={{ minWidth: 52, textAlign: 'right' }}>
+                            {h.aberto ? textoDeHoras(minutosAbertos(h)) : ''}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    <div className="flex items-baseline justify-between gap-3 text-xs font-body border-t border-hair pt-1.5 mt-0.5">
+                      <span className="text-muted">Total por semana</span>
+                      <span className="font-mono text-primary">
+                        {textoDeHoras(DIAS_SEMANA.reduce((t, d) => t + minutosAbertos(definicoes.horarios[d.id]), 0))}
+                      </span>
+                    </div>
+                  </div>
+
                   <button type="button" onClick={onRestaurarHorario} className="btn btn-ghost self-start" style={{ fontSize: 12 }}>
                     <RotateCcw size={14} /> Restaurar o horário de origem
                   </button>
+                </SettingsBlock>
+
+                <SettingsBlock
+                  title="Exceções por data"
+                  description="Feriados, folgas e dias em que fecha mais cedo. A exceção manda no dia da semana, e só naquela data."
+                >
+                  <div className="flex items-end gap-2 flex-wrap">
+                    <FormField label="Data">
+                      <input
+                        type="date"
+                        value={excecaoData}
+                        onChange={(e) => setExcecaoData(e.target.value)}
+                        className="input-field"
+                        style={{ minWidth: 150 }}
+                      />
+                    </FormField>
+                    <button
+                      type="button"
+                      disabled={!excecaoData || Boolean(definicoes.excecoes[excecaoData])}
+                      onClick={() => { onSaveExcecao(excecaoData, { aberto: false, intervalos: [{ inicio: '09:00', fim: '13:00' }] }); setExcecaoData(''); }}
+                      className="btn btn-ghost disabled:opacity-40"
+                      style={{ fontSize: 12 }}
+                    >
+                      <Plus size={13} /> Acrescentar
+                    </button>
+                  </div>
+                  {excecaoData && definicoes.excecoes[excecaoData] && (
+                    <div className="text-2xs font-body text-muted">Esta data já tem exceção, mais abaixo.</div>
+                  )}
+
+                  {Object.keys(definicoes.excecoes).length === 0 ? (
+                    <p className="text-xs font-body text-faint">
+                      Sem exceções. O horário de funcionamento vale para todas as datas.
+                    </p>
+                  ) : (
+                    <div className="flex flex-col">
+                      {Object.keys(definicoes.excecoes).sort().map((iso) => {
+                        const ex = definicoes.excecoes[iso];
+                        const intervalos = ex.intervalos || [];
+                        const mudar = (mudanca) => onSaveExcecao(iso, { ...ex, ...mudanca });
+                        return (
+                          <div key={iso} className="flex flex-col gap-2 py-2.5 border-b border-hair">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <label className="flex items-center gap-2 text-sm font-body text-primary min-w-0">
+                                <input
+                                  type="checkbox"
+                                  checked={ex.aberto}
+                                  onChange={(e) => mudar({ aberto: e.target.checked })}
+                                  style={{ accentColor: 'var(--brass)' }}
+                                />
+                                {/* Com o dia da semana: uma data solta nao diz
+                                    se o feriado calha numa segunda cheia ou
+                                    num domingo que ja estava fechado. */}
+                                <span className="truncate">
+                                  {fmtDateLong(`${iso}T00:00:00`)} · {DAY_NAMES[new Date(`${iso}T00:00:00`).getDay()]}
+                                </span>
+                              </label>
+                              <span className="text-2xs font-body text-faint">{ex.aberto ? 'aberto nestas horas' : 'fechado todo o dia'}</span>
+                              <button
+                                type="button"
+                                onClick={() => onRemoverExcecao(iso)}
+                                className="p-1.5 rounded btn-surface ml-auto flex-shrink-0"
+                                aria-label={`Remover a exceção de ${fmtDateLong(`${iso}T00:00:00`)}`}
+                                title="Remover a exceção"
+                              >
+                                <X size={13} className="text-muted" style={{ display: 'block' }} />
+                              </button>
+                            </div>
+
+                            {ex.aberto && intervalos.map((intervalo, i) => (
+                              <div key={i} className="flex items-center gap-1.5 flex-wrap" style={{ paddingLeft: 24 }}>
+                                <input type="time" value={intervalo.inicio} aria-label={`Abertura de ${iso}, intervalo ${i + 1}`}
+                                  onChange={(e) => mudar({ intervalos: intervalos.map((x, k) => (k === i ? { ...x, inicio: e.target.value } : x)) })}
+                                  className="input-field" style={{ flex: '1 1 96px', minWidth: 96 }} />
+                                <span className="text-faint text-xs font-body flex-shrink-0">até</span>
+                                <input type="time" value={intervalo.fim} aria-label={`Fecho de ${iso}, intervalo ${i + 1}`}
+                                  onChange={(e) => mudar({ intervalos: intervalos.map((x, k) => (k === i ? { ...x, fim: e.target.value } : x)) })}
+                                  className="input-field" style={{ flex: '1 1 96px', minWidth: 96 }} />
+                                <button
+                                  type="button"
+                                  onClick={() => mudar({ intervalos: intervalos.filter((_, k) => k !== i) })}
+                                  disabled={intervalos.length === 1}
+                                  className="p-1.5 rounded btn-surface disabled:opacity-30 flex-shrink-0"
+                                  aria-label={`Remover intervalo ${i + 1} de ${iso}`}
+                                  title={intervalos.length === 1 ? 'Feche o dia em vez de tirar o único intervalo' : 'Remover intervalo'}
+                                >
+                                  <X size={13} className="text-muted" style={{ display: 'block' }} />
+                                </button>
+                              </div>
+                            ))}
+
+                            {ex.aberto && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const ultimo = intervalos[intervalos.length - 1];
+                                  const inicio = ultimo ? horaDe(Math.min(23 * 60, minutosDe(ultimo.fim) + 120)) : '15:00';
+                                  mudar({ intervalos: [...intervalos, { inicio, fim: horaDe(minutosDe(inicio) + 240) }] });
+                                }}
+                                className="btn btn-ghost self-start"
+                                style={{ fontSize: 11, marginLeft: 24 }}
+                              >
+                                <Plus size={12} /> Acrescentar intervalo
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </SettingsBlock>
 
                 <SettingsBlock
@@ -13772,6 +13929,8 @@ function AppInner() {
   // cheia parecer vazia -- foi assim que uma política mal escrita passou
   // semanas sem dar sinal de vida.
   const [leituraFalhada, setLeituraFalhada] = useState(null);
+  // Em que secção as definições abrem. `null` é a conta, como sempre foi.
+  const [settingsSeccao, setSettingsSeccao] = useState(null);
   const [mfaPendente, setMfaPendente] = useState(false);
   // Endereços assinados das fotografias que estão no balde, por id.
   const [urlsDeFotos, setUrlsDeFotos] = useState({});
@@ -14914,6 +15073,23 @@ function AppInner() {
       : 'Não há outros dias abertos para copiar.');
   }
 
+  // A exceção sobrepõe-se ao dia da semana, e só naquela data. Guardá-la
+  // normalizada aqui evita que um intervalo invertido chegue ao resto da
+  // aplicação -- `horarioDoDia` devolve isto tal e qual.
+  function saveExcecao(iso, valor) {
+    if (!iso) return;
+    const nova = normalizarDiaDeHorario(valor, EMPTY_DEFINICOES.horarios[1]);
+    if (nova.intervalos.length === 0) nova.intervalos = [{ inicio: '09:00', fim: '13:00' }];
+    persistDefinicoes({ ...definicoes, excecoes: { ...definicoes.excecoes, [iso]: nova } });
+  }
+
+  function removerExcecao(iso) {
+    const excecoes = { ...definicoes.excecoes };
+    delete excecoes[iso];
+    persistDefinicoes({ ...definicoes, excecoes });
+    showToast('Exceção removida.');
+  }
+
   function restaurarHorario() {
     persistDefinicoes({ ...definicoes, horarios: normalizarDefinicoes(null).horarios });
     showToast('Horário de origem reposto.');
@@ -15256,7 +15432,7 @@ function AppInner() {
 
   return (
     <div className="min-h-screen bg-base flex flex-col">
-      <Header onOpenSettings={() => setSettingsOpen(true)} temaResolvido={temaResolvido} onAlternarTema={alternarTema} />
+      <Header onOpenSettings={() => { setSettingsSeccao(null); setSettingsOpen(true); }} temaResolvido={temaResolvido} onAlternarTema={alternarTema} />
       <NavTabs view={view} setView={mudarVista} isAdmin={isAdmin} />
       <main className="flex-1 pb-10 pb-nav">
         {/* Os treinos vivem dentro do aluno e nao na barra de navegacao: quando
@@ -15348,6 +15524,18 @@ function AppInner() {
                   <CheckCircle2 size={14} /> {modoSelecao ? 'Sair da seleção' : 'Selecionar várias'}
                 </button>
               )}
+              {/* O horário decide o que a agenda esbate e o que ela liberta em
+                  lote. Estava só dentro das definições, a três cliques de
+                  distância de onde se dá por ele. */}
+              <button
+                type="button"
+                onClick={() => { setSettingsSeccao('agenda'); setSettingsOpen(true); }}
+                className="btn btn-ghost flex-shrink-0 sm:ml-auto"
+                style={{ fontSize: 12 }}
+                title="Horário de funcionamento, exceções e duração dos horários livres"
+              >
+                <Clock size={14} /> Horários
+              </button>
             </div>
             <AgendaFiltros filtro={agendaFiltro} setFiltro={setAgendaFiltro} total={sessions.length} visiveis={sessoesVisiveis.length} />
           </div>
@@ -15501,7 +15689,10 @@ function AppInner() {
           trainerName={trainerName}
           onSaveTrainerName={saveTrainerName}
           definicoes={definicoes}
+          seccaoInicial={settingsSeccao}
           onSaveHorario={saveHorario}
+          onSaveExcecao={saveExcecao}
+          onRemoverExcecao={removerExcecao}
           onCopiarHorario={copiarHorarioParaOutrosDias}
           onRestaurarHorario={restaurarHorario}
           onSaveDuracaoSlot={saveDuracaoSlot}

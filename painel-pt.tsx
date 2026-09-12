@@ -3135,6 +3135,7 @@ const TOKENS_CLAROS = `
         --gold: #8A5D0A;
         --gold-soft: rgba(138, 93, 10, 0.12);
         --slate-acc: #64707E;
+        --ok: #2E9E6B;
         --sky: #1B7A87;
         /* Sombras a azul-ardósia, não a preto: preto puro sobre branco suja. */
         --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.07);
@@ -3292,6 +3293,7 @@ function GlobalStyles() {
         --gold: #F5B44C;
         --gold-soft: rgba(245, 180, 76, 0.14);
         --slate-acc: #8C8C8C;
+        --ok: #5FBFA0;
         --sky: #5FC4D0;
         --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
         --shadow-md: 0 6px 16px -6px rgba(0, 0, 0, 0.6);
@@ -6608,6 +6610,33 @@ function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, custom
   const color = isEvento ? type.color : (student?.color || '#54565D');
   const statusInfo = STATUS_OPTIONS.find((o) => o.id === session.status);
 
+  // Confirmar a aula, a falta e a falta com direito a reposição. Cada uma com
+  // a sua cor cheia: verde é aconteceu, vermelho é falta seca, dourado é falta
+  // que gera crédito. São irmãos do cartão e não filhos, pela mesma razão da
+  // pega de arrastar — um <button> dentro de um elemento com role="button" é
+  // ARIA inválido e o rótulo de cada ação entraria no nome acessível do
+  // cartão. Por isso ficam sobrepostos no canto, e o cartão abre-lhes um vão
+  // da mesma largura para o nome do aluno não passar por baixo.
+  const podeDar = !isEvento && !aSelecionar && !isRealizado && !isCancelado && !isFalta;
+  const podeFaltar = !isEvento && !aSelecionar && !isFalta && !isCancelado;
+  const nAcoes = (podeDar ? 1 : 0) + (podeFaltar ? 2 : 0);
+  const ladoAcao = compact ? 21 : 22;
+  // Compacto empilha-as em linha (a coluna é baixa); largo empilha em coluna.
+  const vaoAcoes = nAcoes === 0 ? 0 : (compact ? nAcoes * ladoAcao + (nAcoes - 1) * 4 : ladoAcao);
+  const acaoRapida = (estado, rotulo, titulo, Icone, fundo) => (
+    <button
+      key={estado}
+      onClick={(e) => { e.stopPropagation(); onQuickStatus(session, estado); }}
+      type="button"
+      className="rounded"
+      style={{ padding: 4, backgroundColor: fundo, lineHeight: 0 }}
+      aria-label={rotulo}
+      title={titulo}
+    >
+      <Icone size={compact ? 13 : 14} style={{ color: '#0A0A0A', display: 'block' }} />
+    </button>
+  );
+
   return (
     // A pega e irma do cartao, e nao filha: um <button> dentro de um elemento com
     // role="button" e ARIA invalido, e o rotulo da pega passaria a fazer parte do
@@ -6641,6 +6670,16 @@ function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, custom
         >
           <GripVertical size={13} className="text-faint" style={{ display: 'block' }} />
         </button>
+      )}
+      {nAcoes > 0 && (
+        <div
+          className={`absolute flex gap-1 ${compact ? '' : 'flex-col'}`}
+          style={{ top: 8, right: 6, zIndex: 2 }}
+        >
+          {podeDar && acaoRapida('realizado', 'Marcar como realizado', 'Aula dada', CheckCircle2, 'var(--ok)')}
+          {podeFaltar && acaoRapida('falta', 'Falta sem direito a reposição', 'Falta, sem reposição', UserX, 'var(--rust)')}
+          {podeFaltar && acaoRapida('falta_reposicao', 'Falta com direito a reposição', 'Falta, com direito a reposição', RotateCcw, 'var(--gold)')}
+        </div>
       )}
     <div
       onClick={abrir}
@@ -6688,20 +6727,7 @@ function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, custom
               <TypeIcon size={10} style={{ color: acentoTexto(type.color), display: 'block' }} />
             </span>
             <span className="flex-1" />
-            {!isEvento && !aSelecionar && (
-              <span className="flex gap-0.5 flex-shrink-0">
-                {!isRealizado && !isCancelado && !isFalta && (
-                  <button onClick={(e) => { e.stopPropagation(); onQuickStatus(session, 'realizado'); }} type="button" className="p-1 rounded btn-surface" aria-label="Marcar como realizado" title="Marcar como realizado">
-                    <CheckCircle2 size={13} className="text-slate-acc" style={{ display: 'block' }} />
-                  </button>
-                )}
-                {!isFalta && !isCancelado && (
-                  <button onClick={(e) => { e.stopPropagation(); onQuickStatus(session, 'falta'); }} type="button" className="p-1 rounded btn-surface" aria-label="Reportar falta" title="Reportar falta">
-                    <UserX size={13} className="text-rust" style={{ display: 'block' }} />
-                  </button>
-                )}
-              </span>
-            )}
+            {vaoAcoes > 0 && <span aria-hidden="true" style={{ width: vaoAcoes, flexShrink: 0 }} />}
           </div>
           <div
             className={`font-body text-sm text-primary truncate ${isFalta ? 'line-through' : ''}`}
@@ -6733,20 +6759,7 @@ function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, custom
                 {isEvento ? type.label : (student?.name || 'Aluno removido')}
               </div>
             </div>
-            {!isEvento && !aSelecionar && (
-              <div className="flex flex-col gap-0.5 flex-shrink-0">
-                {!isRealizado && !isCancelado && !isFalta && (
-                  <button onClick={(e) => { e.stopPropagation(); onQuickStatus(session, 'realizado'); }} type="button" className="p-1 rounded btn-surface" aria-label="Marcar como realizado" title="Marcar como realizado">
-                    <CheckCircle2 size={14} className="text-slate-acc" style={{ display: 'block' }} />
-                  </button>
-                )}
-                {!isFalta && !isCancelado && (
-                  <button onClick={(e) => { e.stopPropagation(); onQuickStatus(session, 'falta'); }} type="button" className="p-1 rounded btn-surface" aria-label="Reportar falta" title="Reportar falta">
-                    <UserX size={14} className="text-rust" style={{ display: 'block' }} />
-                  </button>
-                )}
-              </div>
-            )}
+            {vaoAcoes > 0 && <span aria-hidden="true" style={{ width: vaoAcoes, flexShrink: 0 }} />}
           </div>
           <span className="badge mt-1.5" style={{ color: acentoTexto(statusInfo?.color), backgroundColor: `color-mix(in srgb, ${statusInfo?.color} 14%, transparent)` }}>
             {statusInfo?.label}
@@ -14476,13 +14489,42 @@ function AppInner() {
   }
   function quickStatus(session, status) {
     const quem = trainerName || user?.email || 'Personal Trainer';
+
+    // Falta que já nasce com direito a reposição. Passa pelo mesmo caminho de
+    // `registarFalta`, para o crédito levar validade, autor e auditoria --
+    // marcar só `status: 'falta'` daria uma falta sem crédito nenhum.
+    if (status === 'falta_reposicao') {
+      const agora = new Date().toISOString();
+      const automatico = definicoes.reposicao?.automatico !== false;
+      const validade = automatico ? validadePadrao(definicoes, session.date) : '';
+      const detalhe = validade
+        ? `válido até ${fmtDateLong(`${validade}T00:00:00`)}`
+        : 'sem prazo';
+      persistSessions(sessions.map((s) => (s.id === session.id ? {
+        ...s,
+        status: 'falta',
+        faltaPrecisaReposicao: true,
+        faltaJustificada: s.faltaJustificada || false,
+        faltaCreditoValidade: validade,
+        faltaCreditoPor: quem,
+        faltaCreditoEm: agora,
+        faltaCreditoLog: registarNoCredito(s, quem, 'Crédito concedido', detalhe),
+        reposicaoSessionId: null,
+      } : s)));
+      showToast('Falta registada, com direito a reposição.');
+      return;
+    }
     // Dar a reposição por realizada gasta o crédito — e isso fica no registo da
     // falta, que é onde alguém vai procurar meses depois.
     const falta = session.reposicaoDeSessionId && status === 'realizado'
       ? sessions.find((s) => s.id === session.reposicaoDeSessionId)
       : null;
     persistSessions(sessions.map((s) => {
-      if (s.id === session.id) return { ...s, status };
+      if (s.id === session.id) {
+        return status === 'falta'
+          ? { ...s, status, faltaPrecisaReposicao: false }
+          : { ...s, status };
+      }
       if (falta && s.id === falta.id) {
         return {
           ...s,

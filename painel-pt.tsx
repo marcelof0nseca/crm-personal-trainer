@@ -7339,7 +7339,7 @@ function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, custom
 // porque é a pergunta que uma aplicação tem de responder sem se ter de olhar
 // para baixo; a marca fica no logótipo, que chega. No rato há largura para a
 // marca escrita e para a data, e o nome do separador já está na barra de baixo.
-function Header({ view, onOpenSettings, temaResolvido, onAlternarTema }) {
+function Header({ view, onOpenSettings, temaResolvido, onAlternarTema, acaoMobile }) {
   const now = new Date();
   const dateLabel = `${DAY_NAMES[now.getDay()]}, ${now.getDate()} de ${MONTH_NAMES[now.getMonth()]}`;
   const vaiParaClaro = temaResolvido === 'escuro';
@@ -7384,6 +7384,21 @@ function Header({ view, onOpenSettings, temaResolvido, onAlternarTema }) {
           <button onClick={onOpenSettings} type="button" className="p-2 rounded-lg btn-surface border border-transparent tap" aria-label="Definições" title="Definições">
             <Settings size={18} className="text-muted" style={{ display: 'block' }} />
           </button>
+          {/* A ação de cada separador, só no telemóvel: no desktop ela já vive
+              no corpo, com rótulo por extenso e espaço de sobra. Repeti-la
+              aqui seria a mesma coisa duas vezes. */}
+          {acaoMobile && (
+            <button
+              onClick={acaoMobile.onClick}
+              type="button"
+              className="p-2 rounded-lg tap sm:hidden"
+              style={{ backgroundColor: 'var(--brass-soft)', color: 'var(--brass)' }}
+              aria-label={acaoMobile.label}
+              title={acaoMobile.label}
+            >
+              <acaoMobile.icon size={18} style={{ display: 'block' }} />
+            </button>
+          )}
         </div>
       </div>
     </header>
@@ -8511,7 +8526,7 @@ function StudentsView({ students, sessions, onEdit, onNew }) {
 
   return (
     <div className="px-4 py-4 max-w-4xl mx-auto flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="hidden sm:flex items-center justify-between">
         <h1 className="font-display font-semibold text-2xl text-primary tracking-wide">Alunos</h1>
         <button onClick={onNew} type="button" className="btn btn-primary flex-shrink-0">
           <UserPlus size={15} /> Novo Aluno
@@ -14897,13 +14912,24 @@ function FinancesView({ finances, students, monthCursor, setMonthCursor, onOpenT
         <StatCard label="Saldo" value={currency(saldo)} icon={Activity} accent={saldo >= 0 ? 'sky' : 'rust'} />
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center flex-wrap justify-between gap-3">
         <h1 className="font-display font-semibold text-xl text-primary tracking-wide">Lançamentos</h1>
-        <div className="flex gap-2 mobile-stack">
-          <button onClick={() => onNewTransaction('gasto')} type="button" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-body font-medium border" style={{ backgroundColor: 'var(--rust)', borderColor: 'var(--rust)', color: '#0A0A0A' }}>
+        <div className="flex rounded-lg border border-hair overflow-hidden w-full sm:w-auto" role="group" aria-label="Registar lançamento">
+          <button
+            onClick={() => onNewTransaction('gasto')}
+            type="button"
+            className="flex-1 flex items-center justify-center gap-1.5 px-3.5 py-3 sm:py-2.5 text-xs font-body font-medium nowrap btn-surface"
+            style={{ color: 'var(--rust)' }}
+          >
             <Plus size={13} /> Gasto
           </button>
-          <button onClick={() => onNewTransaction('entrada')} type="button" className="btn btn-primary" style={{ fontSize: 12 }}>
+          <span aria-hidden="true" style={{ width: 1, backgroundColor: 'var(--border-hair)', flexShrink: 0 }} />
+          <button
+            onClick={() => onNewTransaction('entrada')}
+            type="button"
+            className="flex-1 flex items-center justify-center gap-1.5 px-3.5 py-3 sm:py-2.5 text-xs font-body font-medium nowrap btn-surface"
+            style={{ color: 'var(--brass)' }}
+          >
             <Plus size={13} /> Entrada
           </button>
         </div>
@@ -16619,7 +16645,13 @@ function AppInner() {
   return (
     <div className="min-h-screen bg-base flex flex-col">
       <div className="sticky top-0" style={{ zIndex: 31 }}>
-        <Header view={view} onOpenSettings={() => { setSettingsSeccao(null); setSettingsOpen(true); }} temaResolvido={temaResolvido} onAlternarTema={alternarTema} />
+        <Header
+          view={view}
+          onOpenSettings={() => { setSettingsSeccao(null); setSettingsOpen(true); }}
+          temaResolvido={temaResolvido}
+          onAlternarTema={alternarTema}
+          acaoMobile={view === 'students' ? { icon: UserPlus, label: 'Novo aluno', onClick: openNewStudent } : null}
+        />
         <NavTabs view={view} setView={mudarVista} isAdmin={isAdmin} />
       </div>
       <main

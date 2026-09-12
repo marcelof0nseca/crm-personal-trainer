@@ -62,7 +62,7 @@ técnica — é uma decisão de produto, e condiciona metade do que se pode ofer
 | Ficheiro | |
 |---|---|
 | `painel-pt.tsx` | **A aplicação quase toda** (~16 500 linhas): componentes, helpers, modelo de dados, `AppInner` |
-| `src/components/LandingPage.tsx` | Página pública de vendas |
+| `src/components/LandingPage.tsx` | Página pública de vendas · **telemóvel interativo** com os mockups reais em modo `chromeless`, sticky no rato (scroll storytelling via `IntersectionObserver`) e por abas no telemóvel |
 | `src/components/LegalDocs.tsx` | Termos e política de privacidade. **Contém declarações legais** |
 | `src/components/Turnstile.tsx` | CAPTCHA do registo |
 | `src/data/exercicios.ts` | **Gerado.** 2 076 exercícios, 18 grupos, 14 categorias. Não editar à mão |
@@ -260,6 +260,17 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   git dar o ficheiro inteiro como reescrito** — 11 mil linhas de diff por
   causa de um byte. Escrever sempre com `newline=''` e verificar o
   `git diff --stat` antes de commitar.
+- **`git checkout` reescreve o fim de linha, mesmo em ficheiros LF.** Este
+  repositório tem `core.autocrlf=true`; um `LandingPage.tsx` gravado como LF
+  volta do `git checkout` como CRLF na árvore de trabalho. Um script que
+  presuma LF (sem detetar o fim de linha do ficheiro) falha a encontrar o que
+  procura — normalizar para LF a seguir a qualquer `checkout`/`stash pop`
+  antes de correr scripts de substituição.
+- **CSS dentro de um template literal do JavaScript não aceita um crase numa
+  frase.** Um comentário CSS com `` `backdrop-filter` `` fecha o literal a
+  meio e rebenta o build com um erro de sintaxe longe do sítio real — a
+  mensagem do esbuild aponta para onde o parser desistiu, não para o crase
+  a mais. Escrever esse nome sem as marcas, ou usar aspas simples.
 - **Listas de dois mil elementos não se desenham inteiras.** O seletor de
   exercícios mostra 60 e diz quantos ficaram de fora. A pesquisa usa um campo
   `busca` pré-calculado sem acentos — sem isso, escrever "biceps" não encontrava
@@ -419,6 +430,7 @@ existe de verdade.
 | **Segurança** | Auth, RLS por utilizador, Turnstile, termos e política em pt-PT, dados na UE, exportação e apagamento |
 | **Fiabilidade** | Gravação imediata, backup e restauro, **carimbo de versão contra perda silenciosa** |
 | **Admin** | Subscrições, receita, churn, alertas |
+| **Desenho de aplicação** | Escala de forma/toque/movimento em tokens CSS (`--r-*`, `--tap`, `--ease-folha`) · barra de topo contextual e barra de separadores em vidro translúcido (`backdrop-filter`, com salvaguarda para sem suporte e para transparência reduzida) · **modais viram folhas** que se puxam para fechar, com resistência progressiva no limite e projeção do lançamento (`useFolhaArrastavel`) · estados de premir, carregar (esqueleto) e vazio revistos · botões feitos à mão convergiram para `.btn`/`.btn-primary`/`.btn-ghost` |
 
 ### Falta, e é barato
 

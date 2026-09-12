@@ -13759,7 +13759,6 @@ function AppInner() {
   // cheia parecer vazia -- foi assim que uma política mal escrita passou
   // semanas sem dar sinal de vida.
   const [leituraFalhada, setLeituraFalhada] = useState(null);
-  const [movimentoDesfazivel, setMovimentoDesfazivel] = useState(null);
   const [mfaPendente, setMfaPendente] = useState(false);
   // Endereços assinados das fotografias que estão no balde, por id.
   const [urlsDeFotos, setUrlsDeFotos] = useState({});
@@ -14444,21 +14443,8 @@ function AppInner() {
       const total = sessions.filter((s) => s.seriesId === session.seriesId).length;
       showToast(`${plural(total, 'ocorrência atualizada', 'ocorrências atualizadas')}.`);
     } else {
-      const movida = movimentoDesfazivel && movimentoDesfazivel.id === session.id
-        && (movimentoDesfazivel.date !== session.date
-          || movimentoDesfazivel.startTime !== session.startTime);
-      if (movida) {
-        const anterior = movimentoDesfazivel;
-        showToast(
-          `Movida para ${fmtDateBR(`${session.date}T00:00:00`)} às ${session.startTime}.`,
-          'success',
-          { label: 'Desfazer', onClick: () => desfazerMovimento(anterior) },
-        );
-      } else {
-        showToast(isEvento ? 'Evento atualizado.' : 'Aula atualizada.');
-      }
+      showToast(isEvento ? 'Evento atualizado.' : 'Aula atualizada.');
     }
-    setMovimentoDesfazivel(null);
     setShowSessionModal(false);
   }
 
@@ -14991,13 +14977,27 @@ function AppInner() {
 
   function moveSessionTo(session, dateIso) {
     if (!session || session.date === dateIso) return;
-    // Guarda o sítio de onde saiu antes de abrir a confirmação. Sem isto, o
-    // "Desfazer" do aviso não teria para onde voltar.
-    setMovimentoDesfazivel({
+    const anterior = {
       id: session.id, date: session.date, startTime: session.startTime, endTime: session.endTime,
-    });
-    setSessionModal({ session: { ...session, date: dateIso }, defaultDate: dateIso });
-    setShowSessionModal(true);
+    };
+    const movida = { ...session, date: dateIso };
+    const proximas = sessions.map((x) => (x.id === session.id ? movida : x));
+    persistSessions(proximas);
+
+    // Avisos que não impedem nada: a aula já está no dia novo, e o treinador
+    // decide o que fazer com a informação.
+    const choques = conflitosDe(proximas, movida).length;
+    const foraDoHorario = !dentroDoHorario(definicoes, dateIso, movida.startTime, movida.endTime);
+    const avisos = [
+      choques ? plural(choques, 'sobreposição', 'sobreposições') : null,
+      foraDoHorario ? 'fora do horário' : null,
+    ].filter(Boolean);
+
+    showToast(
+      `Movida para ${fmtDateBR(`${dateIso}T00:00:00`)}${avisos.length ? ` · ${avisos.join(' · ')}` : ''}.`,
+      avisos.length ? 'error' : 'success',
+      { label: 'Desfazer', onClick: () => desfazerMovimento(anterior) },
+    );
   }
 
   /* ---------- seleção múltipla na agenda ---------- */
@@ -15080,7 +15080,6 @@ function AppInner() {
     persistSessions(sessionsRef.current.map((s) => (s.id === anterior.id
       ? { ...s, date: anterior.date, startTime: anterior.startTime, endTime: anterior.endTime }
       : s)));
-    setMovimentoDesfazivel(null);
     showToast('Reposta no sítio anterior.');
   }
 

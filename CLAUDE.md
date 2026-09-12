@@ -472,7 +472,9 @@ Combinado por níveis, do mais barato ao mais caro:
 4. ~~Segurança: dois fatores e fechar sessão em todo o lado~~ **feito**
    — SQL corrido: `aal_suficiente()` e as duas políticas restritivas estão
    aplicadas (`polpermissive = false` nas duas)
-5. ~~Fotografias para o Storage~~ **feito** — falta correr o SQL do balde
+5. ~~Fotografias para o Storage~~ **feito**
+   — SQL corrido: balde privado `fotos` (5 MB, só JPEG/PNG/WebP) com as
+   cinco políticas, `public = false` confirmado
 6. ~~Avaliações: perímetros, cintura-anca, metas, comparação~~ **feito**
 7. ~~Séries individuais, campos por método, combinar em supersérie~~ **feito**
 8. ~~Agenda: aluno no horário livre, célula colorida, vários intervalos por

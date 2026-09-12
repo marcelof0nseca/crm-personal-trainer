@@ -43,6 +43,7 @@ const SESSION_TYPES = [
 
 const EVENT_TYPES = [
   { id: 'horario_livre', label: 'Horário Livre', icon: Coffee, color: '#5FC4D0' },
+  { id: 'bloqueado', label: 'Bloqueado', icon: Ban, color: '#8C8C8C' },
   { id: 'reuniao', label: 'Reunião', icon: Users, color: '#9B8AC4' },
   { id: 'treino_pessoal', label: 'Meu Treino', icon: Dumbbell, color: '#6FCF97' },
   { id: 'almoco', label: 'Horário de Almoço', icon: UtensilsCrossed, color: '#F2A65A' },
@@ -7604,7 +7605,13 @@ function AgendaFiltros({ filtro, setFiltro, total, visiveis }) {
 // o utilizador está a olhar para os cartões, não para o topo da página.
 function BarraSelecao({ selecao }) {
   const [destino, setDestino] = useState('');
+  const [aberto, setAberto] = useState(false);
+  const [confirmar, setConfirmar] = useState(false);
   const total = selecao.ids.length;
+  const escolhidas = selecao.escolhidas || [];
+  const comAluno = escolhidas.filter((s) => s.kind === 'aula').length;
+  const bloqueadas = escolhidas.filter((s) => s.type === 'bloqueado').length;
+  const eventos = escolhidas.filter((s) => s.kind === 'evento').length;
 
   function mover() {
     if (!destino) return;
@@ -7656,10 +7663,72 @@ function BarraSelecao({ selecao }) {
         </div>
       )}
 
+      {/* Mexer nas horas e apagar ficam atrás de um clique: são os gestos de
+          que um engano custa mais caro, e a barra fica legível no telemóvel. */}
+      {total > 0 && selecao.mudarDuracao && (
+        <div className="flex items-center gap-2 flex-wrap border-t border-hair" style={{ paddingTop: 8 }}>
+          <button
+            type="button"
+            onClick={() => setAberto((a) => !a)}
+            aria-expanded={aberto}
+            className="btn btn-ghost"
+            style={{ fontSize: 12 }}
+          >
+            {aberto ? 'Menos opções' : 'Mais opções'}
+          </button>
+          {aberto && (
+            <>
+              <span className="text-2xs font-body text-faint nowrap">Duração</span>
+              {DURACOES_SLOT.map((min) => (
+                <button
+                  key={min}
+                  type="button"
+                  onClick={() => selecao.mudarDuracao(min)}
+                  className="btn btn-ghost nowrap"
+                  style={{ fontSize: 12 }}
+                >
+                  {min} min
+                </button>
+              ))}
+              {eventos > 0 && (
+                <button
+                  type="button"
+                  onClick={() => selecao.bloquear(bloqueadas < eventos)}
+                  className="btn btn-ghost nowrap"
+                  style={{ fontSize: 12 }}
+                  title="Um horário bloqueado deixa de ser oferecido e não volta a ser preenchido por «Libertar horários da semana»"
+                >
+                  <Ban size={13} /> {bloqueadas < eventos ? 'Bloquear' : 'Libertar'}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setConfirmar(true)}
+                className="btn btn-ghost nowrap"
+                style={{ fontSize: 12, color: 'var(--rust)', marginLeft: 'auto' }}
+              >
+                <Trash2 size={13} /> Eliminar
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       {total > 0 && (
         <span className="text-2xs font-body text-faint">
           As horas mantêm-se. Deslocar mantém também os dias de intervalo entre marcações.
         </span>
+      )}
+
+      {confirmar && (
+        <ConfirmDialog
+          title="Eliminar as marcações selecionadas"
+          message={`Isto elimina ${plural(total, 'marcação', 'marcações')}`
+            + `${comAluno ? `, ${plural(comAluno, 'delas com aluno', 'delas com aluno')}` : ''}`
+            + '. Esta ação não pode ser desfeita.'}
+          onCancel={() => setConfirmar(false)}
+          onConfirm={() => { setConfirmar(false); selecao.eliminar(); }}
+        />
       )}
     </div>
   );
@@ -8404,14 +8473,19 @@ function SessionFormModal({ session, students, sessions, defaultDate, reposicaoD
   // e era o único que a edição não deixava fazer. Só nesse sentido — passar uma
   // aula marcada a evento apagava a ligação ao aluno sem o dizer.
   const eHorarioLivre = isEdit && isEvento && form.type === 'horario_livre';
+  // O sentido contrário só se abre a uma aula já cancelada: aí não há ligação
+  // viva ao aluno para se perder, e o espaço que sobrou volta a ser vendável.
+  const eAulaCancelada = isEdit && !isEvento && form.status === 'cancelado';
 
   function switchKind(kind) {
-    if ((isEdit && !(eHorarioLivre && kind === 'aula')) || kind === form.kind) return;
+    const permitido = (eHorarioLivre && kind === 'aula') || (eAulaCancelada && kind === 'evento');
+    if ((isEdit && !permitido) || kind === form.kind) return;
     setForm((f) => ({
       ...f,
       kind,
       type: kind === 'evento' ? EVENT_TYPES[0].id : 'fixo',
       studentId: kind === 'evento' ? null : (students[0]?.id || ''),
+      status: kind === 'evento' ? 'agendado' : f.status,
     }));
     setError('');
   }
@@ -8787,6 +8861,18 @@ function SessionFormModal({ session, students, sessions, defaultDate, reposicaoD
             style={{ fontSize: 12 }}
           >
             <UserPlus size={14} /> Marcar um aluno neste horário
+          </button>
+        )}
+
+        {eAulaCancelada && (
+          <button
+            type="button"
+            onClick={() => switchKind('evento')}
+            className="btn btn-ghost self-start"
+            style={{ fontSize: 12 }}
+            title="A aula está cancelada: o espaço volta a poder ser vendido"
+          >
+            <Coffee size={14} /> Devolver este espaço a horário livre
           </button>
         )}
 
@@ -15866,6 +15952,77 @@ function AppInner() {
     );
   }
 
+  // Muda a duração das marcações selecionadas, mantendo a hora de início. É
+  // o que se faz quando se decide que as sessões passam a ser de 45 minutos:
+  // o princípio de cada uma continua onde estava.
+  function mudarDuracaoSelecionadas(minutos) {
+    const alvo = new Set(selecionadas);
+    const mexidas = sessions.filter((s) => alvo.has(s.id));
+    if (mexidas.length === 0) return;
+    const anteriores = mexidas.map((s) => ({ id: s.id, startTime: s.startTime, endTime: s.endTime }));
+    const next = sessions.map((s) => (alvo.has(s.id)
+      ? { ...s, endTime: horaDe(Math.min(24 * 60 - 1, minutosDe(s.startTime) + minutos)) }
+      : s));
+    const choques = next.filter((s) => alvo.has(s.id) && conflitosDe(next, s).length > 0).length;
+    persistSessions(next);
+    sairDaSelecao();
+    showToast(
+      `${plural(mexidas.length, 'marcação', 'marcações')} com ${minutos} min`
+      + `${choques ? ` · ${plural(choques, 'sobreposição', 'sobreposições')}` : ''}.`,
+      choques ? 'error' : 'success',
+      { label: 'Desfazer', onClick: () => desfazerHorasEmLote(anteriores) },
+    );
+  }
+
+  function desfazerHorasEmLote(anteriores) {
+    const porId = new Map(anteriores.map((a) => [a.id, a]));
+    persistSessions(sessionsRef.current.map((s) => (porId.has(s.id)
+      ? { ...s, startTime: porId.get(s.id).startTime, endTime: porId.get(s.id).endTime }
+      : s)));
+    showToast('Horários repostos.');
+  }
+
+  // Bloquear e libertar são o mesmo gesto nos dois sentidos, e só se aplicam a
+  // eventos: uma aula marcada tem um aluno do outro lado, e mudar-lhe o tipo
+  // apagaria essa ligação sem o dizer.
+  function bloquearSelecionadas(bloquear) {
+    const alvo = new Set(selecionadas);
+    const mexidas = sessions.filter((s) => alvo.has(s.id) && s.kind === 'evento');
+    if (mexidas.length === 0) {
+      showToast('Só eventos e horários livres se podem bloquear.', 'error');
+      return;
+    }
+    const anteriores = mexidas.map((s) => ({ id: s.id, type: s.type }));
+    persistSessions(sessions.map((s) => (alvo.has(s.id) && s.kind === 'evento'
+      ? { ...s, type: bloquear ? 'bloqueado' : 'horario_livre' }
+      : s)));
+    sairDaSelecao();
+    showToast(
+      bloquear
+        ? `${plural(mexidas.length, 'horário bloqueado', 'horários bloqueados')}.`
+        : `${plural(mexidas.length, 'horário libertado', 'horários libertados')}.`,
+      'success',
+      { label: 'Desfazer', onClick: () => desfazerTipoEmLote(anteriores) },
+    );
+  }
+
+  function desfazerTipoEmLote(anteriores) {
+    const porId = new Map(anteriores.map((a) => [a.id, a.type]));
+    persistSessions(sessionsRef.current.map((s) => (porId.has(s.id) ? { ...s, type: porId.get(s.id) } : s)));
+    showToast('Tipos repostos.');
+  }
+
+  // Apagar em lote é destrutivo e não tem "Desfazer" a fingir: a confirmação
+  // vem antes, e diz quantas aulas com aluno vão no meio.
+  function eliminarSelecionadas() {
+    const alvo = new Set(selecionadas);
+    const mexidas = sessions.filter((s) => alvo.has(s.id));
+    if (mexidas.length === 0) return;
+    persistSessions(sessions.filter((s) => !alvo.has(s.id)));
+    sairDaSelecao();
+    showToast(`${plural(mexidas.length, 'marcação eliminada', 'marcações eliminadas')}.`);
+  }
+
   const selecaoAgenda = {
     ativo: modoSelecao,
     ids: selecionadas,
@@ -15874,6 +16031,11 @@ function AppInner() {
     sair: sairDaSelecao,
     deslocar: deslocarSelecionadas,
     moverPara: moverSelecionadasPara,
+    mudarDuracao: mudarDuracaoSelecionadas,
+    bloquear: bloquearSelecionadas,
+    eliminar: eliminarSelecionadas,
+    // Para a barra poder dizer a verdade sobre o que vai apagar.
+    escolhidas: sessions.filter((s) => selecionadas.includes(s.id)),
   };
 
   // Lê da referência e não do estado do render: entre gravar e clicar em

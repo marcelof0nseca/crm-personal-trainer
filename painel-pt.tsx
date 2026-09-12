@@ -8802,10 +8802,17 @@ function StudentFormModal({ student, sessions, customCategories, treinoCount = 0
 
         {error && <div className="text-sm font-body text-rust">{error}</div>}
 
-        <div className="flex gap-2 pt-2 mobile-stack">
+        <div className="folha-rodape flex gap-2 items-stretch">
           {isEdit && (
-            <button onClick={() => setConfirmDelete(true)} type="button" className="px-4 py-2.5 rounded-lg text-sm font-body border border-hair text-rust btn-surface">
-              <Trash2 size={15} className="inline mr-1.5" style={{ marginTop: '-2px' }} />Eliminar
+            <button
+              onClick={() => setConfirmDelete(true)}
+              type="button"
+              className="btn btn-ghost flex-shrink-0"
+              style={{ color: 'var(--rust)' }}
+              aria-label="Eliminar aluno"
+              title="Eliminar"
+            >
+              <Trash2 size={16} /><span className="hidden sm:inline">Eliminar</span>
             </button>
           )}
           <button onClick={handleSubmit} type="button" className="btn btn-primary flex-1">
@@ -14827,10 +14834,17 @@ function TransactionFormModal({ tx, defaultType, customCategories, onAddCategory
 
         {error && <div className="text-sm font-body text-rust">{error}</div>}
 
-        <div className="flex gap-2 pt-2 mobile-stack">
+        <div className="folha-rodape flex gap-2 items-stretch">
           {isEdit && (
-            <button onClick={() => setConfirmDelete(true)} type="button" className="px-4 py-2.5 rounded-lg text-sm font-body border border-hair text-rust btn-surface">
-              <Trash2 size={15} className="inline mr-1.5" style={{ marginTop: '-2px' }} />Eliminar
+            <button
+              onClick={() => setConfirmDelete(true)}
+              type="button"
+              className="btn btn-ghost flex-shrink-0"
+              style={{ color: 'var(--rust)' }}
+              aria-label="Eliminar lançamento"
+              title="Eliminar"
+            >
+              <Trash2 size={16} /><span className="hidden sm:inline">Eliminar</span>
             </button>
           )}
           <button onClick={handleSubmit} type="button" className="btn btn-primary flex-1">

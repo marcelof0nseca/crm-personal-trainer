@@ -3877,7 +3877,7 @@ class ErrorBoundary extends React.Component {
           <AlertTriangle size={32} className="text-rust" />
           <div className="font-display font-semibold text-lg text-primary">Algo deu errado ao carregar o painel</div>
           <p className="text-sm text-muted font-body max-w-md">{String((this.state.error && this.state.error.message) || this.state.error)}</p>
-          <button onClick={() => this.setState({ error: null })} type="button" className="px-4 py-2 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
+          <button onClick={() => this.setState({ error: null })} type="button" className="btn btn-primary">
             Tentar novamente
           </button>
         </div>
@@ -4402,8 +4402,7 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
         <button
           type="submit"
           disabled={busy || isLocked || (Boolean(TURNSTILE_SITE_KEY) && !captchaToken) || (mode === 'signup' && !acceptedTerms)}
-          className="px-4 py-2.5 rounded-lg text-sm font-body font-medium disabled:opacity-60"
-          style={{ backgroundColor: 'var(--brass)', color: 'var(--on-accent)' }}
+          className="btn btn-primary w-full"
         >
           {isLocked ? `Aguarde ${secondsLeft}s` : busy ? 'Aguarde...' : mode === 'signup' ? 'Criar conta' : 'Entrar'}
         </button>
@@ -4558,8 +4557,7 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
                   type="button"
                   onClick={() => startCheckout(plan.id)}
                   disabled={checkoutPlan === `card:${plan.id}`}
-                  className="px-4 py-2.5 rounded-lg text-sm font-body font-medium disabled:opacity-60"
-                  style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}
+                  className="btn btn-primary w-full"
                 >
                   {checkoutPlan === `card:${plan.id}` ? 'A abrir checkout...' : 'Pagar com cartão'}
                 </button>
@@ -6099,8 +6097,8 @@ function AddCategoryInline({ onAdd, placeholder, label = 'Adicionar personalizad
   return (
     <div className="flex gap-2 mt-2 mobile-stack">
       <input value={value} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} className="input-field" placeholder={placeholder} />
-      <button type="button" onClick={submit} className="px-3 rounded-lg text-xs font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>OK</button>
-      <button type="button" onClick={() => { setAdding(false); setValue(''); }} className="px-3 rounded-lg text-xs font-body border border-hair btn-surface">Cancelar</button>
+      <button type="button" onClick={submit} className="btn btn-primary" style={{ fontSize: 12 }}>OK</button>
+      <button type="button" onClick={() => { setAdding(false); setValue(''); }} className="btn btn-ghost" style={{ fontSize: 12 }}>Cancelar</button>
     </div>
   );
 }
@@ -8515,7 +8513,7 @@ function StudentsView({ students, sessions, onEdit, onNew }) {
     <div className="px-4 py-4 max-w-4xl mx-auto flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="font-display font-semibold text-2xl text-primary tracking-wide">Alunos</h1>
-        <button onClick={onNew} type="button" className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
+        <button onClick={onNew} type="button" className="btn btn-primary flex-shrink-0">
           <UserPlus size={15} /> Novo Aluno
         </button>
       </div>
@@ -8810,7 +8808,7 @@ function StudentFormModal({ student, sessions, customCategories, treinoCount = 0
               <Trash2 size={15} className="inline mr-1.5" style={{ marginTop: '-2px' }} />Eliminar
             </button>
           )}
-          <button onClick={handleSubmit} type="button" className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
+          <button onClick={handleSubmit} type="button" className="btn btn-primary flex-1">
             Guardar Aluno
           </button>
         </div>
@@ -9715,8 +9713,7 @@ function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEdi
                 type="button"
                 disabled={!form.nome.trim()}
                 onClick={gravar}
-                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium disabled:opacity-50"
-                style={{ backgroundColor: 'var(--brass)', color: 'var(--on-accent)' }}
+                className="btn btn-primary flex-1"
               >
                 {emEdicao === 'novo' ? 'Criar e acrescentar' : 'Guardar alterações'}
               </button>
@@ -10928,8 +10925,7 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
           <button
             type="button"
             onClick={() => { const nova = onCriarPrescricao(student.id); setAbertoId(nova.id); setModo('editar'); }}
-            className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-body font-medium"
-            style={{ backgroundColor: 'var(--brass)', color: 'var(--on-accent)' }}
+            className="btn btn-primary"
           >
             <Plus size={15} /> Novo programa de treino
           </button>
@@ -13659,7 +13655,7 @@ function AssessmentDetail({ student, sessions, photosById, definicoes, iniciarNo
       </div>
 
       {!editando && (
-        <button onClick={() => setEditando('nova')} type="button" className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
+        <button onClick={() => setEditando('nova')} type="button" className="btn btn-primary">
           <Plus size={15} /> Nova Avaliação Física
         </button>
       )}
@@ -13848,8 +13844,7 @@ function AssessmentsView({ students, sessions, photosById, definicoes, onSaveAss
             setAEscolherAluno(true);
           }}
           type="button"
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-body font-medium"
-          style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}
+          className="btn btn-primary flex-shrink-0"
         >
           <Plus size={15} /> Nova Avaliação
         </button>
@@ -14838,7 +14833,7 @@ function TransactionFormModal({ tx, defaultType, customCategories, onAddCategory
               <Trash2 size={15} className="inline mr-1.5" style={{ marginTop: '-2px' }} />Eliminar
             </button>
           )}
-          <button onClick={handleSubmit} type="button" className="flex-1 px-4 py-2.5 rounded-lg text-sm font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
+          <button onClick={handleSubmit} type="button" className="btn btn-primary flex-1">
             Guardar
           </button>
         </div>
@@ -14894,7 +14889,7 @@ function FinancesView({ finances, students, monthCursor, setMonthCursor, onOpenT
           <button onClick={() => onNewTransaction('gasto')} type="button" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-body font-medium border" style={{ backgroundColor: 'var(--rust)', borderColor: 'var(--rust)', color: '#0A0A0A' }}>
             <Plus size={13} /> Gasto
           </button>
-          <button onClick={() => onNewTransaction('entrada')} type="button" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-body font-medium" style={{ backgroundColor: 'var(--brass)', color: '#0A0A0A' }}>
+          <button onClick={() => onNewTransaction('entrada')} type="button" className="btn btn-primary" style={{ fontSize: 12 }}>
             <Plus size={13} /> Entrada
           </button>
         </div>

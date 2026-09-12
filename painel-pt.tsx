@@ -3627,6 +3627,18 @@ function GlobalStyles() {
       @keyframes folhaAparece { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
       .folha { animation: folhaSobe var(--dur-folha) var(--ease-folha); }
       .folha.a-puxar { animation: none; transition: none; }
+      /* ---------- Barra de separadores ----------
+         A pastilha por tras do icone e o que marca onde se esta. Uma linha de
+         2px por baixo, como no topo, desaparece contra o rodape do telemovel;
+         a pastilha le-se de canto de olho. */
+      .tab-icone {
+        display: flex; align-items: center; justify-content: center;
+        width: 44px; height: 26px; border-radius: var(--r-pill);
+        transition: background-color var(--dur) var(--ease), transform 90ms ease-out;
+      }
+      .tab-fundo:active .tab-icone { transform: scale(0.9); }
+      .tab-topo { transition: color var(--dur) var(--ease), background-color var(--dur) var(--ease); }
+
       .folha-pega {
         display: block;
         width: 38px; height: 4px; border-radius: var(--r-pill);
@@ -7116,32 +7128,54 @@ function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, custom
 
 /* ============================== HEADER + NAV ============================== */
 
-function Header({ onOpenSettings, temaResolvido, onAlternarTema }) {
+// Barra superior. No telemóvel diz onde se está -- o nome do separador --
+// porque é a pergunta que uma aplicação tem de responder sem se ter de olhar
+// para baixo; a marca fica no logótipo, que chega. No rato há largura para a
+// marca escrita e para a data, e o nome do separador já está na barra de baixo.
+function Header({ view, onOpenSettings, temaResolvido, onAlternarTema }) {
   const now = new Date();
   const dateLabel = `${DAY_NAMES[now.getDay()]}, ${now.getDate()} de ${MONTH_NAMES[now.getMonth()]}`;
   const vaiParaClaro = temaResolvido === 'escuro';
+  const titulo = view === 'admin'
+    ? 'Admin'
+    : (NAV_TABS.find((t) => t.id === view) || {}).label || '';
   return (
-    <header className="border-b border-hair" style={{ backgroundColor: 'var(--bg-surface)' }}>
-      <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+    <header className="vidro border-b border-hair">
+      <div
+        className="max-w-6xl mx-auto flex items-center justify-between gap-3"
+        style={{
+          minHeight: 'var(--topbar-h)',
+          paddingLeft: 'max(16px, env(safe-area-inset-left))',
+          paddingRight: 'max(16px, env(safe-area-inset-right))',
+        }}
+      >
         <div className="flex items-center gap-2.5 min-w-0">
-          <img src={LOGO_SRC} alt="" style={{ width: 30, height: 30, flexShrink: 0 }} />
-          <span className="font-display font-semibold text-xl tracking-wide truncate text-primary">PT<span style={{ color: 'var(--brass)' }}>MANAGER</span></span>
+          <img src={LOGO_SRC} alt="" style={{ width: 28, height: 28, flexShrink: 0 }} />
+          <span className="font-display font-semibold text-xl tracking-wide truncate text-primary hidden sm:inline">PT<span style={{ color: 'var(--brass)' }}>MANAGER</span></span>
+          {/* Aperta-se a letra ao tamanho: um título grande com o espaçamento
+              do corpo lê-se solto. */}
+          <h1
+            className="font-display font-semibold text-lg text-primary truncate sm:hidden"
+            style={{ letterSpacing: '-0.01em' }}
+          >
+            {titulo}
+          </h1>
         </div>
-        <div className="flex items-center gap-3 flex-shrink-0">
+        <div className="flex items-center gap-1 sm:gap-3 flex-shrink-0">
           <span className="text-xs font-body text-faint hidden sm:inline">{dateLabel}</span>
           <button
             onClick={onAlternarTema}
             type="button"
-            className="p-2 rounded-lg btn-surface border border-transparent"
+            className="p-2 rounded-lg btn-surface border border-transparent tap"
             aria-label={vaiParaClaro ? 'Mudar para o tema claro' : 'Mudar para o tema escuro'}
             title={vaiParaClaro ? 'Tema claro' : 'Tema escuro'}
           >
             {vaiParaClaro
-              ? <Sun size={17} className="text-muted" style={{ display: 'block' }} />
-              : <Moon size={17} className="text-muted" style={{ display: 'block' }} />}
+              ? <Sun size={18} className="text-muted" style={{ display: 'block' }} />
+              : <Moon size={18} className="text-muted" style={{ display: 'block' }} />}
           </button>
-          <button onClick={onOpenSettings} type="button" className="p-2 rounded-lg btn-surface border border-transparent" aria-label="Definições" title="Definições">
-            <Settings size={17} className="text-muted" style={{ display: 'block' }} />
+          <button onClick={onOpenSettings} type="button" className="p-2 rounded-lg btn-surface border border-transparent tap" aria-label="Definições" title="Definições">
+            <Settings size={18} className="text-muted" style={{ display: 'block' }} />
           </button>
         </div>
       </div>
@@ -7168,7 +7202,10 @@ function NavTabs({ view, setView, isAdmin }) {
   const tabs = isAdmin ? [...NAV_TABS, { id: 'admin', label: 'Admin', icon: ShieldCheck }] : NAV_TABS;
   return (
     <>
-      <nav className="border-b border-hair sticky top-0 hidden sm:block" style={{ zIndex: 30, backgroundColor: 'var(--bg-surface)' }} aria-label="Navegação principal">
+      {/* O elemento que fixa esta barra é o invólucro em AppInner, que segura
+          também a barra superior: duas coisas coladas por cima da mesma
+          rolagem têm de subir juntas, senão escorregam uma sobre a outra. */}
+      <nav className="border-b border-hair hidden sm:block vidro" aria-label="Navegação principal">
         <div className="max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto">
           {tabs.map((t) => {
             const Icon = t.icon;
@@ -7179,7 +7216,7 @@ function NavTabs({ view, setView, isAdmin }) {
                 onClick={() => setView(t.id)}
                 type="button"
                 aria-current={active ? 'page' : undefined}
-                className="flex items-center gap-1.5 px-4 py-3 text-sm font-body flex-shrink-0 btn-surface"
+                className="flex items-center gap-1.5 px-4 py-3 text-sm font-body flex-shrink-0 tab-topo"
                 style={{
                   color: active ? 'var(--brass)' : 'var(--text-muted)',
                   borderBottom: active ? '2px solid var(--brass)' : '2px solid transparent',
@@ -7194,11 +7231,11 @@ function NavTabs({ view, setView, isAdmin }) {
       </nav>
 
       <nav
-        className="fixed bottom-0 left-0 right-0 border-t border-hair sm:hidden"
-        style={{ zIndex: 30, backgroundColor: 'var(--bg-surface)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+        className="fixed bottom-0 left-0 right-0 border-t border-hair sm:hidden vidro"
+        style={{ zIndex: 30, paddingBottom: 'env(safe-area-inset-bottom)' }}
         aria-label="Navegação principal"
       >
-        <div className="flex">
+        <div className="flex" style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
           {tabs.map((t) => {
             const Icon = t.icon;
             const active = view === t.id;
@@ -7208,10 +7245,12 @@ function NavTabs({ view, setView, isAdmin }) {
                 onClick={() => setView(t.id)}
                 type="button"
                 aria-current={active ? 'page' : undefined}
-                className="flex-1 flex flex-col items-center justify-center gap-1 min-w-0"
-                style={{ height: 56, color: active ? 'var(--brass)' : 'var(--text-faint)' }}
+                className="flex-1 flex flex-col items-center justify-center gap-1 min-w-0 tab-fundo"
+                style={{ height: 'var(--nav-h)', color: active ? 'var(--brass)' : 'var(--text-faint)' }}
               >
-                <Icon size={18} style={{ display: 'block' }} />
+                <span className="tab-icone" style={{ backgroundColor: active ? 'var(--brass-soft)' : 'transparent' }}>
+                  <Icon size={19} style={{ display: 'block' }} />
+                </span>
                 <span className="font-body truncate w-full text-center px-0.5" style={{ fontSize: '0.625rem', lineHeight: 1, fontWeight: active ? 600 : 400 }}>{t.label}</span>
               </button>
             );
@@ -16301,8 +16340,10 @@ function AppInner() {
 
   return (
     <div className="min-h-screen bg-base flex flex-col">
-      <Header onOpenSettings={() => { setSettingsSeccao(null); setSettingsOpen(true); }} temaResolvido={temaResolvido} onAlternarTema={alternarTema} />
-      <NavTabs view={view} setView={mudarVista} isAdmin={isAdmin} />
+      <div className="sticky top-0" style={{ zIndex: 31 }}>
+        <Header view={view} onOpenSettings={() => { setSettingsSeccao(null); setSettingsOpen(true); }} temaResolvido={temaResolvido} onAlternarTema={alternarTema} />
+        <NavTabs view={view} setView={mudarVista} isAdmin={isAdmin} />
+      </div>
       <main className="flex-1 pb-10 pb-nav">
         {/* Os treinos vivem dentro do aluno e nao na barra de navegacao: quando
             ha um aluno escolhido, esta vista toma conta do ecra. */}

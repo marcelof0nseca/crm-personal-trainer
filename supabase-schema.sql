@@ -31,6 +31,20 @@ create table if not exists public.personal_subscriptions (
   updated_at timestamptz not null default now()
 );
 
+-- Contas de criador com acesso sem subscrição. Os e-mails ficam fora deste
+-- ficheiro de propósito -- este repositório é público, e um endereço aqui
+-- seria visível a qualquer pessoa. Preencher com um INSERT à parte, corrido
+-- uma vez à mão no SQL Editor, nunca versionado (ver CLAUDE.md). A tabela
+-- não tem nenhum grant para `anon`/`authenticated` -- só a função abaixo,
+-- que é `security definer` e por isso lê com os direitos de quem a criou,
+-- lá chega. O mesmo padrão já usado em `aal_suficiente()` para `mfa_factors`.
+create table if not exists public.app_admins (
+  email text primary key
+);
+alter table public.app_admins enable row level security;
+revoke all on public.app_admins from anon, authenticated;
+grant select on public.app_admins to service_role;
+
 create or replace function public.has_personal_app_access(target_user uuid)
 returns boolean
 language sql
@@ -41,7 +55,10 @@ as $$
   select
     target_user = auth.uid()
     and (
-      lower(coalesce(auth.jwt() ->> 'email', '')) in ('maf@cesar.school', 'bfpersonal@live.com')
+      exists (
+        select 1 from public.app_admins a
+        where a.email = lower(coalesce(auth.jwt() ->> 'email', ''))
+      )
       or exists (
         select 1
         from public.personal_subscriptions ps
@@ -53,6 +70,25 @@ as $$
 $$;
 
 grant execute on function public.has_personal_app_access(uuid) to authenticated;
+
+-- Só sim ou não, para a interface saber se mostra o estado "Vitalício" sem
+-- esperar por uma subscrição -- nunca a lista em si. O mesmo padrão de
+-- `aal_suficiente()`: a tabela não tem select para `authenticated`, só a
+-- função (security definer) lá chega.
+create or replace function public.is_creator_account()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.app_admins a
+    where a.email = lower(coalesce(auth.jwt() ->> 'email', ''))
+  );
+$$;
+
+grant execute on function public.is_creator_account() to authenticated;
 
 drop policy if exists "Users can read own app data" on public.app_data;
 create policy "Users can read own app data"

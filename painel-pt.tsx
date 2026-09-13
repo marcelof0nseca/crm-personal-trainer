@@ -317,11 +317,15 @@ function horaDe(minutos) {
 // os links de contacto simplesmente não aparecem (nada fica quebrado).
 const SUPPORT_EMAIL = (import.meta.env.VITE_SUPPORT_EMAIL || '').trim();
 const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY || '';
-const CREATOR_ACTIVE_PLAN_EMAILS = ['maf@cesar.school', 'bfpersonal@live.com'];
-const DEV_ACTIVE_PLAN_EMAILS = (import.meta.env.VITE_DEV_ACTIVE_PLAN_EMAILS || '')
-  .split(',')
-  .map((email) => email.trim().toLowerCase())
-  .filter(Boolean);
+// Nunca escrever e-mails aqui: este ficheiro vai para o bundle público. Quem
+// tem acesso de criador está em `public.app_admins` (fora do repositório),
+// e a resposta vem só como sim/não por `is_creator_account()` — ver
+// supabase-schema.sql. O de desenvolvimento fica atrás de `import.meta.env.DEV`
+// na própria atribuição, não só no uso, senão o Vite embebe o valor da
+// variável no bundle de produção mesmo que o ramo que a lê nunca corra.
+const DEV_ACTIVE_PLAN_EMAILS = import.meta.env.DEV
+  ? (import.meta.env.VITE_DEV_ACTIVE_PLAN_EMAILS || '').split(',').map((email) => email.trim().toLowerCase()).filter(Boolean)
+  : [];
 // paidMonths = meses efetivamente cobrados pela Stripe.
 // bonusMonths = meses oferecidos no primeiro período (ver stripe-webhook).
 // accessMonths = paidMonths + bonusMonths = tempo de acesso do primeiro pagamento.
@@ -3114,7 +3118,10 @@ async function readSubscriptionStatus() {
   if (!supabaseConfigured || !supabase) return { active: true, status: 'local' };
   const { data: userData } = await supabase.auth.getUser();
   const email = userData.user?.email?.toLowerCase() || '';
-  if (CREATOR_ACTIVE_PLAN_EMAILS.includes(email)) {
+  // A lista de quem é conta de criador não vive aqui -- só a resposta
+  // sim/não de `is_creator_account()` (ver supabase-schema.sql).
+  const { data: isCreator } = await supabase.rpc('is_creator_account');
+  if (isCreator) {
     return {
       active: true, status: 'creator', tier: 'vitalicio', value: 0, interval: 'Vitalício',
       currentPeriodStart: null, currentPeriodEnd: null, cancelAtPeriodEnd: false,

@@ -3601,6 +3601,8 @@ function GlobalStyles() {
 
       .input-field {
         width: 100%;
+        min-width: 0;
+        max-width: 100%;
         background-color: var(--bg-inset);
         border: 1px solid var(--border-hair);
         border-radius: var(--r-sm);
@@ -3611,6 +3613,16 @@ function GlobalStyles() {
         color: var(--text-primary);
         outline: none;
         transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+      }
+      /* Um input[type=date] nativo tem largura mínima própria, do controlo
+         do sistema -- sem min-width: 0 aqui, o Chrome de secretária desenha-o
+         compacto e esconde o problema, mas o Safari do iOS respeita essa
+         largura mínima a sério e empurra a caixa para fora da grelha, por
+         menor que ela seja (visto num relatório com "De" e "Até" lado a
+         lado). grid-cols-* do Tailwind já usa minmax(0, 1fr) nas colunas;
+         faltava o mesmo aqui, no campo em si. */
+      input[type="date"], input[type="time"], input[type="datetime-local"] {
+        min-width: 0;
       }
       .input-compacto { min-height: 30px; padding: 4px 8px; }
       .input-field:hover:not(:focus) { border-color: var(--border-strong); }

@@ -4574,12 +4574,29 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
 // Ecrã mostrado quando o link do e-mail de recuperação traz uma sessão de
 // recuperação (evento `PASSWORD_RECOVERY`). Depois de gravar a nova
 // palavra-passe, a sessão já fica válida -- não é preciso voltar a entrar.
-function ResetPasswordScreen({ onDone }) {
+function ResetPasswordScreen({ onDone, onSessionExpired }) {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [done, setDone] = useState(false);
+  // `null` = ainda a verificar, `true` = há sessão de recuperação, `false` = não há.
+  const [temSessao, setTemSessao] = useState(null);
+
+  useEffect(() => {
+    let cancelado = false;
+    // O evento PASSWORD_RECOVERY só diz que a ligação foi tentada -- não que
+    // a sessão sobreviveu até este ecrã aparecer. Um scanner de segurança do
+    // e-mail (o "Safe Links" do Outlook é o mais comum) pode ter aberto o
+    // link sozinho antes da pessoa clicar, gastando o token de uso único.
+    // Confirmar aqui, em vez de deixar a pessoa escrever a palavra-passe
+    // toda para só depois descobrir que o link já estava morto.
+    if (!supabase) { setTemSessao(false); return undefined; }
+    supabase.auth.getSession().then(({ data }) => {
+      if (!cancelado) setTemSessao(Boolean(data.session));
+    });
+    return () => { cancelado = true; };
+  }, []);
 
   async function submit(e) {
     e.preventDefault();
@@ -4591,8 +4608,50 @@ function ResetPasswordScreen({ onDone }) {
     setBusy(true);
     const { error } = await supabase.auth.updateUser({ password });
     setBusy(false);
-    if (error) { setMessage(error.message); return; }
+    if (error) {
+      // Chegando aqui, a validação já passou -- um erro do Supabase nesta
+      // chamada é praticamente sempre a sessão de recuperação a faltar ou a
+      // ter expirado, não um problema com a palavra-passe escolhida.
+      setTemSessao(false);
+      return;
+    }
     setDone(true);
+  }
+
+  if (temSessao === false) {
+    return (
+      <div
+        className="min-h-screen flex flex-col px-4"
+        style={{
+          backgroundColor: 'var(--bg-base)',
+          backgroundImage: 'radial-gradient(ellipse 640px 420px at 50% 0%, var(--brass-soft), transparent 70%)',
+        }}
+      >
+        <div className="flex-1 flex items-center justify-center py-10">
+          <div className="w-full max-w-sm flex flex-col gap-5">
+            <div className="flex items-center gap-2.5 px-1">
+              <img src={LOGO_SRC} alt="PTMANAGER" style={{ width: 30, height: 30, flexShrink: 0 }} />
+              <span className="font-display font-semibold text-lg tracking-wide text-primary">PT<span style={{ color: 'var(--brass)' }}>MANAGER</span></span>
+            </div>
+            <div
+              className="bg-surface border border-hair rounded-2xl p-7 flex flex-col gap-4 items-center text-center"
+              style={{ boxShadow: '0 30px 70px -34px rgba(0,0,0,0.35), 0 14px 30px -18px rgba(0,0,0,0.25)' }}
+            >
+              <div className="p-3 rounded-full flex-shrink-0" style={{ backgroundColor: 'rgba(178,58,49,0.12)' }}>
+                <AlertTriangle size={22} className="text-rust" />
+              </div>
+              <div>
+                <h1 className="font-display text-lg font-semibold text-primary">Este link já não é válido</h1>
+                <p className="text-sm font-body text-muted mt-1.5" style={{ lineHeight: 1.5 }}>
+                  Por segurança, um link de recuperação só funciona uma vez e expira ao fim de algum tempo. Peça um novo.
+                </p>
+              </div>
+              <button type="button" onClick={onSessionExpired} className="btn btn-primary w-full">Pedir novo link</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -4613,7 +4672,11 @@ function ResetPasswordScreen({ onDone }) {
             className="bg-surface border border-hair rounded-2xl p-7 flex flex-col gap-5"
             style={{ boxShadow: '0 30px 70px -34px rgba(0,0,0,0.35), 0 14px 30px -18px rgba(0,0,0,0.25)' }}
           >
-            {done ? (
+            {temSessao === null ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 size={20} className="text-brass spin" />
+              </div>
+            ) : done ? (
               <div className="flex flex-col gap-4 items-center text-center py-4">
                 <div className="p-3 rounded-full flex-shrink-0" style={{ backgroundColor: 'var(--brass-soft)' }}>
                   <CheckCircle2 size={22} className="text-brass" />
@@ -16942,7 +17005,16 @@ function AppInner() {
   // sessão já existe (por isso `!user` já não seria verdade), mas ainda não
   // serve para nada até gravar a palavra-passe nova.
   if (passwordRecovery) {
-    return <ResetPasswordScreen onDone={() => setPasswordRecovery(false)} />;
+    return (
+      <ResetPasswordScreen
+        onDone={() => setPasswordRecovery(false)}
+        onSessionExpired={async () => {
+          if (supabase) await supabase.auth.signOut();
+          setPasswordRecovery(false);
+          openLogin('recover');
+        }}
+      />
+    );
   }
   // A conta tem dois fatores e esta sessão ainda está a meio caminho. O
   // portão é da interface — para ser mesmo um portão, é preciso a política

@@ -63,7 +63,10 @@ as $$
         select 1
         from public.personal_subscriptions ps
         where ps.user_id = target_user
-          and ps.plan_status = 'active'
+          -- 'trialing' é o período de 7 dias grátis: a Stripe ainda não
+          -- cobrou nada, mas o acesso já é devido. current_period_end, para
+          -- uma subscrição em trial, é a própria data em que o trial acaba.
+          and ps.plan_status in ('active', 'trialing')
           and (ps.current_period_end is null or ps.current_period_end > now())
       )
     );

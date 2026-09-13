@@ -9822,6 +9822,24 @@ function LinhaSerie({ linha, numero, onMudar, onRemover, onNovaLinha, unica }) {
         );
       })}
 
+      {/* "Só observação" não tem campos numéricos -- `tipo.campos` está vazio
+          de propósito -- mas precisa mesmo assim de um sítio para escrever o
+          que aquela linha é (aquecimento livre, alongamento, etc.). */}
+      {tipo.id === 'observacao' && (
+        <div className="flex flex-col gap-1" style={{ minWidth: 200, flex: '2 1 200px' }}>
+          {numero === 1 && <span className="text-2xs font-body text-faint">Observação</span>}
+          <input
+            value={linha.notas || ''}
+            onChange={(e) => onMudar({ ...linha, notas: e.target.value })}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onNovaLinha(); } }}
+            aria-label={`Observação da série ${numero}`}
+            className="input-field"
+            placeholder="Ex.: aquecimento livre 5 min"
+            style={{ fontSize: 13 }}
+          />
+        </div>
+      )}
+
       <div className="flex flex-col gap-1" style={{ minWidth: 72, flex: '0 1 72px' }}>
         {numero === 1 && <span className="text-2xs font-body text-faint">Descanso</span>}
         <input
@@ -10350,7 +10368,7 @@ function ExercicioVista({ ex, biblioteca, grupoInfo, onMudar, comCabecalho }) {
         <div className="flex flex-col gap-1">
           {comCabecalho && (
             <div className="flex items-center gap-2 text-2xs font-body text-faint" style={{ paddingRight: 2 }}>
-              <span style={{ width: 16, flexShrink: 0 }} />
+              <span className="nowrap" style={{ width: 34, flexShrink: 0 }}>Série</span>
               <span className="flex-1 min-w-0">Prescrição</span>
               <span className="nowrap" style={{ width: 92, textAlign: 'right' }}>Carga</span>
               <span className="nowrap" style={{ width: 56, textAlign: 'right' }}>Descanso</span>
@@ -10362,7 +10380,7 @@ function ExercicioVista({ ex, biblioteca, grupoInfo, onMudar, comCabecalho }) {
             const texto = descreverLinha(linha, { semCarga: true });
             return (
               <div key={linha.id} className="flex items-center gap-2 min-w-0" style={{ paddingRight: 2 }}>
-                <span className="font-mono text-2xs text-faint flex-shrink-0" style={{ width: 16 }}>{i + 1}</span>
+                <span className="font-mono text-2xs text-faint flex-shrink-0" style={{ width: 34 }}>{i + 1}</span>
                 <span className="text-xs font-body text-primary flex-1 min-w-0 truncate" title={texto}>
                   {texto || '—'}
                 </span>

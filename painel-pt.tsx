@@ -333,7 +333,7 @@ const SALES_PLANS = [
   {
     id: 'mensal', name: 'Mensal', price: '€13,90', value: 13.90, interval: 'Mensal',
     note: 'Renovação a cada mês', paidMonths: 1, bonusMonths: 0, accessMonths: 1,
-    bonusLabel: '', perMonth: '€13,90/mês', highlight: false,
+    bonusLabel: '', perMonth: '€13,90/mês', highlight: false, trialDays: 7,
   },
   {
     id: 'trimestral', name: 'Trimestral', price: '€39,90', value: 39.90, interval: 'Trimestral',
@@ -3148,10 +3148,13 @@ async function readSubscriptionStatus() {
   const status = data?.plan_status || 'inactive';
   const periodEnd = data?.current_period_end || null;
   const expired = periodEnd ? new Date(periodEnd).getTime() < Date.now() : false;
-  const active = status === 'active' && !expired;
+  // 'trialing' dá acesso tal como 'active' -- é o próprio has_personal_app_access()
+  // do lado do servidor que decide isto de verdade; aqui só se espelha a
+  // mesma regra para a interface não mostrar o ecrã de planos por engano.
+  const active = (status === 'active' || status === 'trialing') && !expired;
   return {
     active,
-    status: expired && status === 'active' ? 'expired' : status,
+    status: expired && (status === 'active' || status === 'trialing') ? 'expired' : status,
     tier: data?.plan_tier || null,
     value: data?.plan_value ?? null,
     interval: data?.billing_interval || null,
@@ -4740,10 +4743,16 @@ async function edgeFunctionErrorMessage(error, fallback) {
   return error.message || fallback;
 }
 
-function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
+function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn, subscription }) {
   const supportReady = Boolean(SUPPORT_EMAIL);
   const [checkoutPlan, setCheckoutPlan] = useState(null);
   const [checkoutError, setCheckoutError] = useState('');
+  // Sinal do lado do cliente, só para a redação do botão -- quem decide de
+  // verdade se concede o trial é o create-checkout-session, a partir do
+  // histórico real em personal_subscriptions. 'inactive' é o que a conta
+  // tem quando nunca existiu ali nenhuma linha; qualquer outro valor
+  // (cancelado, pagamento em falta...) diz que já houve uma assinatura.
+  const podeExperimentarGratis = subscription?.status === 'inactive';
 
   async function startCheckout(planId) {
     setCheckoutError('');
@@ -4833,7 +4842,9 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
         )}
 
         <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {SALES_PLANS.map((plan) => (
+          {SALES_PLANS.map((plan) => {
+            const temTrial = Boolean(plan.trialDays) && podeExperimentarGratis;
+            return (
             <div key={plan.id} className="bg-surface border rounded-xl p-5 flex flex-col gap-4" style={{ borderColor: plan.highlight ? 'var(--brass)' : 'var(--border-hair)' }}>
               <div className="flex items-center justify-between gap-3">
                 <h2 className="font-display text-xl font-semibold text-primary">{plan.name}</h2>
@@ -4844,9 +4855,14 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
                   <span className="font-mono text-3xl font-semibold text-primary">{plan.price}</span>
                   {plan.bonusMonths > 0 && <span className="font-mono text-xs text-faint">≈ {plan.perMonth}</span>}
                 </div>
-                <div className="text-xs text-faint font-body mt-1">{plan.note}</div>
+                <div className="text-xs text-faint font-body mt-1">{temTrial ? `${plan.note} — a partir do 8º dia` : plan.note}</div>
               </div>
-              {plan.bonusLabel ? (
+              {temTrial ? (
+                <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)' }}>
+                  <Clock size={14} style={{ flexShrink: 0 }} />
+                  <span className="text-xs font-body font-semibold">{plan.trialDays} dias grátis, sem cobrança agora</span>
+                </div>
+              ) : plan.bonusLabel ? (
                 <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)' }}>
                   <Gift size={14} style={{ flexShrink: 0 }} />
                   <span className="text-xs font-body font-semibold">{plan.bonusLabel}</span>
@@ -4857,9 +4873,10 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
                 </div>
               )}
               <p className="text-xs text-muted font-body">
-                {plan.id === 'mensal' && 'Para começar sem compromisso, ou testar antes de decidir o período.'}
-                {plan.id === 'trimestral' && 'O equilíbrio entre poupança e liberdade — o mais escolhido pelos treinadores.'}
-                {plan.id === 'anual' && 'Para quem já sabe que fica — o custo mensal mais baixo dos três.'}
+                {temTrial && `O cartão fica registado, mas só é cobrado se não cancelar antes do fim dos ${plan.trialDays} dias — a partir daí, €${plan.value.toFixed(2).replace('.', ',')}/mês.`}
+                {!temTrial && plan.id === 'mensal' && 'Para começar sem compromisso, ou testar antes de decidir o período.'}
+                {!temTrial && plan.id === 'trimestral' && 'O equilíbrio entre poupança e liberdade — o mais escolhido pelos treinadores.'}
+                {!temTrial && plan.id === 'anual' && 'Para quem já sabe que fica — o custo mensal mais baixo dos três.'}
               </p>
               <div className="mt-auto flex flex-col gap-2">
                 <button
@@ -4868,7 +4885,9 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
                   disabled={checkoutPlan === `card:${plan.id}`}
                   className="btn btn-primary w-full"
                 >
-                  {checkoutPlan === `card:${plan.id}` ? 'A abrir checkout...' : 'Pagar com cartão'}
+                  {checkoutPlan === `card:${plan.id}`
+                    ? 'A abrir checkout...'
+                    : temTrial ? `Começar com ${plan.trialDays} dias grátis` : 'Pagar com cartão'}
                 </button>
                 <button
                   type="button"
@@ -4882,7 +4901,9 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
                 >
                   {checkoutPlan === `mbway:${plan.id}` ? 'A abrir MB WAY...' : 'Pagar com MB WAY'}
                 </button>
-                <div className="text-2xs text-faint font-body text-center">MB WAY não renova automaticamente.</div>
+                <div className="text-2xs text-faint font-body text-center">
+                  {temTrial ? 'MB WAY cobra já, sem período gratuito.' : 'MB WAY não renova automaticamente.'}
+                </div>
               </div>
               {supportReady && (
                 <a href={supportMailtoHref(`Dúvida sobre o plano ${plan.name} do PTMANAGER`)} className="text-center text-xs font-body link-sky">
@@ -4890,7 +4911,8 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
                 </a>
               )}
             </div>
-          ))}
+            );
+          })}
         </section>
 
         <div className="border border-hair rounded-xl bg-surface p-5">
@@ -4923,10 +4945,12 @@ function planByTier(tier) {
 
 function subscriptionStatusLabel(status) {
   if (status === 'active' || status === 'dev_override') return 'Ativo';
+  if (status === 'trialing') return 'Período gratuito';
   if (status === 'creator') return 'Criador';
   if (status === 'inactive') return 'Inativo';
   if (status === 'canceled') return 'Cancelado';
   if (status === 'past_due') return 'Pagamento pendente';
+  if (status === 'expired') return 'Expirado';
   return status || 'Sem plano';
 }
 
@@ -4951,6 +4975,16 @@ function daysLeftLabel(value, cancelAtPeriodEnd, manualRenewal = false) {
   if (days === 0) return cancelAtPeriodEnd ? 'Cancela hoje' : 'Vence hoje';
   if (manualRenewal) return `Vence em ${plural(days, 'dia', 'dias')}`;
   return cancelAtPeriodEnd ? `Cancela em ${plural(days, 'dia', 'dias')}` : `Renova em ${plural(days, 'dia', 'dias')}`;
+}
+
+// Para o aviso do trial especificamente -- frase própria, porque "Renova em
+// 5 dias" soa a cobrança já em curso, e um trial ainda não cobrou nada.
+function trialDaysLeftLabel(currentPeriodEnd) {
+  const days = daysUntil(currentPeriodEnd);
+  if (days == null) return 'O seu período gratuito está a decorrer';
+  if (days <= 0) return 'O seu período gratuito termina hoje';
+  if (days === 1) return 'O seu período gratuito termina amanhã';
+  return `Faltam ${days} dias do seu período gratuito`;
 }
 
 function paymentMethodLabel(subscription) {
@@ -6062,12 +6096,20 @@ function SettingsModal({
                       {subscriptionStatusLabel(subscription?.status)}
                     </span>
                   </div>
+                  {subscription?.status === 'trialing' && !subscription?.cancelAtPeriodEnd && (
+                    <div className="text-xs font-body px-3 py-2.5 rounded-lg flex items-start gap-2" style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)' }}>
+                      <Clock size={14} className="flex-shrink-0" style={{ marginTop: 1 }} />
+                      <span>
+                        {trialDaysLeftLabel(subscription.currentPeriodEnd)}. A partir de {fmtDateLong(subscription.currentPeriodEnd)}, passa a ser cobrado {planValue}/mês.
+                      </span>
+                    </div>
+                  )}
                   <dl className="flex flex-col text-sm font-body border-t border-hair">
                     <SettingsRow icon={Wallet} label="Valor" value={planValue} />
                     <SettingsRow icon={CalendarRange} label="Ciclo" value={billingInterval} />
                     <SettingsRow
                       icon={CalendarDays}
-                      label={isManualPayment ? 'Vencimento' : subscription?.cancelAtPeriodEnd ? 'Fim do acesso' : 'Próxima renovação'}
+                      label={isManualPayment ? 'Vencimento' : subscription?.cancelAtPeriodEnd ? 'Fim do acesso' : subscription?.status === 'trialing' ? 'Fim do período gratuito' : 'Próxima renovação'}
                       value={renewalLabel}
                       tone={subscription?.cancelAtPeriodEnd ? 'var(--rust)' : undefined}
                     />
@@ -6075,7 +6117,9 @@ function SettingsModal({
                   </dl>
                   {subscription?.cancelAtPeriodEnd && (
                     <div className="text-xs font-body px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--rust-soft)', color: 'var(--rust)' }}>
-                      Cancelamento agendado. O acesso permanece até {fmtDateLong(subscription.currentPeriodEnd)}.
+                      {subscription?.status === 'trialing'
+                        ? `Cancelamento agendado — não será cobrado. O acesso do período gratuito permanece até ${fmtDateLong(subscription.currentPeriodEnd)}.`
+                        : `Cancelamento agendado. O acesso permanece até ${fmtDateLong(subscription.currentPeriodEnd)}.`}
                     </div>
                   )}
                   <button onClick={onRefreshSubscription} type="button" className="btn btn-ghost self-start" style={{ fontSize: 12 }}>
@@ -17053,7 +17097,7 @@ function AppInner() {
       />
     );
   }
-  if (supabaseConfigured && !subscriptionActive) return <SalesPlansPage onSignOut={signOut} onRefresh={refreshSubscription} checkoutReturn={checkoutReturn} />;
+  if (supabaseConfigured && !subscriptionActive) return <SalesPlansPage onSignOut={signOut} onRefresh={refreshSubscription} checkoutReturn={checkoutReturn} subscription={subscription} />;
 
   return (
     <div className="min-h-screen bg-base flex flex-col">

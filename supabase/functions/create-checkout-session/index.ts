@@ -21,6 +21,10 @@ const PRICE_BY_PLAN: Record<string, string | undefined> = {
   anual: Deno.env.get('STRIPE_PRICE_YEARLY'),
 };
 
+// Só o mensal tem os 7 dias grátis -- trimestral e anual já têm o próprio
+// incentivo (meses grátis) e cobram desde o início.
+const TRIAL_DAYS_BY_PLAN: Record<string, number> = { mensal: 7 };
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -80,6 +84,25 @@ Deno.serve(async (req) => {
     params.set('subscription_data[metadata][user_id]', user.id);
     params.set('subscription_data[metadata][plan_id]', planId);
 
+    // Os 7 dias grátis só valem para quem nunca teve conta -- decidido aqui,
+    // no servidor, nunca por algo que o cliente peça. Cancelar e voltar a
+    // assinar, ou tentar de novo depois de um trial anterior, não repete o
+    // trial: a mesma verificação que já impede o bónus de "meses grátis"
+    // repetido (ver stripe-webhook).
+    const trialDays = TRIAL_DAYS_BY_PLAN[planId];
+    if (trialDays) {
+      const jaTeveConta = await userHasPriorSubscription(supabaseUrl, supabaseAnonKey, authHeader);
+      if (!jaTeveConta) {
+        params.set('subscription_data[trial_period_days]', String(trialDays));
+        // Sem isto, uma subscrição em trial cujo cartão falhe ao fim dos 7
+        // dias fica "incomplete" indefinidamente em vez de se resolver --
+        // cancela e liberta o lugar para tentar de novo, em vez de prender
+        // a conta num limbo que nem cobra nem liberta.
+        params.set('subscription_data[trial_settings][end_behavior][missing_payment_method]', 'cancel');
+        params.set('payment_method_collection', 'always');
+      }
+    }
+
     const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',
       headers: {
@@ -105,6 +128,26 @@ function json(payload: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+// Lê pela API do próprio utilizador (não service_role) -- a política "Users
+// can read own subscription" já garante que só vê a própria linha, e não
+// precisamos de um privilégio maior só para esta pergunta de sim/não.
+// Falha fechada (nega o trial) se o pedido em si falhar: ao contrário do
+// bónus de meses grátis, conceder um trial a mais é um desconto que se
+// repete sozinho se o mecanismo tiver um problema -- mais vale negar um
+// trial genuíno por uma falha rara do que abrir essa porta.
+async function userHasPriorSubscription(supabaseUrl: string, supabaseAnonKey: string, authHeader: string) {
+  try {
+    const res = await fetch(`${supabaseUrl}/rest/v1/personal_subscriptions?select=user_id&limit=1`, {
+      headers: { apikey: supabaseAnonKey, Authorization: authHeader },
+    });
+    if (!res.ok) return true;
+    const rows = await res.json();
+    return Array.isArray(rows) && rows.length > 0;
+  } catch (_) {
+    return true;
+  }
 }
 
 // A origem de confiança é sempre APP_ORIGIN quando está configurado. O

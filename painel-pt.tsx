@@ -3813,15 +3813,6 @@ function GlobalStyles() {
         }
       }
 
-      /* Arrastar: o cursor muda em toda a pagina e o texto deixa de selecionar,
-         senao o arrasto pinta seleccao pelo caminho. */
-      body.a-arrastar { cursor: grabbing !important; user-select: none; }
-      body.a-arrastar * { cursor: grabbing !important; }
-      .dia-alvo {
-        outline: 2px dashed var(--brass);
-        outline-offset: 2px;
-        background-color: var(--brass-soft) !important;
-      }
 
       @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
@@ -7104,82 +7095,12 @@ function PhotoPicker({ photoIds, onAdd, onRemove, photosById, busy }) {
 // browser nos entregar o movimento em vez de deslizar a pagina, a zona tem de
 // ter touch-action: none -- e isso, aplicado ao cartao todo, impediria o
 // utilizador de fazer scroll comecando em cima de uma aula.
-function useArrastarSessao(onLargar) {
-  const [arrasto, setArrasto] = useState(null);   // { dx, dy }
-  const [alvo, setAlvo] = useState(null);         // ISO do dia sob o dedo
-  const ref = useRef(null);
-
-  useEffect(() => {
-    if (!arrasto) return undefined;
-    const st = ref.current;
-    if (!st) return undefined;
-
-    function diaSob(x, y) {
-      const el = document.elementFromPoint(x, y);
-      const col = el && el.closest ? el.closest('[data-day-iso]') : null;
-      return col ? col.getAttribute('data-day-iso') : null;
-    }
-    function mover(e) {
-      st.dx = e.clientX - st.x0;
-      st.dy = e.clientY - st.y0;
-      setArrasto({ dx: st.dx, dy: st.dy });
-      const iso = diaSob(e.clientX, e.clientY);
-      setAlvo(iso);
-      realcar(iso);
-      e.preventDefault();
-    }
-    function largar(e) {
-      const destino = diaSob(e.clientX, e.clientY);
-      limpar();
-      if (destino) onLargar(destino);
-    }
-    // Realce imperativo da coluna sob o dedo. Passar isto por props obrigaria a
-    // levantar o estado do arrasto ate a vista da semana e a descê-lo de novo.
-    function realcar(iso) {
-      const anterior = document.querySelector('.dia-alvo');
-      if (anterior) anterior.classList.remove('dia-alvo');
-      if (!iso) return;
-      const col = document.querySelector(`[data-day-iso="${iso}"]`);
-      if (col) col.classList.add('dia-alvo');
-    }
-    function limpar() {
-      ref.current = null;
-      realcar(null);
-      document.body.classList.remove('a-arrastar');
-      setArrasto(null);
-      setAlvo(null);
-    }
-    document.body.classList.add('a-arrastar');
-    window.addEventListener('pointermove', mover, { passive: false });
-    window.addEventListener('pointerup', largar);
-    window.addEventListener('pointercancel', limpar);
-    return () => {
-      window.removeEventListener('pointermove', mover);
-      window.removeEventListener('pointerup', largar);
-      window.removeEventListener('pointercancel', limpar);
-    };
-  }, [Boolean(arrasto), onLargar]);
-
-  function comecar(e) {
-    if (e.button !== undefined && e.button !== 0) return;   // so o botao principal
-    e.stopPropagation();
-    e.preventDefault();
-    ref.current = { x0: e.clientX, y0: e.clientY, dx: 0, dy: 0 };
-    setArrasto({ dx: 0, dy: 0 });
-  }
-
-  return { arrasto, alvo, comecar };
-}
-
-function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, customCategories, compact, selecao }) {
-  const largar = React.useCallback((iso) => { if (onMoveTo) onMoveTo(session, iso); }, [onMoveTo, session]);
-  const { arrasto, alvo, comecar } = useArrastarSessao(largar);
-  // Em modo de seleção o cartão deixa de abrir e passa a marcar-se. A pega de
-  // arrastar sai: mover em bloco faz-se pela barra, com data à escolha.
+function SessionCard({ session, student, onOpen, onQuickStatus, customCategories, compact, selecao }) {
+  // Em modo de seleção o cartão deixa de abrir e passa a marcar-se: mover em
+  // bloco faz-se pela barra, com data à escolha.
   const aSelecionar = Boolean(selecao && selecao.ativo);
   const selecionada = aSelecionar && selecao.ids.includes(session.id);
   const abrir = aSelecionar ? () => selecao.alternar(session.id) : onOpen;
-  const aArrastar = Boolean(arrasto);
   const isEvento = session.kind === 'evento';
   const type = isEvento ? eventTypeFor(session.type, customCategories) : sessionTypeFor(session.type, customCategories);
   const TypeIcon = iconOf(type.icon);
@@ -7222,39 +7143,7 @@ function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, custom
   );
 
   return (
-    // A pega e irma do cartao, e nao filha: um <button> dentro de um elemento com
-    // role="button" e ARIA invalido, e o rotulo da pega passaria a fazer parte do
-    // nome acessivel do cartao.
-    <div
-      className="relative min-w-0"
-      style={{
-        // Segue o dedo 1:1, passa a frente e deixa de ser alvo do hit test, para
-        // o elementFromPoint encontrar a coluna por baixo.
-        transform: aArrastar ? `translate3d(${arrasto.dx}px, ${arrasto.dy}px, 0)` : 'none',
-        zIndex: aArrastar ? 40 : 'auto',
-        opacity: aArrastar ? 0.92 : 1,
-        pointerEvents: aArrastar ? 'none' : 'auto',
-        filter: aArrastar ? 'drop-shadow(var(--shadow-drag))' : 'none',
-      }}
-    >
-      {onMoveTo && !aSelecionar && (
-        <button
-          type="button"
-          onPointerDown={comecar}
-          onClick={(e) => e.stopPropagation()}
-          aria-label={`Arrastar para outro dia: ${isEvento ? type.label : (student?.name || 'aula')}`}
-          title="Arrastar para outro dia"
-          className="absolute rounded btn-surface"
-          // Alvo de toque generoso com icone pequeno: 17x21 era demasiado
-          // apertado para um dedo. O padding cresce, o desenho fica igual.
-          style={{
-            right: 0, bottom: 0, zIndex: 2,
-            padding: '10px 9px', touchAction: 'none', cursor: 'grab', lineHeight: 0,
-          }}
-        >
-          <GripVertical size={13} className="text-faint" style={{ display: 'block' }} />
-        </button>
-      )}
+    <div className="relative min-w-0">
       {nAcoes > 0 && (
         <div
           className={`absolute flex gap-1 ${compact ? '' : 'flex-col'}`}
@@ -7918,7 +7807,7 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
 
 /* ============================== WEEKLY VIEW ============================== */
 
-function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSession, onPasteSession, onMoveSession, temCopia, horario, students, compact, customCategories, selecao }) {
+function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSession, onPasteSession, temCopia, horario, students, compact, customCategories, selecao }) {
   const iso = fmtDateISO(date);
   const isToday = iso === fmtDateISO(new Date());
   const fechado = horario && !horario.aberto;
@@ -7975,7 +7864,7 @@ function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSess
         {sessionsList.length === 0 && <div className="text-xs text-faint font-body py-3 text-center">Nada agendado</div>}
         {sessionsList.map((s) => {
           const student = students.find((st) => st.id === s.studentId);
-          return <SessionCard key={s.id} session={s} student={student} onOpen={() => onOpenSession(s)} onQuickStatus={onQuickStatus} onMoveTo={onMoveSession} customCategories={customCategories} compact={compact} selecao={selecao} />;
+          return <SessionCard key={s.id} session={s} student={student} onOpen={() => onOpenSession(s)} onQuickStatus={onQuickStatus} customCategories={customCategories} compact={compact} selecao={selecao} />;
         })}
       </div>
     </div>
@@ -8214,7 +8103,7 @@ function BarraSelecao({ selecao }) {
 
 // Um dia inteiro, em coluna unica. Reaproveita a DayColumn da semana: o mesmo
 // cartao, o mesmo arrastar, o mesmo menu de colar.
-function DailyView({ sessions, students, dayCursor, setDayCursor, onOpenSession, onQuickStatus, onAddSession, onPasteSession, onMoveSession, temCopia, definicoes, customCategories, selecao }) {
+function DailyView({ sessions, students, dayCursor, setDayCursor, onOpenSession, onQuickStatus, onAddSession, onPasteSession, temCopia, definicoes, customCategories, selecao }) {
   const iso = fmtDateISO(dayCursor);
   const doDia = sessions.filter((s) => s.date === iso).sort((a, b) => a.startTime.localeCompare(b.startTime));
   const horario = definicoes ? horarioDoDia(definicoes, iso) : null;
@@ -8249,7 +8138,6 @@ function DailyView({ sessions, students, dayCursor, setDayCursor, onOpenSession,
         onQuickStatus={onQuickStatus}
         onAddSession={onAddSession}
         onPasteSession={onPasteSession}
-        onMoveSession={onMoveSession}
         temCopia={temCopia}
         customCategories={customCategories}
         selecao={selecao}
@@ -8343,7 +8231,7 @@ function ListaView({ sessions, students, onOpenSession, customCategories }) {
   );
 }
 
-function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession, onQuickStatus, onAddSession, onPasteSession, onMoveSession, onLibertarSemana, temCopia, definicoes, customCategories, selecao }) {
+function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession, onQuickStatus, onAddSession, onPasteSession, onLibertarSemana, temCopia, definicoes, customCategories, selecao }) {
   const [selectedDay, setSelectedDay] = useState(fmtDateISO(new Date()));
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
@@ -8444,7 +8332,7 @@ function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession
       </div>
 
       <div className="md:hidden">
-        <DayColumn date={days.find((d) => fmtDateISO(d) === selectedDay) || days[0]} sessionsList={sessionsForDay(selectedDay)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} onPasteSession={onPasteSession} onMoveSession={onMoveSession} temCopia={temCopia} horario={horarioDoDia(definicoes, selectedDay)} customCategories={customCategories} selecao={selecao} />
+        <DayColumn date={days.find((d) => fmtDateISO(d) === selectedDay) || days[0]} sessionsList={sessionsForDay(selectedDay)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} onPasteSession={onPasteSession} temCopia={temCopia} horario={horarioDoDia(definicoes, selectedDay)} customCategories={customCategories} selecao={selecao} />
       </div>
 
       {/* Largura mínima por coluna: abaixo disso os nomes ficavam ilegíveis.
@@ -8453,7 +8341,7 @@ function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession
         <div className="grid grid-cols-7 gap-3" style={{ minWidth: 980 }}>
           {days.map((d) => {
             const iso = fmtDateISO(d);
-            return <DayColumn key={iso} date={d} sessionsList={sessionsForDay(iso)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} onPasteSession={onPasteSession} onMoveSession={onMoveSession} temCopia={temCopia} horario={horarioDoDia(definicoes, iso)} compact customCategories={customCategories} selecao={selecao} />;
+            return <DayColumn key={iso} date={d} sessionsList={sessionsForDay(iso)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} onPasteSession={onPasteSession} temCopia={temCopia} horario={horarioDoDia(definicoes, iso)} compact customCategories={customCategories} selecao={selecao} />;
           })}
         </div>
       </div>
@@ -16555,31 +16443,6 @@ function AppInner() {
     setShowSessionModal(true);
   }
 
-  function moveSessionTo(session, dateIso) {
-    if (!session || session.date === dateIso) return;
-    const anterior = {
-      id: session.id, date: session.date, startTime: session.startTime, endTime: session.endTime,
-    };
-    const movida = { ...session, date: dateIso };
-    const proximas = sessions.map((x) => (x.id === session.id ? movida : x));
-    persistSessions(proximas);
-
-    // Avisos que não impedem nada: a aula já está no dia novo, e o treinador
-    // decide o que fazer com a informação.
-    const choques = conflitosDe(proximas, movida).length;
-    const foraDoHorario = !dentroDoHorario(definicoes, dateIso, movida.startTime, movida.endTime);
-    const avisos = [
-      choques ? plural(choques, 'sobreposição', 'sobreposições') : null,
-      foraDoHorario ? 'fora do horário' : null,
-    ].filter(Boolean);
-
-    showToast(
-      `Movida para ${fmtDateBR(`${dateIso}T00:00:00`)}${avisos.length ? ` · ${avisos.join(' · ')}` : ''}.`,
-      avisos.length ? 'error' : 'success',
-      { label: 'Desfazer', onClick: () => desfazerMovimento(anterior) },
-    );
-  }
-
   /* ---------- seleção múltipla na agenda ---------- */
 
   function alternarSelecionada(id) {
@@ -16728,16 +16591,6 @@ function AppInner() {
     // Para a barra poder dizer a verdade sobre o que vai apagar.
     escolhidas: sessions.filter((s) => selecionadas.includes(s.id)),
   };
-
-  // Lê da referência e não do estado do render: entre gravar e clicar em
-  // Desfazer houve outra gravação, e a lista deste render já está velha.
-  function desfazerMovimento(anterior) {
-    if (!anterior) return;
-    persistSessions(sessionsRef.current.map((s) => (s.id === anterior.id
-      ? { ...s, date: anterior.date, startTime: anterior.startTime, endTime: anterior.endTime }
-      : s)));
-    showToast('Reposta no sítio anterior.');
-  }
 
   // Abre o modal de aula já preparado como reposição de uma falta concreta,
   // para o utilizador não ter de criar a ligação à mão.
@@ -16997,8 +16850,8 @@ function AppInner() {
             <AgendaFiltros filtro={agendaFiltro} setFiltro={setAgendaFiltro} total={sessions.length} visiveis={sessoesVisiveis.length} />
           </div>
         )}
-        {view === 'agenda' && agendaScale === 'daily' && <DailyView sessions={sessoesVisiveis} students={students} dayCursor={dayCursor} setDayCursor={setDayCursor} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} onPasteSession={pasteSession} onMoveSession={moveSessionTo} temCopia={Boolean(clipboardSession)} definicoes={definicoes} customCategories={customCategories} selecao={selecaoAgenda} />}
-        {view === 'agenda' && agendaScale === 'weekly' && <WeeklyView sessions={sessoesVisiveis} students={students} weekStart={weekStart} setWeekStart={setWeekStart} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} onPasteSession={pasteSession} onMoveSession={moveSessionTo} onLibertarSemana={libertarSemana} temCopia={Boolean(clipboardSession)} definicoes={definicoes} customCategories={customCategories} selecao={selecaoAgenda} />}
+        {view === 'agenda' && agendaScale === 'daily' && <DailyView sessions={sessoesVisiveis} students={students} dayCursor={dayCursor} setDayCursor={setDayCursor} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} onPasteSession={pasteSession} temCopia={Boolean(clipboardSession)} definicoes={definicoes} customCategories={customCategories} selecao={selecaoAgenda} />}
+        {view === 'agenda' && agendaScale === 'weekly' && <WeeklyView sessions={sessoesVisiveis} students={students} weekStart={weekStart} setWeekStart={setWeekStart} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} onPasteSession={pasteSession} onLibertarSemana={libertarSemana} temCopia={Boolean(clipboardSession)} definicoes={definicoes} customCategories={customCategories} selecao={selecaoAgenda} />}
         {view === 'agenda' && agendaScale === 'monthly' && <MonthlyView sessions={sessoesVisiveis} students={students} monthCursor={monthCursor} setMonthCursor={setMonthCursor} onOpenDay={setDayDetailIso} customCategories={customCategories} />}
         {view === 'agenda' && agendaScale === 'lista' && <ListaView sessions={sessoesVisiveis} students={students} onOpenSession={openEditSession} customCategories={customCategories} />}
         {view === 'faltas' && (

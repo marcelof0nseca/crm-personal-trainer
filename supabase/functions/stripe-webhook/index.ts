@@ -60,7 +60,10 @@ function isFirstCycle(subscription) {
 // chegam frequentemente juntos) a negarem o bónus um ao outro.
 function bonusMonthsFor(subscription, tier, jaTeveConta) {
   const accessMonths = PLAN_ACCESS_MONTHS[tier];
-  if (!accessMonths || !isFirstCycle(subscription) || jaTeveConta) return 0;
+  // Durante o trial o "período" são os 7 dias grátis, não um mês pago -- sem
+  // esta guarda, o cálculo via coveredMonths achava que faltava quase um mês
+  // inteiro por cobrir e esticava current_period_end para lá do fim do trial.
+  if (!accessMonths || subscription.status === 'trialing' || !isFirstCycle(subscription) || jaTeveConta) return 0;
   const start = periodStartOf(subscription);
   const end = periodEndOf(subscription);
   if (!start || !end || end <= start) return 0;
@@ -204,8 +207,14 @@ async function readSubscriptionRow(userId, supabaseUrl, serviceRoleKey) {
 // Traduz a diferença entre o estado anterior e o novo num tipo de evento.
 // Devolve null quando nada de relevante mudou, para não encher a tabela de ruído.
 function derivarEvento(anterior, payload, overrides) {
-  if (!anterior) return 'created';
-  if (payload.plan_status === 'canceled' && anterior.plan_status !== 'canceled') return 'canceled';
+  if (!anterior) return payload.plan_status === 'trialing' ? 'trial_started' : 'created';
+  if (payload.plan_status === 'canceled' && anterior.plan_status !== 'canceled') {
+    return anterior.plan_status === 'trialing' ? 'trial_canceled' : 'canceled';
+  }
+  // O trial acaba de virar cobrança a sério -- é a transição mais importante
+  // de rastrear neste fluxo inteiro, por isso ganha o próprio tipo em vez de
+  // cair em "renewed" (que também é verdade, mas esconde que veio de um trial).
+  if (anterior.plan_status === 'trialing' && payload.plan_status === 'active') return 'trial_converted';
 
   if (payload.plan_tier && anterior.plan_tier && payload.plan_tier !== anterior.plan_tier) {
     const de = TIER_ORDER.indexOf(anterior.plan_tier);
@@ -257,7 +266,11 @@ async function syncSubscription(subscription, stripeSecretKey, supabaseUrl, serv
 
   const planValue = firstItem?.price?.unit_amount != null ? firstItem.price.unit_amount / 100 : null;
   const deleted = subscription.status === 'canceled';
-  const active = ['active', 'trialing'].includes(subscription.status);
+  // 'trialing' grava-se como o seu próprio estado, não como 'active' -- o
+  // acesso é o mesmo (ver has_personal_app_access no schema), mas confundir
+  // os dois faria a aplicação nunca saber dizer "ainda não foi cobrado".
+  const trialing = subscription.status === 'trialing';
+  const active = subscription.status === 'active';
   const pastDue = ['past_due', 'unpaid', 'incomplete', 'incomplete_expired'].includes(subscription.status);
 
   // Lida antes do bónus e do upsert, para servir aos dois: ao bónus, como
@@ -273,7 +286,7 @@ async function syncSubscription(subscription, stripeSecretKey, supabaseUrl, serv
 
   const payload = {
     user_id: userId,
-    plan_status: deleted ? 'canceled' : active ? 'active' : pastDue ? 'past_due' : subscription.status,
+    plan_status: deleted ? 'canceled' : trialing ? 'trialing' : active ? 'active' : pastDue ? 'past_due' : subscription.status,
     plan_tier: plan.tier,
     plan_value: planValue,
     billing_interval: plan.interval,

@@ -2173,6 +2173,12 @@ const CORES_COMBINACAO = ['#1EA6B4', '#C77DFF', '#6FCF97', '#F5B44C', '#5DA9E9',
 // diferenciar, não para gritar.
 const TINTAS_COMBINACAO = [17, 11, 7, 5];
 
+// Um exercício sozinho também leva cor -- mais clara, depois um pouco mais
+// escura, alternando -- só para se distinguir do vizinho na lista. Bem mais
+// discreta do que a de uma combinação (17% no primeiro membro): aqui é só
+// para organizar a leitura, não para anunciar nada.
+const TINTAS_SOLO = [12, 7];
+
 function infoDeGrupos(exercicios) {
   const letras = {};
   const quantos = {};
@@ -2186,9 +2192,20 @@ function infoDeGrupos(exercicios) {
   });
   const usados = {};
   const saida = {};
+  let soloContagem = 0;
   (exercicios || []).forEach((e) => {
-    // Um exercício sozinho com um grupo não é uma combinação: fica neutro.
-    if (!e.grupo || quantos[e.grupo] < 2) return;
+    // Um exercício sozinho com um grupo não é uma combinação, mas continua a
+    // precisar de cor -- só não leva etiqueta nem entra na barra do topo, que
+    // são exclusivas de quem está mesmo encadeado (`primeiro`/`etiqueta`
+    // ficam de fora de propósito).
+    if (!e.grupo || quantos[e.grupo] < 2) {
+      saida[e.id] = {
+        cor: CORES_COMBINACAO[soloContagem % CORES_COMBINACAO.length],
+        tinta: TINTAS_SOLO[soloContagem % TINTAS_SOLO.length],
+      };
+      soloContagem += 1;
+      return;
+    }
     usados[e.grupo] = (usados[e.grupo] || 0) + 1;
     const indice = letras[e.grupo];
     const posicao = usados[e.grupo];
@@ -9984,7 +10001,7 @@ function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, 
           </button>
           <div className="min-w-0">
             <div className="text-sm font-body text-primary truncate" style={{ fontWeight: 500 }}>
-              {grupoInfo && (
+              {grupoInfo && grupoInfo.etiqueta && (
                 <span className="font-mono text-2xs mr-1.5" style={{ color: acentoTexto(grupoInfo.cor), fontWeight: 600 }}>{grupoInfo.etiqueta}</span>
               )}
               {ex.nome || 'Exercício'}
@@ -10279,7 +10296,7 @@ function ExercicioVista({ ex, biblioteca, grupoInfo, onMudar, comCabecalho }) {
       }}
     >
       <div className="flex items-baseline gap-2 flex-wrap min-w-0">
-        {grupoInfo && (
+        {grupoInfo && grupoInfo.etiqueta && (
           <span className="font-mono text-2xs flex-shrink-0" style={{ color: acentoTexto(grupoInfo.cor), fontWeight: 700 }}>
             {grupoInfo.etiqueta}
           </span>

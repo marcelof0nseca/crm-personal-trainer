@@ -10332,6 +10332,105 @@ function BarraCombinacao({ info, combinacao, onMudar }) {
   );
 }
 
+// Agrupa exercicios consecutivos do mesmo grupo num so passo. Os limites de
+// bloco nunca se atravessam: um passo e sempre dentro de um bloco so.
+function passosDoTreino(blocos, infos) {
+  const passos = [];
+  (blocos || []).forEach(([bloco, doBloco]) => {
+    let atual = null;
+    doBloco.forEach((ex) => {
+      const info = infos[ex.id];
+      const grupo = info && info.grupo;
+      if (grupo && atual && atual.grupo === grupo) {
+        atual.membros.push(ex);
+      } else {
+        atual = { bloco, grupo: grupo || null, membros: [ex] };
+        passos.push(atual);
+      }
+    });
+  });
+  return passos;
+}
+
+// Um exercicio (ou uma combinacao inteira) de cada vez, com setas e uma barra
+// de progresso -- para se usar no meio da sala, sem ter de percorrer a lista
+// inteira entre duas series.
+function TreinoSegmentado({ treino, infos, blocos, biblioteca, onMudarExercicio, onMudarCombinacao }) {
+  const passos = useMemo(() => passosDoTreino(blocos, infos), [blocos, infos]);
+  const [passoAtual, setPassoAtual] = useState(0);
+  // Trocar de treino com um passo guardado que ja nao existe desenhava o
+  // nada; volta sempre ao primeiro.
+  useEffect(() => { setPassoAtual(0); }, [treino.id]);
+
+  if (passos.length === 0) return <EmptyState icon={Dumbbell} message="Sem exercícios neste treino." />;
+
+  const indice = Math.min(passoAtual, passos.length - 1);
+  const passo = passos[indice];
+  const infoPrimeiro = infos[passo.membros[0].id];
+  const percentagem = Math.round(((indice + 1) / passos.length) * 100);
+
+  return (
+    <div className="flex flex-col gap-4 min-w-0">
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between text-2xs font-body text-faint">
+          <span>Passo {indice + 1} de {passos.length}</span>
+          <span className="font-mono">{percentagem}%</span>
+        </div>
+        <div className="w-full rounded-full overflow-hidden" style={{ height: 6, backgroundColor: 'var(--bg-inset)' }} role="progressbar" aria-valuenow={percentagem} aria-valuemin={0} aria-valuemax={100} aria-label="Progresso do treino">
+          <div style={{ width: `${percentagem}%`, height: '100%', backgroundColor: 'var(--brass)', transition: 'width 240ms var(--ease)' }} />
+        </div>
+      </div>
+
+      {blocos.length > 1 && (
+        <div className="text-2xs uppercase tracking-wide text-faint font-mono">{passo.bloco}</div>
+      )}
+
+      {passo.grupo && infoPrimeiro && (
+        <BarraCombinacao
+          info={infoPrimeiro}
+          combinacao={grupoDoTreino(treino, passo.grupo)}
+          onMudar={(c) => onMudarCombinacao(passo.grupo, c)}
+        />
+      )}
+
+      <div className="flex flex-col gap-3 min-w-0">
+        {passo.membros.map((ex) => (
+          <ExercicioVista
+            key={ex.id}
+            ex={ex}
+            biblioteca={biblioteca}
+            grupoInfo={infos[ex.id]}
+            comCabecalho
+            onMudar={onMudarExercicio}
+          />
+        ))}
+      </div>
+
+      {/* Setas grandes: entre duas séries é isto que se toca, com uma mão só. */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setPassoAtual((p) => Math.max(0, p - 1))}
+          disabled={indice === 0}
+          className="btn btn-ghost flex-1 disabled:opacity-30"
+          aria-label="Passo anterior"
+        >
+          <ChevronLeft size={16} /> Anterior
+        </button>
+        <button
+          type="button"
+          onClick={() => setPassoAtual((p) => Math.min(passos.length - 1, p + 1))}
+          disabled={indice === passos.length - 1}
+          className="btn btn-primary flex-1 disabled:opacity-30"
+          aria-label="Passo seguinte"
+        >
+          Seguinte <ChevronRight size={16} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ExercicioVista({ ex, biblioteca, grupoInfo, onMudar, comCabecalho }) {
   const [numeros, setNumeros] = useState(false);
   const daBiblioteca = biblioteca.find((b) => b.id === ex.exercicioId);
@@ -10467,6 +10566,9 @@ function NumeroDoResumo({ rotulo, valor, nota }) {
 function TreinoVista({ prescricao, biblioteca, onMudar, onEditar, onImprimir }) {
   const treinos = prescricao.treinos || [];
   const [abertoId, setAbertoId] = useState(treinos[0] ? treinos[0].id : null);
+  // 'completo' mostra o treino inteiro; 'segmentado' mostra um passo de cada
+  // vez -- as duas leem os mesmos dados, só a forma de percorrer muda.
+  const [modo, setModo] = useState('completo');
   // Um treino apagado no construtor não pode deixar a vista sem nada aberto.
   const treino = treinos.find((t) => t.id === abertoId) || treinos[0] || null;
   const resumo = useMemo(() => resumoDoTreino(treino), [treino]);
@@ -10558,25 +10660,68 @@ function TreinoVista({ prescricao, biblioteca, onMudar, onEditar, onImprimir }) 
 
           {treino && (
             <>
-              <div className="flex items-start gap-5 flex-wrap border-b border-hair" style={{ paddingBottom: 12 }}>
-                <NumeroDoResumo rotulo={resumo.exercicios === 1 ? 'exercício' : 'exercícios'} valor={resumo.exercicios} />
-                <NumeroDoResumo rotulo={resumo.series === 1 ? 'série' : 'séries'} valor={resumo.series} />
-                <NumeroDoResumo
-                  rotulo="de pausa"
-                  valor={resumo.descanso ? textoDeHoras(Math.round(resumo.descanso / 60)) : '—'}
-                  nota={resumo.descanso ? 'somando os descansos escritos' : 'sem descansos com número'}
-                />
-                <NumeroDoResumo
-                  rotulo="de volume"
-                  valor={resumo.volume ? `${Math.round(resumo.volume).toLocaleString('pt-PT')} kg` : '—'}
-                  nota={resumo.comCarga
-                    ? `reps × carga em ${resumo.comCarga} de ${resumo.series} séries`
-                    : 'sem séries com reps e carga em número'}
-                />
+              <div className="flex items-start justify-between gap-3 flex-wrap border-b border-hair" style={{ paddingBottom: 12 }}>
+                <div className="flex items-start gap-5 flex-wrap">
+                  <NumeroDoResumo rotulo={resumo.exercicios === 1 ? 'exercício' : 'exercícios'} valor={resumo.exercicios} />
+                  <NumeroDoResumo rotulo={resumo.series === 1 ? 'série' : 'séries'} valor={resumo.series} />
+                  <NumeroDoResumo
+                    rotulo="de pausa"
+                    valor={resumo.descanso ? textoDeHoras(Math.round(resumo.descanso / 60)) : '—'}
+                    nota={resumo.descanso ? 'somando os descansos escritos' : 'sem descansos com número'}
+                  />
+                  <NumeroDoResumo
+                    rotulo="de volume"
+                    valor={resumo.volume ? `${Math.round(resumo.volume).toLocaleString('pt-PT')} kg` : '—'}
+                    nota={resumo.comCarga
+                      ? `reps × carga em ${resumo.comCarga} de ${resumo.series} séries`
+                      : 'sem séries com reps e carga em número'}
+                  />
+                </div>
+                {/* Completo lê-se de uma vez; passo a passo é para o meio do
+                    treino, um exercício (ou uma combinação inteira) de cada
+                    vez, com setas e a percentagem de quanto já foi feito. */}
+                <div className="flex rounded-lg border border-hair overflow-hidden flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setModo('completo')}
+                    aria-pressed={modo === 'completo'}
+                    className="px-3 py-2 text-xs font-body nowrap"
+                    style={{
+                      backgroundColor: modo === 'completo' ? 'var(--brass-soft)' : 'transparent',
+                      color: modo === 'completo' ? 'var(--brass)' : 'var(--text-muted)',
+                      fontWeight: modo === 'completo' ? 600 : 400,
+                    }}
+                  >
+                    Completo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModo('segmentado')}
+                    aria-pressed={modo === 'segmentado'}
+                    className="px-3 py-2 text-xs font-body nowrap"
+                    style={{
+                      backgroundColor: modo === 'segmentado' ? 'var(--brass-soft)' : 'transparent',
+                      color: modo === 'segmentado' ? 'var(--brass)' : 'var(--text-muted)',
+                      fontWeight: modo === 'segmentado' ? 600 : 400,
+                    }}
+                  >
+                    Passo a passo
+                  </button>
+                </div>
               </div>
 
               {(treino.exercicios || []).length === 0 ? (
                 <EmptyState icon={Dumbbell} message="Sem exercícios neste treino." />
+              ) : modo === 'segmentado' ? (
+                <TreinoSegmentado
+                  key={treino.id}
+                  treino={treino}
+                  infos={infos}
+                  blocos={blocos}
+                  biblioteca={biblioteca}
+                  onMudarExercicio={mudarExercicio}
+                  onMudarCombinacao={mudarCombinacao}
+                />
               ) : (
                 <div className="flex flex-col gap-4 min-w-0">
                   {blocos.map(([bloco, doBloco]) => (
@@ -10610,14 +10755,16 @@ function TreinoVista({ prescricao, biblioteca, onMudar, onEditar, onImprimir }) 
                 </div>
               )}
 
-              {treino.notas && (
+              {treino.notas && modo === 'completo' && (
                 <p className="text-xs font-body text-muted min-w-0" style={{ whiteSpace: 'pre-wrap' }}>{treino.notas}</p>
               )}
 
-              <p className="text-2xs font-body text-faint">
-                A carga de cada série e os números dos métodos mudam-se aqui mesmo. Para trocar
-                exercícios, séries ou blocos, abra o construtor em «Editar programa».
-              </p>
+              {modo === 'completo' && (
+                <p className="text-2xs font-body text-faint">
+                  A carga de cada série e os números dos métodos mudam-se aqui mesmo. Para trocar
+                  exercícios, séries ou blocos, abra o construtor em «Editar programa».
+                </p>
+              )}
             </>
           )}
         </>

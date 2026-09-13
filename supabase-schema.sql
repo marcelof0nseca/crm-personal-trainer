@@ -57,7 +57,10 @@ as $$
     and (
       exists (
         select 1 from public.app_admins a
-        where a.email = lower(coalesce(auth.jwt() ->> 'email', ''))
+        -- Os dois lados normalizados -- sem isto, um e-mail inserido à mão
+        -- com uma maiúscula ou um espaço a mais nunca bate, e a conta de
+        -- criador deixa de ser reconhecida sem erro nenhum a avisar.
+        where trim(lower(a.email)) = trim(lower(coalesce(auth.jwt() ->> 'email', '')))
       )
       or exists (
         select 1
@@ -87,7 +90,7 @@ set search_path = public
 as $$
   select exists (
     select 1 from public.app_admins a
-    where a.email = lower(coalesce(auth.jwt() ->> 'email', ''))
+    where trim(lower(a.email)) = trim(lower(coalesce(auth.jwt() ->> 'email', '')))
   );
 $$;
 

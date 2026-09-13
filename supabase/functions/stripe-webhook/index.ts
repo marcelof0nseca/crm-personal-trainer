@@ -88,7 +88,13 @@ Deno.serve(async (req) => {
     }
 
     if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
-      await syncSubscription(event.data.object, stripeSecretKey, supabaseUrl, serviceRoleKey, { stripeEventId: event.id });
+      // Volta a ler a subscrição à Stripe em vez de confiar na fotografia
+      // presa ao evento: um evento antigo capturado e reenviado (a
+      // assinatura, sozinha, não tem validade -- só prova quem a fez, não
+      // quando) ficaria a repor um estado ultrapassado. A leitura ao vivo
+      // devolve sempre o estado atual, mesmo que o evento seja velho.
+      const subscription = await stripeGet(`/v1/subscriptions/${event.data.object.id}`, stripeSecretKey);
+      await syncSubscription(subscription, stripeSecretKey, supabaseUrl, serviceRoleKey, { stripeEventId: event.id });
     }
 
     if (event.type === 'invoice.payment_succeeded' || event.type === 'invoice.payment_failed') {
@@ -289,6 +295,11 @@ async function supabaseUpsertSubscription(payload, supabaseUrl, serviceRoleKey) 
   if (!response.ok) throw new Error(await response.text());
 }
 
+// Tolerância recomendada pela própria Stripe: um pedido com uma assinatura
+// válida mas um "t" fora desta janela é quase sempre um replay de um evento
+// capturado antes -- a assinatura, sozinha, prova quem o fez, não quando.
+const SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
+
 async function verifyStripeSignature(payload, signatureHeader, secret) {
   const parts = Object.fromEntries(signatureHeader.split(',').map((part) => {
     const [key, value] = part.split('=');
@@ -297,6 +308,9 @@ async function verifyStripeSignature(payload, signatureHeader, secret) {
   const timestamp = parts.t;
   const signature = parts.v1;
   if (!timestamp || !signature) return false;
+
+  const age = Math.abs(Date.now() / 1000 - Number(timestamp));
+  if (!Number.isFinite(age) || age > SIGNATURE_TOLERANCE_SECONDS) return false;
 
   const signedPayload = `${timestamp}.${payload}`;
   const key = await crypto.subtle.importKey(

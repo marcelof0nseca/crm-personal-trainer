@@ -321,6 +321,26 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
 - **Funções escritas e nunca chamadas.** Já aconteceu com `sessoesChocam`, que
   esteve meses no ficheiro sem ninguém a invocar. Antes de escrever uma
   utilidade, `grep` para ver se já existe.
+- **Um scanner de segurança do e-mail pode gastar um link de uso único antes
+  da pessoa clicar.** O "Safe Links" do Outlook/Microsoft 365 abre sozinho os
+  links de um e-mail para os verificar — e o link de recuperação de
+  palavra-passe do Supabase só funciona uma vez. Quem chegasse ao ecrã de
+  nova palavra-passe assim via um link já gasto e só descobria ao gravar,
+  com o erro em bruto do Supabase ("Auth session missing"). `ResetPasswordScreen`
+  confirma a sessão com `getSession()` **ao abrir**, antes do formulário, e
+  oferece pedir um novo link em vez de deixar escrever a palavra-passe toda
+  para nada.
+- **Um `input[type="date"]` nativo tem largura mínima própria, do controlo do
+  sistema.** O `grid-cols-*` do Tailwind já usa `minmax(0, 1fr)` nas colunas
+  — mas isso só limita o *track* da grelha; o campo lá dentro, sem
+  `min-width: 0` próprio, continua livre para se desenhar mais largo do que
+  a coluna. O Chrome de secretária resolve isto sozinho e esconde o
+  problema; o Safari do iOS respeita a largura mínima a sério e empurra a
+  caixa para fora do ecrã (apanhado no relatório do período, com "De" e
+  "Até" lado a lado). `.input-field` ganhou `min-width: 0`. **Não reproduz
+  no Playwright em Chromium** — a mesma lição do arrasto, mais acima nesta
+  lista: testar num browser de automação prova a lógica, não o desenho de
+  um controlo nativo específico doutra plataforma.
 
 ---
 
@@ -339,6 +359,16 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   desligado** (nuvem cinzenta), senão o certificado falha.
 - **Turnstile** — cada domínio novo tem de ser acrescentado à lista de
   hostnames, senão ninguém entra.
+- **E-mail (SMTP)** — Resend, domínio `ptmanagerapp.com` verificado por DNS na
+  Cloudflare (o "Auto configure" do Resend liga-se à conta e trata disto
+  sozinho), região `eu-west-1` (Irlanda) por consistência com o resto da
+  infraestrutura na UE. Ligado no Supabase em Project Settings →
+  Authentication → SMTP Settings: `smtp.resend.com`, porta `465`, utilizador
+  `resend`, senha é a API key do Resend (criada em API Keys, permissão só de
+  envio). Sender: `suporte@ptmanagerapp.com`. **Sem isto configurado, o
+  Supabase envia pelo serviço partilhado por omissão** — tem limite baixo de
+  envios por hora e o próprio painel avisa que não é para produção; o
+  e-mail de recuperação de palavra-passe depende disto.
 - **Dois fatores (TOTP)** — em Definições → Segurança. O ecrã do código é da
   interface; o portão a sério é a política restritiva `app_data_exige_aal2` no
   `supabase-schema.sql`. **Se essa política não estiver aplicada, uma sessão em
@@ -434,7 +464,7 @@ existe de verdade.
 |---|---|
 | **Agenda** | Dia, semana, mês, lista · procura e filtros · **botão de horários na própria agenda**, com horário por dia, **exceções por data** e pré-visualização da semana · horários livres em lote · **selecionar várias e mover, mudar a duração, bloquear ou apagar de uma vez** · copiar/colar · recorrência com "só esta / toda a série" · **replicar uma marcação por X semanas** · **três botões de confirmação com cor cheia: dada, falta, e falta com direito a reposição**, coloridos pelo **tipo da marcação** (`SESSION_TYPES`/`EVENT_TYPES`), não pelo aluno · **aviso de conflito**. **Sem arrastar o cartão para outro dia** — existiu, media todos os testes automatizados, mas não funcionava em telemóvel real e foi removido a pedido; mover uma sessão é pelo formulário (mudar a data) ou por "Selecionar várias" |
 | **Faltas** | Estados, direito a reposição, crédito ligado à aula de origem · **validade do crédito, estado "Expirada" e registo de auditoria** (quem concedeu, quando, o que aconteceu desde então) |
-| **Prescrição** | Treinos A/B/C, 2 076 exercícios, modelos, arquivo, PDF timbrado agrupado por bloco. Blocos, métodos como lista, 15 campos por exercício, duplicar, arrastar para reordenar · **combinações com nome e cor** (bi-set, supersérie, trissérie e mais nove), cada membro num tom da cor do grupo |
+| **Prescrição** | Treinos A/B/C, 2 076 exercícios, modelos, arquivo, PDF timbrado agrupado por bloco. Blocos, métodos como lista, 15 campos por exercício, duplicar, arrastar para reordenar · **11 combinações com nome e cor** (`METODOS_COMBINACAO`: bi-set, supersérie, superset antagonista, pré-exaustão, pós-exaustão, série composta, trissérie, giant set, circuito, contraste, complexo), cada membro num tom da cor do grupo |
 | **Vista de treino** | O programa como se lê, e não como se escreve: um treino de cada vez, por bloco, com o resumo em números (exercícios, séries, pausa somada, volume). **A carga de cada série e os números do método editam-se ali mesmo**; o resto é no construtor. **Dois modos**: completo (tudo de uma vez) e **passo a passo** — um exercício por vez, uma combinação inteira (bi-set, trissérie…) num só passo, com setas e barra de progresso (`TreinoSegmentado`, `passosDoTreino`). Exercícios soltos também têm cor própria, mais discreta que a de uma combinação, só para se distinguirem na lista. `TreinoVista`, ao lado de `PrescricaoBuilder` |
 | **Biblioteca** | Procura que traduz o termo escrito (pt-BR e inglês de ginásio) · sinónimos por exercício · favoritos · pastas · progressões, regressões e substituições, com **troca de exercício num clique dentro do treino** |
 | **Avaliações** | Dobras, % massa gorda, perímetros, fotografias, gráfico de evolução, PDF · **rascunho e final, autosave, revisões com motivo, comparar e repor** |
@@ -444,7 +474,7 @@ existe de verdade.
 | **Relatórios** | Relatório do período (atividade, ocupação da agenda, receita dos planos, lançamentos, tabela por aluno) e relatório de progresso do aluno (primeira vs última avaliação, com gráfico) · ambos timbrados |
 | **Ficha 360º** | Aulas, faltas, avaliações, treinos e formulários numa linha só, por aluno · procura livre sobre tudo · filtros por tipo e período · resumo com comparência e créditos · os pontos a ter em conta em cima |
 | **Formulários** | PAR-Q, anamnese e consentimentos (treino, imagem, dados de saúde) · construtor próprio · assinatura desenhada · PDF timbrado · pontos a ter em conta, ditos como avisos |
-| **Segurança** | Auth, RLS por utilizador, Turnstile, termos e política em pt-PT, dados na UE, exportação e apagamento |
+| **Segurança** | Auth, RLS por utilizador, Turnstile, termos e política em pt-PT, dados na UE, exportação e apagamento · **início de sessão** com olho para mostrar/esconder a palavra-passe e **recuperar palavra-passe** por e-mail (`LoginScreen`, modo `recover`) · `ResetPasswordScreen` dedicado, com aviso próprio se o link já não for válido em vez do erro em bruto do Supabase |
 | **Fiabilidade** | Gravação imediata, backup e restauro, **carimbo de versão contra perda silenciosa** |
 | **Admin** | Subscrições, receita, churn, alertas |
 | **Painel** | Navega para qualquer mês, para trás e para a frente (`monthCursor`) — a receita, a atividade e o gráfico por aluno seguem o mês visto; "hoje" e "esta semana" continuam presos ao presente, que não faz sentido navegar |

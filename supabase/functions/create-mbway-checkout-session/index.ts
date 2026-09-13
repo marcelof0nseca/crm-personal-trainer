@@ -1,6 +1,13 @@
+// APP_ORIGIN é a origem real do site, configurada como secret no Supabase.
+// Sem isto, o CORS e o success_url/cancel_url confiavam no cabeçalho Origin
+// do próprio pedido -- que um cliente fora do browser escreve à vontade.
+const APP_ORIGIN = Deno.env.get('APP_ORIGIN') || '';
+const DEV_ORIGINS = new Set(['http://localhost:5173', 'http://localhost:5199', 'http://localhost:5208', 'http://localhost:5210']);
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': APP_ORIGIN || '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  Vary: 'Origin',
 };
 
 // months = tempo de acesso concedido por pagamento, já com os meses grátis incluídos
@@ -53,7 +60,7 @@ Deno.serve(async (req) => {
       return json({ error: 'Invalid plan.' }, 400);
     }
 
-    const origin = safeOrigin(req.headers.get('Origin'));
+    const origin = trustedOrigin(req.headers.get('Origin'));
     const finalSuccessUrl = safeReturnUrl(successUrl, origin, '?checkout=success');
     const finalCancelUrl = safeReturnUrl(cancelUrl, origin, '?checkout=cancelled');
 
@@ -103,21 +110,18 @@ function json(payload: unknown, status = 200) {
   });
 }
 
-function safeOrigin(value: string | null) {
-  try {
-    const url = new URL(value || 'http://localhost:5173');
-    return url.origin;
-  } catch {
-    return 'http://localhost:5173';
-  }
+function trustedOrigin(requestOrigin: string | null) {
+  if (APP_ORIGIN) return APP_ORIGIN;
+  if (requestOrigin && DEV_ORIGINS.has(requestOrigin)) return requestOrigin;
+  return 'http://localhost:5173';
 }
 
-function safeReturnUrl(value: unknown, origin: string, fallbackPath: string) {
-  if (typeof value !== 'string') return `${origin}${fallbackPath}`;
+function safeReturnUrl(value: unknown, trusted: string, fallbackPath: string) {
+  if (typeof value !== 'string') return `${trusted}${fallbackPath}`;
   try {
     const url = new URL(value);
-    return url.origin === origin ? url.toString() : `${origin}${fallbackPath}`;
+    return url.origin === trusted ? url.toString() : `${trusted}${fallbackPath}`;
   } catch {
-    return `${origin}${fallbackPath}`;
+    return `${trusted}${fallbackPath}`;
   }
 }

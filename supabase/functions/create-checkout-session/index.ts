@@ -1,6 +1,18 @@
+// APP_ORIGIN é a origem real do site (ex.: https://ptmanagerapp.com),
+// configurada como secret no Supabase. Sem isto, o CORS e a validação do
+// success_url/cancel_url confiavam no cabeçalho Origin do próprio pedido --
+// que um cliente fora do browser (curl, script) escreve à vontade, e que um
+// browser real também envia em pedidos vindos de qualquer origem. Um pedido
+// com Origin forjado conseguia pôr a Stripe a redirecionar o comprador, a
+// seguir a um pagamento verdadeiro, para um domínio à escolha do atacante.
+const APP_ORIGIN = Deno.env.get('APP_ORIGIN') || '';
+// Só para desenvolvimento local: portas fixas, nunca derivadas do pedido.
+const DEV_ORIGINS = new Set(['http://localhost:5173', 'http://localhost:5199', 'http://localhost:5208', 'http://localhost:5210']);
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': APP_ORIGIN || '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  Vary: 'Origin',
 };
 
 const PRICE_BY_PLAN: Record<string, string | undefined> = {
@@ -51,7 +63,7 @@ Deno.serve(async (req) => {
       return json({ error: 'Invalid or unconfigured plan.' }, 400);
     }
 
-    const origin = safeOrigin(req.headers.get('Origin'));
+    const origin = trustedOrigin(req.headers.get('Origin'));
     const finalSuccessUrl = safeReturnUrl(successUrl, origin, '?checkout=success');
     const finalCancelUrl = safeReturnUrl(cancelUrl, origin, '?checkout=cancelled');
 
@@ -95,21 +107,21 @@ function json(payload: unknown, status = 200) {
   });
 }
 
-function safeOrigin(value: string | null) {
-  try {
-    const url = new URL(value || 'http://localhost:5173');
-    return url.origin;
-  } catch {
-    return 'http://localhost:5173';
-  }
+// A origem de confiança é sempre APP_ORIGIN quando está configurado. O
+// cabeçalho Origin do pedido só é aceite como alternativa para as portas
+// fixas de desenvolvimento local -- nunca para o que o pedido disser que é.
+function trustedOrigin(requestOrigin: string | null) {
+  if (APP_ORIGIN) return APP_ORIGIN;
+  if (requestOrigin && DEV_ORIGINS.has(requestOrigin)) return requestOrigin;
+  return 'http://localhost:5173';
 }
 
-function safeReturnUrl(value: unknown, origin: string, fallbackPath: string) {
-  if (typeof value !== 'string') return `${origin}${fallbackPath}`;
+function safeReturnUrl(value: unknown, trusted: string, fallbackPath: string) {
+  if (typeof value !== 'string') return `${trusted}${fallbackPath}`;
   try {
     const url = new URL(value);
-    return url.origin === origin ? url.toString() : `${origin}${fallbackPath}`;
+    return url.origin === trusted ? url.toString() : `${trusted}${fallbackPath}`;
   } catch {
-    return `${origin}${fallbackPath}`;
+    return `${trusted}${fallbackPath}`;
   }
 }

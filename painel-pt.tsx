@@ -7186,7 +7186,12 @@ function SessionCard({ session, student, onOpen, onQuickStatus, onMoveTo, custom
   const isFalta = session.status === 'falta';
   const isCancelado = session.status === 'cancelado';
   const isRealizado = session.status === 'realizado';
-  const color = isEvento ? type.color : (student?.color || '#54565D');
+  // A cor identifica o TIPO da marcação (horário fixo, reposição, avaliação,
+  // um evento pessoal…), não o aluno — cada tipo já tem cor própria fixa em
+  // SESSION_TYPES/EVENT_TYPES, pensada para se reconhecer a olho na agenda. O
+  // nome do aluno já vai escrito por extenso; usar a cor dele aqui apagava
+  // essa diferenciação por tipo, que é a que ajuda a ler o dia de relance.
+  const color = type.color;
   const statusInfo = STATUS_OPTIONS.find((o) => o.id === session.status);
 
   // Confirmar a aula, a falta e a falta com direito a reposição. Cada uma com

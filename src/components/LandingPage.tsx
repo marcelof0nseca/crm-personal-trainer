@@ -64,6 +64,15 @@ const FOLD_PROTOCOLS_MOCK = [
   'Guedes 3 Dobras',
 ];
 
+// As 11 combinações realmente disponíveis (METODOS_COMBINACAO, em
+// painel-pt.tsx) -- "e mais oito" não bastava para quem quisesse mesmo saber
+// quais são, por isso ficam todas nomeadas aqui.
+const COMBO_METHODS_MOCK = [
+  'Bi-set', 'Supersérie', 'Superset antagonista', 'Pré-exaustão',
+  'Pós-exaustão', 'Série composta', 'Trissérie', 'Giant set',
+  'Circuito', 'Contraste', 'Complexo',
+];
+
 const PHOTO_GRADIENTS = [
   'linear-gradient(135deg, #1EA6B4 0%, #14343a 100%)',
   'linear-gradient(135deg, #5DA9E9 0%, #1c2a3a 100%)',
@@ -192,7 +201,7 @@ const FEATURE_SECTIONS = [
     body: '2076 exercícios pesquisáveis em português, português do Brasil ou inglês de ginásio. Combine em bi-set, superset ou trissérie — cada combinação com a sua cor, para o treino se ler num relance.',
     bullets: [
       '2076 exercícios, com sinónimos, favoritos e pastas',
-      'Combinações com nome e cor: bi-set, superset, trissérie e mais nove',
+      '11 combinações com nome e cor, de bi-set a circuito — todas à vista',
       'Duas formas de ver: o treino completo, ou um exercício de cada vez',
     ],
     Mockup: TreinosMockup,
@@ -584,9 +593,29 @@ function TreinosMockup({ chromeless } = {}) {
         ))}
       </div>
 
-      <div className="flex items-start gap-2 mt-3 text-2xs font-body text-faint">
+      <div className="flex items-start gap-2 mt-3 mb-3 text-2xs font-body text-faint">
         <MousePointerClick size={12} className="text-brass flex-shrink-0" style={{ marginTop: 1 }} />
         <span>A carga de cada série edita-se aqui mesmo, a meio do treino.</span>
+      </div>
+
+      {/* As 11 combinações a sério -- para não ficar só no "e mais oito". */}
+      <div className="bg-elevated border border-hair rounded-lg p-3">
+        <div className="text-2xs uppercase tracking-wide text-faint font-body mb-2">Combinações disponíveis</div>
+        <div className="flex flex-wrap gap-1.5">
+          {COMBO_METHODS_MOCK.map((m, i) => (
+            <span
+              key={m}
+              className="rounded-md border px-2 py-1 text-2xs font-body"
+              style={{
+                borderColor: i === 0 ? 'var(--brass)' : 'var(--border-hair)',
+                color: i === 0 ? 'var(--brass)' : 'var(--text-muted)',
+                backgroundColor: i === 0 ? 'rgba(30,166,180,0.12)' : 'transparent',
+              }}
+            >
+              {m}
+            </span>
+          ))}
+        </div>
       </div>
     </MockupFrame>
   );

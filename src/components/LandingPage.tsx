@@ -1,8 +1,8 @@
 import { useRef, useState, useEffect } from 'react';
 import {
   MessageCircle, CalendarDays, RotateCcw, ClipboardCheck, Images, Wallet, TrendingDown,
-  ShieldCheck, LogIn, RefreshCcw, Lock, ChevronDown, CheckCircle2, TrendingUp, ArrowRight, UserPlus, Gift, Mail,
-  MousePointerClick,
+  ShieldCheck, ChevronDown, CheckCircle2, TrendingUp, UserPlus, Gift, Mail,
+  MousePointerClick, CalendarX2, FileSignature, Stamp, BarChart3, UserSearch,
 } from 'lucide-react';
 import LegalModal from './LegalDocs';
 
@@ -81,11 +81,65 @@ const PAIN_POINTS = [
   { icon: TrendingDown, text: 'Dificuldade em saber o lucro real' },
 ];
 
-const TRUST_ITEMS = [
-  { icon: Lock, text: 'Pagamento processado com segurança pela Stripe' },
-  { icon: ShieldCheck, text: 'Os seus dados ficam separados por conta, isolados dos restantes utilizadores' },
-  { icon: LogIn, text: 'Acesso protegido por sessão — só o titular entra no painel' },
-  { icon: RefreshCcw, text: 'Cancele ou altere o plano quando quiser, no portal da Stripe' },
+// Tudo o que existe de verdade e não tem secção própria mais acima — cada
+// item aqui é uma funcionalidade real do painel (ver CLAUDE.md, secção 10),
+// nunca uma promessa. É aqui, e só aqui, que se fala de segurança: a antiga
+// secção "Confiança" duplicava a mesma mensagem noutro sítio da página.
+const FEATURE_INDEX = [
+  {
+    icon: CalendarX2,
+    heading: 'Faltas e reposições',
+    items: [
+      'Direito a reposição registado na própria falta, ligado à aula de origem',
+      'Validade do crédito com estado "Expirada" quando o prazo passa',
+      'Registo de auditoria: quem concedeu, quando, e o que aconteceu depois',
+    ],
+  },
+  {
+    icon: FileSignature,
+    heading: 'Formulários de saúde',
+    items: [
+      'PAR-Q, anamnese e consentimentos — com construtor próprio para os seus',
+      'Assinatura desenhada no ecrã, guardada junto com a resposta',
+      'PDF timbrado, com os pontos a ter em conta assinalados como avisos',
+    ],
+  },
+  {
+    icon: Stamp,
+    heading: 'Documentos com o seu timbre',
+    items: [
+      'Logótipo, estúdio, número profissional e contactos em cada folha',
+      'Escolhe que secções saem, com pré-visualização antes de imprimir',
+      'Aviso de confidencialidade em todas as páginas',
+    ],
+  },
+  {
+    icon: BarChart3,
+    heading: 'Relatórios',
+    items: [
+      'Relatório do período: atividade, ocupação da agenda, receita e lançamentos',
+      'Relatório de progresso: primeira avaliação contra a mais recente, com gráfico',
+      'Ambos prontos a imprimir, com o mesmo timbre dos restantes documentos',
+    ],
+  },
+  {
+    icon: UserSearch,
+    heading: 'Ficha 360º',
+    items: [
+      'Aulas, faltas, avaliações, treinos e formulários de um aluno, numa linha só',
+      'Procura livre sobre todo o histórico, com filtros por tipo e período',
+      'Comparência e créditos de reposição resumidos no topo',
+    ],
+  },
+  {
+    icon: ShieldCheck,
+    heading: 'Segurança e fiabilidade',
+    items: [
+      'Autenticação de dois fatores e dados isolados por conta, alojados na UE',
+      'Gravação imediata, com aviso se outro dispositivo escrever primeiro',
+      'Exportação ou eliminação dos seus dados sempre que quiser',
+    ],
+  },
 ];
 
 const FAQ_ITEMS = [
@@ -99,11 +153,21 @@ const FAQ_ITEMS = [
   { q: 'Como ativo o meu plano depois de pagar?', a: 'Automaticamente. Assim que a Stripe confirma o pagamento, o plano fica ativo em poucos segundos — se demorar, o botão "Verificar subscrição" confirma de imediato.' },
 ];
 
+// Os três planos (SALES_PLANS, em painel-pt.tsx) diferem só no preço, no
+// período e no bónus — a funcionalidade é sempre a mesma. Por isso há uma
+// lista só, mostrada uma vez, em vez de repetir o mesmo bloco em cada
+// cartão: repetir três vezes sugeriria uma diferença que não existe.
 const PLAN_INCLUDES = [
-  'Alunos, agenda e avaliações sem limite',
-  'Fotos de progresso incluídas',
+  'Alunos, planos e preços sem limite',
+  'Agenda com dia, semana, mês e lista',
+  'Faltas, reposições e crédito com validade',
+  'Avaliações físicas, com fotos de progresso',
+  'Prescrição de treino e biblioteca com 2076 exercícios',
+  'Documentos e formulários com o seu timbre',
+  'Relatórios de atividade e de progresso do aluno',
+  'Ficha 360º de cada aluno',
   'Controlo financeiro completo',
-  'Suporte e portal de subscrição',
+  'Autenticação de dois fatores e suporte por e-mail',
 ];
 
 const FEATURE_SECTIONS = [
@@ -1011,6 +1075,41 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
           ))}
         </div>
 
+        {/* Tudo o que você precisa — o resto do produto, que não cabe em
+            cinco secções demonstradas sem repetir o que elas já mostraram. */}
+        <section className="max-w-6xl mx-auto px-4 py-12 sm:py-16">
+          <Revelar className="flex flex-col gap-2 text-center items-center mb-10">
+            <h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary leading-snug">E tudo o resto, no mesmo sítio</h2>
+            <p className="text-sm sm:text-base text-muted font-body max-w-xl">
+              O que não tem uma demonstração própria acima, mas está lá — pronto a usar desde o primeiro dia.
+            </p>
+          </Revelar>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {FEATURE_INDEX.map((cat, i) => (
+              <Revelar
+                key={cat.heading}
+                atraso={(i % 2) * 60}
+                className="border border-hair rounded-2xl bg-surface px-6 py-6 flex flex-col gap-3"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-lg flex-shrink-0" style={{ backgroundColor: 'rgba(30,166,180,0.12)' }}>
+                    <cat.icon size={16} className="text-brass" />
+                  </div>
+                  <h3 className="font-display text-sm font-semibold text-primary">{cat.heading}</h3>
+                </div>
+                <ul className="flex flex-col gap-1.5">
+                  {cat.items.map((it) => (
+                    <li key={it} className="flex items-start gap-2 text-xs sm:text-sm font-body text-muted">
+                      <CheckCircle2 size={13} className="text-brass flex-shrink-0 mt-0.5" />
+                      <span>{it}</span>
+                    </li>
+                  ))}
+                </ul>
+              </Revelar>
+            ))}
+          </div>
+        </section>
+
         {/* Planos */}
         <section ref={plansRef} className="max-w-6xl mx-auto px-4 py-12 sm:py-16 flex flex-col gap-8 scroll-mt-16">
           <div className="flex flex-col gap-2 text-center items-center">
@@ -1063,17 +1162,32 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
                   </div>
                 )}
 
-                <ul className="text-xs sm:text-sm text-muted font-body flex flex-col gap-1.5">
-                  {PLAN_INCLUDES.map((inc) => (
-                    <li key={inc} className="flex items-center gap-1.5">
-                      <CheckCircle2 size={13} className="text-brass flex-shrink-0" /> {inc}
-                    </li>
-                  ))}
-                </ul>
+                <p className="text-xs text-muted font-body">
+                  {plan.id === 'mensal' && 'Para começar sem compromisso, ou testar antes de decidir o período.'}
+                  {plan.id === 'trimestral' && 'O equilíbrio entre poupança e liberdade — o mais escolhido pelos treinadores.'}
+                  {plan.id === 'anual' && 'Para quem já sabe que fica — o custo mensal mais baixo dos três.'}
+                </p>
+
                 <PrimaryButton onClick={onGetStarted} className="mt-auto">Começar agora</PrimaryButton>
               </Revelar>
             ))}
           </div>
+
+          {/* O carrinho começa aqui: a mesma lista que a Stripe vai mostrar a
+              seguir, uma vez só, porque os três planos não diferem em
+              funcionalidade — só em preço, período e bónus. */}
+          <Revelar className="border border-hair rounded-2xl bg-surface p-6 sm:p-7">
+            <h3 className="font-display text-base font-semibold text-primary mb-4">Incluído em qualquer plano</h3>
+            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
+              {PLAN_INCLUDES.map((inc) => (
+                <li key={inc} className="flex items-start gap-2 text-sm font-body text-muted">
+                  <CheckCircle2 size={15} className="text-brass flex-shrink-0 mt-0.5" />
+                  <span>{inc}</span>
+                </li>
+              ))}
+            </ul>
+          </Revelar>
+
           <p className="text-center text-xs text-faint font-body max-w-xl mx-auto">
             Os meses grátis são acrescentados ao primeiro período, logo após a confirmação do pagamento.
           </p>
@@ -1082,24 +1196,6 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
               Prefere esclarecer dúvidas antes? Escreva-nos
             </a>
           )}
-        </section>
-
-        {/* Confiança / Segurança */}
-        <section className="max-w-4xl mx-auto px-4 py-12 sm:py-16">
-          <Revelar className="flex flex-col gap-2 text-center items-center mb-8">
-            <h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary">Os seus dados, protegidos do início ao fim</h2>
-            <p className="text-sm text-muted font-body max-w-xl">
-              O acesso ao painel exige sessão iniciada e subscrição ativa — cada conta vê apenas os seus próprios dados.
-            </p>
-          </Revelar>
-          <Revelar className="border border-hair rounded-2xl bg-surface overflow-hidden">
-            {[...TRUST_ITEMS, { icon: Mail, text: 'Suporte por e-mail sempre que precisar' }].map((t, i) => (
-              <div key={t.text} className={`flex items-center gap-3.5 px-5 py-4 ${i > 0 ? 'border-t border-hair' : ''}`}>
-                <t.icon size={16} className="text-brass flex-shrink-0" />
-                <span className="text-sm font-body text-muted">{t.text}</span>
-              </div>
-            ))}
-          </Revelar>
         </section>
 
         {/* FAQ */}

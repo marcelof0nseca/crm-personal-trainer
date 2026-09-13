@@ -12,11 +12,13 @@ const planByPriceId = {
   [Deno.env.get('STRIPE_PRICE_YEARLY') || '']: { tier: 'anual', interval: 'Anual' },
 };
 
-// months = tempo total de acesso concedido por pagamento (já inclui os meses grátis).
+// months = tempo total de acesso concedido por pagamento (já inclui os meses
+// grátis); paidMonths = só os meses pagos, sem bónus -- o que se concede a
+// quem já teve conta antes (ver activateOneTimePlan).
 const oneTimePlanDetails = {
-  mensal: { tier: 'mensal', interval: 'Mensal', value: 13.90, months: 1 },
-  trimestral: { tier: 'trimestral', interval: 'Trimestral', value: 39.90, months: 4 },
-  anual: { tier: 'anual', interval: 'Anual', value: 129.90, months: 14 },
+  mensal: { tier: 'mensal', interval: 'Mensal', value: 13.90, months: 1, paidMonths: 1 },
+  trimestral: { tier: 'trimestral', interval: 'Trimestral', value: 39.90, months: 4, paidMonths: 3 },
+  anual: { tier: 'anual', interval: 'Anual', value: 129.90, months: 14, paidMonths: 12 },
 };
 
 // Acesso total esperado no primeiro período de uma assinatura recorrente.
@@ -48,9 +50,17 @@ function isFirstCycle(subscription) {
 }
 
 // Quantos meses de bónus ainda faltam para chegar ao acesso prometido.
-function bonusMonthsFor(subscription, tier) {
+// `jaTeveConta` vem de uma leitura a personal_subscriptions feita ANTES do
+// upsert desta chamada (ver syncSubscription) -- o "primeiro ciclo" é do
+// objeto de subscrição da Stripe, não da conta: cancelar e voltar a assinar
+// cria uma subscrição nova, com start_date novo, e isFirstCycle() sozinho
+// deixava repetir o bónus indefinidamente. Verificar contra a linha existente
+// em vez de um registo de eventos evita uma corrida entre dois webhooks quase
+// simultâneos (checkout.session.completed e customer.subscription.updated
+// chegam frequentemente juntos) a negarem o bónus um ao outro.
+function bonusMonthsFor(subscription, tier, jaTeveConta) {
   const accessMonths = PLAN_ACCESS_MONTHS[tier];
-  if (!accessMonths || !isFirstCycle(subscription)) return 0;
+  if (!accessMonths || !isFirstCycle(subscription) || jaTeveConta) return 0;
   const start = periodStartOf(subscription);
   const end = periodEndOf(subscription);
   if (!start || !end || end <= start) return 0;
@@ -109,7 +119,7 @@ Deno.serve(async (req) => {
 
 async function handleCheckoutSessionCompleted(session, stripeSecretKey, supabaseUrl, serviceRoleKey, stripeEventId) {
   if (session.mode === 'payment' && session.metadata?.payment_type === 'mb_way') {
-    await activateOneTimePlan(session, supabaseUrl, serviceRoleKey);
+    await activateOneTimePlan(session, supabaseUrl, serviceRoleKey, stripeEventId);
     return;
   }
   if (!session.subscription) return;
@@ -117,7 +127,7 @@ async function handleCheckoutSessionCompleted(session, stripeSecretKey, supabase
   await syncSubscription(subscription, stripeSecretKey, supabaseUrl, serviceRoleKey, { stripeEventId });
 }
 
-async function activateOneTimePlan(session, supabaseUrl, serviceRoleKey) {
+async function activateOneTimePlan(session, supabaseUrl, serviceRoleKey, stripeEventId) {
   if (session.payment_status !== 'paid') return;
 
   const userId = session.metadata?.user_id || session.client_reference_id;
@@ -125,8 +135,16 @@ async function activateOneTimePlan(session, supabaseUrl, serviceRoleKey) {
 
   const planId = session.metadata?.plan_id;
   const plan = oneTimePlanDetails[planId] || oneTimePlanDetails.mensal;
+  // O MB WAY não tem "renovação" a distinguir de "primeira vez" como a
+  // subscrição da Stripe -- sem isto, comprar trimestral/anual repetidamente
+  // dava sempre o mês grátis, sem precisar sequer de cancelar entre compras.
+  const anteriorRow = await readSubscriptionRow(userId, supabaseUrl, serviceRoleKey);
+  const primeiraVez = !anteriorRow;
+  const mesesConcedidos = primeiraVez
+    ? (Number(session.metadata?.period_months) || plan.months)
+    : plan.paidMonths;
   const periodStart = session.created ? new Date(session.created * 1000) : new Date();
-  const periodEnd = addMonths(periodStart, Number(session.metadata?.period_months) || plan.months);
+  const periodEnd = addMonths(periodStart, mesesConcedidos);
 
   const payload = {
     user_id: userId,
@@ -146,6 +164,19 @@ async function activateOneTimePlan(session, supabaseUrl, serviceRoleKey) {
   };
 
   await supabaseUpsertSubscription(payload, supabaseUrl, serviceRoleKey);
+
+  // Regista sempre -- é esta linha que faz a próxima compra, MB WAY ou
+  // Stripe, reconhecer que esta conta já teve acesso antes.
+  await registarEvento({
+    user_id: userId,
+    event_type: primeiraVez ? 'created' : 'renewed',
+    from_tier: null,
+    to_tier: plan.tier,
+    amount: payload.plan_value,
+    stripe_event_id: stripeEventId || null,
+    occurred_at: new Date().toISOString(),
+    raw: { status: 'active', interval: payload.billing_interval },
+  }, supabaseUrl, serviceRoleKey);
 }
 
 async function handleInvoice(invoice, eventType, stripeSecretKey, supabaseUrl, serviceRoleKey, stripeEventId) {
@@ -229,8 +260,13 @@ async function syncSubscription(subscription, stripeSecretKey, supabaseUrl, serv
   const active = ['active', 'trialing'].includes(subscription.status);
   const pastDue = ['past_due', 'unpaid', 'incomplete', 'incomplete_expired'].includes(subscription.status);
 
+  // Lida antes do bónus e do upsert, para servir aos dois: ao bónus, como
+  // prova de que esta conta já teve subscrição; ao registo de eventos, como
+  // o estado a comparar com o novo.
+  const anterior = await readSubscriptionRow(userId, supabaseUrl, serviceRoleKey);
+
   const rawPeriodEnd = periodEndOf(subscription);
-  const bonusMonths = bonusMonthsFor(subscription, plan.tier);
+  const bonusMonths = bonusMonthsFor(subscription, plan.tier, Boolean(anterior));
   const periodEndIso = bonusMonths && rawPeriodEnd
     ? addMonths(new Date(rawPeriodEnd * 1000), bonusMonths).toISOString()
     : toIso(rawPeriodEnd);
@@ -251,9 +287,6 @@ async function syncSubscription(subscription, stripeSecretKey, supabaseUrl, serv
     last_payment_status: overrides.lastPaymentStatus || subscription.status,
     updated_at: new Date().toISOString(),
   };
-
-  // Ler o estado anterior antes de o substituir, para saber o que mudou.
-  const anterior = await readSubscriptionRow(userId, supabaseUrl, serviceRoleKey);
 
   await supabaseUpsertSubscription(payload, supabaseUrl, serviceRoleKey);
 

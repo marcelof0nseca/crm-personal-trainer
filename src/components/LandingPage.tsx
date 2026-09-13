@@ -64,7 +64,6 @@ const FOLD_PROTOCOLS_MOCK = [
   'Guedes 3 Dobras',
 ];
 
-const PHOTO_DATES = ['Jan', 'Mar', 'Mai', 'Jul'];
 const PHOTO_GRADIENTS = [
   'linear-gradient(135deg, #1EA6B4 0%, #14343a 100%)',
   'linear-gradient(135deg, #5DA9E9 0%, #1c2a3a 100%)',
@@ -125,32 +124,30 @@ const FEATURE_SECTIONS = [
     Mockup: AgendaMockup,
   },
   {
-    heading: 'Evolução documentada, não só recordada',
-    body: 'Registe por bioimpedância — massa muscular, água corporal, gordura visceral, TMB — ou por dobras cutâneas, com cinco protocolos à escolha. Com fotos ligadas a cada avaliação.',
+    heading: 'A biblioteca toda, na ponta dos dedos',
+    body: '2076 exercícios pesquisáveis em português, português do Brasil ou inglês de ginásio. Combine em bi-set, superset ou trissérie — cada combinação com a sua cor, para o treino se ler num relance.',
     bullets: [
-      'Bioimpedância com 12 campos e fotos da avaliação',
-      'Cinco protocolos de dobras: Jackson-Pollock 7 e 3, Durnin-Womersley, Faulkner e Guedes',
+      '2076 exercícios, com sinónimos, favoritos e pastas',
+      'Combinações com nome e cor: bi-set, superset, trissérie e mais nove',
+      'Duas formas de ver: o treino completo, ou um exercício de cada vez',
+    ],
+    Mockup: TreinosMockup,
+  },
+  {
+    heading: 'Evolução documentada, não só recordada',
+    body: 'Registe por bioimpedância — massa muscular, água corporal, gordura visceral, TMB — ou por dobras cutâneas, com cinco protocolos à escolha. Com fotos de progresso ligadas a cada avaliação.',
+    bullets: [
+      'Bioimpedância com 12 campos, ou dobras com cinco protocolos à escolha',
+      'Fotos de progresso ligadas a cada avaliação, por data',
       '% de gordura e IMC calculados automaticamente',
     ],
     Mockup: AssessmentMockup,
-  },
-  {
-    heading: 'O antes e depois, guardado como deve ser',
-    body: 'Fotos de progresso organizadas por aluno e por data, ligadas diretamente à avaliação física correspondente.',
-    bullets: ['Fotos por aluno e por data', 'Acompanhamento visual da evolução', 'Tudo dentro do perfil do aluno'],
-    Mockup: PhotosMockup,
   },
   {
     heading: 'Quanto ganha realmente',
     body: 'Receita bruta, impostos, taxa de ginásio e líquido — por aluno e no total — além das despesas e entradas pessoais do mês.',
     bullets: ['Líquido calculado automaticamente', 'Controlo por aluno e vista geral', 'Despesas e entradas pessoais'],
     Mockup: FinanceMockup,
-  },
-  {
-    heading: 'A sua subscrição, sob o seu controlo',
-    body: 'Escolha um plano e pague com segurança pela Stripe. Depois, atualize o cartão, veja faturas ou cancele diretamente no portal oficial.',
-    bullets: ['Pagamento seguro via Stripe', 'Portal para gerir ou cancelar', 'Mudança de plano quando quiser'],
-    Mockup: AccountMockup,
   },
 ];
 
@@ -193,9 +190,10 @@ function Revelar({ children, className = '', atraso = 0, style }) {
 // conteudo caber num PhoneFrame sem parecer encolhido a forca.
 function MockupFrame({ label, chromeless, children }) {
   if (chromeless) {
-    // O padding de cima e maior de proposito: e a "safe area" por baixo do
-    // entalhe do telemovel, que se sobrepoe ao ecra nos primeiros ~30px.
-    return <div className="w-full h-full" style={{ backgroundColor: 'var(--bg-base)', padding: '32px 12px 14px' }}>{children}</div>;
+    // O padding de cima e maior de proposito: e a "safe area" por baixo da
+    // barra de estado e da ilha dinamica, que se sobrepoem ao ecra nos
+    // primeiros ~44px.
+    return <div className="w-full h-full" style={{ backgroundColor: 'var(--bg-base)', padding: '44px 12px 14px' }}>{children}</div>;
   }
   return (
     <div
@@ -466,16 +464,65 @@ function AssessmentMockup({ chromeless } = {}) {
   );
 }
 
-function PhotosMockup({ chromeless } = {}) {
+// A cor de uma combinação (bi-set, trissérie…) tal como no painel: um tom
+// forte no primeiro membro, mais clara nos seguintes -- vê-se que são um
+// bloco só, sem a ficha ficar aos quadrados. Os exercícios soltos usam a
+// mesma paleta, tom mais discreto, só para se lerem separados uns dos outros.
+const COR_COMBO = '#1EA6B4';
+function LinhaExercicio({ etiqueta, nome, prescricao, carga, cor, tinta, corTexto }) {
   return (
-    <MockupFrame label="fotos de progresso · Rita Almeida" chromeless={chromeless}>
-      <div className="grid grid-cols-4 gap-2">
-        {PHOTO_DATES.map((d, i) => (
-          <div key={d} className="flex flex-col gap-1.5">
-            <div className="rounded-lg aspect-square" style={{ background: PHOTO_GRADIENTS[i] }} />
-            <span className="text-2xs font-mono text-faint text-center">{d}</span>
+    <div
+      className="rounded-lg px-3 py-2 mb-1.5"
+      style={{ backgroundColor: `color-mix(in srgb, ${cor} ${tinta}%, var(--bg-elevated))`, borderLeft: `3px solid ${cor}` }}
+    >
+      <div className="flex items-baseline gap-1.5 mb-0.5 min-w-0">
+        {etiqueta && <span className="font-mono text-2xs flex-shrink-0" style={{ color: corTexto || cor, fontWeight: 700 }}>{etiqueta}</span>}
+        <span className="text-xs font-body text-primary truncate" style={{ fontWeight: 600 }}>{nome}</span>
+      </div>
+      <div className="flex items-center justify-between text-2xs font-body text-faint">
+        <span>{prescricao}</span>
+        <span className="font-mono text-primary">{carga}</span>
+      </div>
+    </div>
+  );
+}
+
+function TreinosMockup({ chromeless } = {}) {
+  return (
+    <MockupFrame label="treino · Hipertrofia — Treino A" chromeless={chromeless}>
+      <div className="flex items-center justify-between mb-3">
+        <span className="font-display text-sm font-semibold text-primary">Treino A</span>
+        <div className="flex rounded-lg border border-hair overflow-hidden flex-shrink-0">
+          <span className="px-2.5 py-1 text-2xs font-body" style={{ backgroundColor: 'var(--brass-soft)', color: 'var(--brass)', fontWeight: 600 }}>Completo</span>
+          <span className="px-2.5 py-1 text-2xs font-body text-faint">Passo a passo</span>
+        </div>
+      </div>
+
+      <div
+        className="rounded-lg px-2.5 py-1.5 mb-2"
+        style={{ backgroundColor: `color-mix(in srgb, ${COR_COMBO} 12%, var(--bg-surface))`, borderLeft: `3px solid ${COR_COMBO}` }}
+      >
+        <span className="font-mono text-2xs flex-shrink-0" style={{ color: COR_COMBO, fontWeight: 700 }}>A</span>
+        <span className="text-xs font-body text-primary ml-1.5" style={{ fontWeight: 500 }}>Bi-set · 2 exercícios seguidos</span>
+      </div>
+      <LinhaExercicio etiqueta="A1" nome="Supino reto com barra" prescricao="3 séries · 8-10 reps" carga="40 kg" cor={COR_COMBO} tinta={17} />
+      <LinhaExercicio etiqueta="A2" nome="Remada curvada" prescricao="3 séries · 10 reps" carga="30 kg" cor={COR_COMBO} tinta={11} />
+
+      <LinhaExercicio nome="Elevação lateral" prescricao="4 séries · 12 reps" carga="8 kg" cor="#C77DFF" tinta={12} corTexto="#C77DFF" />
+      <LinhaExercicio nome="Prancha frontal" prescricao="3 séries · 40 s" carga="—" cor="#6FCF97" tinta={7} corTexto="#6FCF97" />
+
+      <div className="flex items-center gap-5 mt-3 pt-3 border-t border-hair">
+        {[['4', 'exercícios'], ['10', 'séries'], ['1.240 kg', 'de volume']].map(([v, l]) => (
+          <div key={l}>
+            <span className="font-mono text-sm text-primary" style={{ fontWeight: 600 }}>{v}</span>
+            <span className="block text-2xs font-body text-faint">{l}</span>
           </div>
         ))}
+      </div>
+
+      <div className="flex items-start gap-2 mt-3 text-2xs font-body text-faint">
+        <MousePointerClick size={12} className="text-brass flex-shrink-0" style={{ marginTop: 1 }} />
+        <span>A carga de cada série edita-se aqui mesmo, a meio do treino.</span>
       </div>
     </MockupFrame>
   );
@@ -505,25 +552,6 @@ function FinanceMockup({ chromeless } = {}) {
           <div style={{ width: '9%', backgroundColor: 'var(--rust)' }} />
           <div style={{ width: '10%', backgroundColor: 'var(--slate-acc)' }} />
         </div>
-      </div>
-    </MockupFrame>
-  );
-}
-
-function AccountMockup({ chromeless } = {}) {
-  return (
-    <MockupFrame label="perfil · plano" chromeless={chromeless}>
-      <div className="bg-elevated border border-hair rounded-lg p-3.5 flex flex-col gap-2.5 mb-3">
-        <div className="flex items-center justify-between">
-          <span className="text-2xs uppercase text-faint font-body">Plano atual</span>
-          <span className="text-2xs font-mono px-2 py-0.5 rounded-full" style={{ backgroundColor: 'rgba(30,166,180,0.16)', color: 'var(--brass)' }}>Ativo</span>
-        </div>
-        <span className="font-display text-lg text-primary font-semibold">Trimestral · €39,90</span>
-        <span className="text-2xs font-body text-faint">Próxima renovação em 62 dias</span>
-      </div>
-      <div className="border border-hair rounded-lg px-3.5 py-2.5 flex items-center justify-between">
-        <span className="text-xs font-body text-primary">Gerir no portal Stripe</span>
-        <ArrowRight size={14} className="text-brass flex-shrink-0" />
       </div>
     </MockupFrame>
   );
@@ -604,19 +632,38 @@ function FeatureSection({ heading, body, bullets, Mockup, reverse }) {
 
 /* ============================== TELEMÓVEL INTERATIVO ============================== */
 
-// A moldura em si: entalhe, ecrã e barra de baixo. O conteúdo é sempre um dos
-// Mockups reais da aplicação, em modo `chromeless` -- nada aqui é uma imagem.
+// A moldura em si: botões laterais, ilha dinâmica com câmara, barra de
+// estado, ecrã e barra de baixo. O conteúdo é sempre um dos Mockups reais da
+// aplicação, em modo `chromeless` -- nada aqui é uma imagem.
 function PhoneFrame({ children }) {
   return (
     <div className="phone-moldura">
-      <div className="phone-entalhe" aria-hidden="true" />
-      <div className="phone-ecra">{children}</div>
+      <span className="phone-botao phone-botao-volume-1" aria-hidden="true" />
+      <span className="phone-botao phone-botao-volume-2" aria-hidden="true" />
+      <span className="phone-botao phone-botao-ligar" aria-hidden="true" />
+      <div className="phone-entalhe" aria-hidden="true">
+        <span className="phone-camara" />
+      </div>
+      <div className="phone-ecra">
+        <div className="phone-status" aria-hidden="true">
+          <span className="font-mono" style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)' }}>9:41</span>
+          <div className="flex items-center gap-1">
+            {/* Barras de rede, wifi e bateria -- desenhadas em SVG para não
+                depender de nenhuma fonte de ícones ter estes símbolos. */}
+            <svg width="15" height="10" viewBox="0 0 15 10" fill="none"><rect x="0" y="6" width="2.5" height="4" rx="0.5" fill="var(--text-primary)" /><rect x="4" y="4" width="2.5" height="6" rx="0.5" fill="var(--text-primary)" /><rect x="8" y="2" width="2.5" height="8" rx="0.5" fill="var(--text-primary)" /><rect x="12" y="0" width="2.5" height="10" rx="0.5" fill="var(--text-primary)" opacity="0.35" /></svg>
+            <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M7 8.5a1 1 0 100-2 1 1 0 000 2z" fill="var(--text-primary)" /><path d="M4 5.2a4.2 4.2 0 016 0" stroke="var(--text-primary)" strokeWidth="1.3" fill="none" strokeLinecap="round" /><path d="M1.8 2.8a7.4 7.4 0 0110.4 0" stroke="var(--text-primary)" strokeWidth="1.3" fill="none" strokeLinecap="round" opacity="0.55" /></svg>
+            <svg width="22" height="11" viewBox="0 0 22 11" fill="none"><rect x="0.5" y="0.5" width="18" height="10" rx="2.5" stroke="var(--text-primary)" /><rect x="2" y="2" width="14" height="7" rx="1.2" fill="var(--text-primary)" /><rect x="19.5" y="3.2" width="1.6" height="4.6" rx="0.8" fill="var(--text-primary)" /></svg>
+          </div>
+        </div>
+        {children}
+        <div className="phone-reflexo" />
+      </div>
       <div className="phone-barra" aria-hidden="true" />
     </div>
   );
 }
 
-// Cinco ecrãs bastam para explicar o produto sem repetir o que as secções de
+// Seis ecrãs bastam para explicar o produto sem repetir o que as secções de
 // funcionalidades mais abaixo já mostram em detalhe -- este é o resumo em
 // movimento; aquelas são a leitura demorada.
 const STORY_SCREENS = [
@@ -637,6 +684,12 @@ const STORY_SCREENS = [
     title: 'A sua agenda, sob controlo',
     body: 'Nome do aluno e hora de cada aula, com presença, falta ou reposição a um toque de distância.',
     Mockup: AgendaMockup,
+  },
+  {
+    id: 'treinos', label: 'Treinos', eyebrow: 'A prescrição',
+    title: 'O treino, tal como se faz',
+    body: 'Bi-sets e superséries com nome e cor próprios. Veja o treino completo ou um exercício de cada vez, com a carga a editar-se ali mesmo.',
+    Mockup: TreinosMockup,
   },
   {
     id: 'avaliacao', label: 'Avaliação', eyebrow: 'Evolução do aluno',
@@ -779,35 +832,87 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
         .faq-colapso.aberto { grid-template-rows: 1fr; }
         .faq-colapso > div { overflow: hidden; }
 
+        /* Moldura com duas camadas de cor -- um titânio simulado (gradiente
+           muito subtil, de canto a canto) por baixo de um brilho fino no
+           rebordo superior esquerdo, como luz a apanhar uma aresta metálica
+           real. Os botões laterais são pequenos ressaltos, não decoração
+           colada -- têm sombra própria, como se estivessem lá mesmo. */
         .phone-moldura {
           position: relative;
-          width: clamp(232px, 74vw, 296px);
-          aspect-ratio: 9 / 19;
+          width: clamp(232px, 74vw, 300px);
+          aspect-ratio: 9 / 19.3;
           margin: 0 auto;
-          border-radius: 44px;
-          background: var(--bg-elevated);
-          border: 1px solid var(--border-strong);
-          box-shadow: 0 44px 90px -30px rgba(0,0,0,0.5), 0 10px 26px -14px rgba(0,0,0,0.35);
-          padding: 12px;
+          border-radius: 52px;
+          background:
+            linear-gradient(155deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0) 18%),
+            linear-gradient(200deg, var(--bg-elevated) 0%, color-mix(in srgb, var(--bg-elevated) 82%, black) 100%);
+          box-shadow:
+            0 50px 100px -30px rgba(0,0,0,0.55),
+            0 16px 32px -16px rgba(0,0,0,0.4),
+            inset 0 0 0 1px rgba(255,255,255,0.06);
+          padding: 13px;
           display: flex;
           flex-direction: column;
         }
+        /* O anel entre a moldura e o vidro do ecrã -- é o que dá a sensação
+           de duas peças físicas distintas, em vez de um retângulo só. */
+        .phone-moldura::before {
+          content: '';
+          position: absolute; inset: 5px;
+          border-radius: 47px;
+          border: 1px solid rgba(255,255,255,0.05);
+          pointer-events: none;
+        }
+        .phone-botao {
+          position: absolute;
+          background: color-mix(in srgb, var(--bg-elevated) 60%, black);
+          box-shadow: -1px 0 2px rgba(0,0,0,0.3);
+        }
+        .phone-botao-volume-1 { left: -2px; top: 21%; width: 3px; height: 7%; border-radius: 2px 0 0 2px; }
+        .phone-botao-volume-2 { left: -2px; top: 30%; width: 3px; height: 7%; border-radius: 2px 0 0 2px; }
+        .phone-botao-ligar { right: -2px; top: 24%; width: 3px; height: 11%; border-radius: 0 2px 2px 0; }
         .phone-entalhe {
-          position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-          width: 88px; height: 22px; border-radius: 999px; background: var(--bg-base);
-          z-index: 2;
+          position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+          width: 34%; height: 26px; border-radius: 999px; background: #000;
+          z-index: 3;
+          display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+          padding-right: 10px;
+        }
+        /* A câmara: um pequeno círculo mais escuro dentro do entalhe, com um
+           reflexo de vidro -- o detalhe que faz a ilha parecer uma peça de
+           vidro sobre o ecrã, e não uma forma pintada. */
+        .phone-camara {
+          width: 7px; height: 7px; border-radius: 50%;
+          background: radial-gradient(circle at 35% 35%, #3a3a3a, #050505 70%);
+          box-shadow: 0 0 0 1px rgba(255,255,255,0.04);
         }
         .phone-ecra {
-          flex: 1; min-height: 0; border-radius: 32px; overflow: hidden;
+          flex: 1; min-height: 0; border-radius: 40px; overflow: hidden;
           background: var(--bg-base); position: relative;
+        }
+        /* A barra de estado: hora + os ícones que qualquer ecrã de telemóvel
+           tem, para o conteúdo por baixo se ler como uma aplicação a sério
+           desde o primeiro fotograma, e não uma janela recortada. */
+        .phone-status {
+          position: absolute; top: 0; left: 0; right: 0; z-index: 2;
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 16px 22px 0; pointer-events: none;
         }
         .phone-tela {
           position: absolute; inset: 0; overflow-y: auto;
           transition: opacity 320ms ease;
         }
         .phone-barra {
-          position: absolute; bottom: 9px; left: 50%; transform: translateX(-50%);
-          width: 108px; height: 4px; border-radius: 999px; background: var(--border-strong);
+          position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+          width: 34%; height: 4px; border-radius: 999px; background: rgba(255,255,255,0.55);
+          z-index: 3;
+        }
+        /* Um brilho muito ténue a atravessar o vidro na diagonal -- não é um
+           reflexo literal, é só o suficiente para o ecrã deixar de parecer
+           uma cor plana. Desaparece com pouco movimento, de propósito. */
+        .phone-reflexo {
+          position: absolute; inset: 0; z-index: 4; pointer-events: none;
+          background: linear-gradient(115deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 20%, rgba(255,255,255,0) 100%);
         }
       `}</style>
 

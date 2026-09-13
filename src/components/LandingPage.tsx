@@ -2,7 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import {
   MessageCircle, CalendarDays, RotateCcw, ClipboardCheck, Images, Wallet, TrendingDown,
   ShieldCheck, ChevronDown, CheckCircle2, TrendingUp, UserPlus, Gift, Mail,
-  MousePointerClick, CalendarX2, FileSignature, Stamp, BarChart3, UserSearch,
+  MousePointerClick, CalendarX2, FileSignature, Stamp, BarChart3, UserSearch, Clock,
 } from 'lucide-react';
 import LegalModal from './LegalDocs';
 
@@ -155,7 +155,8 @@ const FAQ_ITEMS = [
   { q: 'Preciso de instalar alguma coisa?', a: 'Não. O PTMANAGER funciona diretamente no navegador, em qualquer computador ou telemóvel — sem instalar nada.' },
   { q: 'Funciona no telemóvel e no tablet?', a: 'Sim. O painel é totalmente responsivo e funciona igualmente bem no telemóvel, tablet e computador.' },
   { q: 'Como funcionam os meses grátis?', a: 'No plano trimestral paga 3 meses e fica com 4. No anual paga 12 meses e fica com 14. Os meses grátis são acrescentados ao primeiro período, logo após a confirmação do pagamento.' },
-  { q: 'Posso cancelar quando quiser?', a: 'Sim. O cancelamento é feito a qualquer momento, diretamente no portal de subscrição da Stripe.' },
+  { q: 'Como funcionam os 7 dias grátis do plano mensal?', a: 'Regista o cartão ao criar a conta, mas não é cobrado nada nesse momento. Só ao 8º dia, se não tiver cancelado antes, a Stripe cobra a primeira mensalidade automaticamente. Vale só na primeira vez — não se repete ao cancelar e voltar a assinar.' },
+  { q: 'Posso cancelar quando quiser?', a: 'Sim, a qualquer momento, no portal de subscrição da Stripe — inclui os 7 dias grátis: cancelar antes do fim do período não gera nenhuma cobrança.' },
   { q: 'Os meus alunos acedem ao sistema?', a: 'Não. O acesso é exclusivo do personal trainer — os seus alunos não precisam de conta nem de iniciar sessão.' },
   { q: 'Funciona em Portugal?', a: 'Sim. Preços em euros e suporte pensados para o mercado português.' },
   { q: 'O pagamento é seguro?', a: 'Sim. Todos os pagamentos são processados pela Stripe, com encriptação de nível bancário.' },
@@ -899,6 +900,10 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
   const [openFaq, setOpenFaq] = useState(null);
   const plansRef = useRef(null);
   const featuresRef = useRef(null);
+  // O mesmo plano que a secção de preços lê para decidir se mostra o selo do
+  // trial -- ler daqui em vez de escrever "7" e "mensal" à mão aqui em cima
+  // é o que garante que a hero e o pricing nunca dizem coisas diferentes.
+  const trialPlan = plans.find((p) => p.trialDays);
 
   function scrollTo(ref) {
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -916,6 +921,9 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
           will-change: opacity, transform;
         }
         .revelar-visivel { opacity: 1; transform: translateY(0); }
+        @media (prefers-reduced-motion: reduce) {
+          .revelar { transition: opacity 200ms ease; transform: none; }
+        }
 
         .faq-colapso {
           display: grid;
@@ -1032,16 +1040,33 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
         {/* Hero */}
         <section className="max-w-6xl mx-auto px-4 pt-12 pb-16 sm:pt-16 sm:pb-24 grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-14 items-center">
           <div className="flex flex-col gap-5 order-1">
+            {trialPlan && (
+              <Revelar
+                className="inline-flex w-fit items-center gap-2 rounded-lg px-3 py-1.5"
+                style={{ backgroundColor: 'var(--gold-soft)', border: '1px solid rgba(245,180,76,0.28)' }}
+              >
+                <Clock size={13} style={{ color: 'var(--gold)', flexShrink: 0 }} />
+                <span className="text-2xs sm:text-xs font-body font-semibold" style={{ color: 'var(--gold)' }}>
+                  {trialPlan.trialDays} dias grátis, sem cobrança agora
+                </span>
+              </Revelar>
+            )}
             <h1 className="font-display text-3xl sm:text-4xl lg:text-[2.75rem] font-semibold text-primary leading-tight">
               Gestão completa para <span style={{ color: 'var(--brass)' }}>Personal Trainers</span>
             </h1>
             <p className="text-sm sm:text-base text-muted font-body max-w-lg">
               Um único painel para gerir alunos, agenda, avaliações físicas, fotos de progresso e finanças — sem folhas de cálculo, sem informação perdida no WhatsApp.
+              {trialPlan && ` Experimente ${trialPlan.trialDays} dias sem custo antes de decidir.`}
             </p>
             <div className="flex flex-col sm:flex-row gap-3 pt-1">
-              <PrimaryButton onClick={onGetStarted}>Começar agora</PrimaryButton>
+              <PrimaryButton onClick={onGetStarted}>{trialPlan ? 'Começar grátis' : 'Começar agora'}</PrimaryButton>
               <SecondaryButton onClick={() => scrollTo(plansRef)}>Ver planos</SecondaryButton>
             </div>
+            {trialPlan && (
+              <span className="text-2xs sm:text-xs font-body text-faint -mt-2">
+                {trialPlan.trialDays} dias grátis · depois {trialPlan.perMonth} · cancele quando quiser
+              </span>
+            )}
             {supportEmail && (
               <a href={mailto('Quero saber mais sobre o PTMANAGER')} className="inline-flex items-center gap-1.5 text-xs font-body link-sky w-fit">
                 <Mail size={14} /> Falar com o suporte
@@ -1174,10 +1199,18 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
                       <span className="font-mono text-xs text-faint">≈ {plan.perMonth}</span>
                     )}
                   </div>
-                  <div className="text-xs text-faint font-body mt-1">{plan.note}</div>
+                  <div className="text-xs text-faint font-body mt-1">{plan.trialDays ? `${plan.note} — a partir do 8º dia` : plan.note}</div>
                 </div>
 
-                {plan.bonusLabel ? (
+                {plan.trialDays ? (
+                  <div
+                    className="flex items-center gap-2 rounded-lg px-3 py-2.5"
+                    style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)', border: '1px solid rgba(245,180,76,0.28)' }}
+                  >
+                    <Clock size={15} className="flex-shrink-0" />
+                    <span className="text-xs font-body font-semibold">{plan.trialDays} dias grátis, sem cobrança agora</span>
+                  </div>
+                ) : plan.bonusLabel ? (
                   <div
                     className="flex items-center gap-2 rounded-lg px-3 py-2.5"
                     style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)', border: '1px solid rgba(245,180,76,0.28)' }}
@@ -1192,12 +1225,15 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
                 )}
 
                 <p className="text-xs text-muted font-body">
-                  {plan.id === 'mensal' && 'Para começar sem compromisso, ou testar antes de decidir o período.'}
-                  {plan.id === 'trimestral' && 'O equilíbrio entre poupança e liberdade — o mais escolhido pelos treinadores.'}
-                  {plan.id === 'anual' && 'Para quem já sabe que fica — o custo mensal mais baixo dos três.'}
+                  {plan.trialDays && `Experimente ${plan.trialDays} dias de graça. Depois, ${plan.price}/mês — cancele antes do fim do período gratuito e não paga nada.`}
+                  {!plan.trialDays && plan.id === 'mensal' && 'Para começar sem compromisso, ou testar antes de decidir o período.'}
+                  {!plan.trialDays && plan.id === 'trimestral' && 'O equilíbrio entre poupança e liberdade — o mais escolhido pelos treinadores.'}
+                  {!plan.trialDays && plan.id === 'anual' && 'Para quem já sabe que fica — o custo mensal mais baixo dos três.'}
                 </p>
 
-                <PrimaryButton onClick={onGetStarted} className="mt-auto">Começar agora</PrimaryButton>
+                <PrimaryButton onClick={onGetStarted} className="mt-auto">
+                  {plan.trialDays ? `Experimentar ${plan.trialDays} dias grátis` : 'Começar agora'}
+                </PrimaryButton>
               </Revelar>
             ))}
           </div>

@@ -343,6 +343,23 @@ const SALES_PLANS = [
   },
 ];
 
+// Mesma lista da landing (src/components/LandingPage.tsx, PLAN_INCLUDES) --
+// os três planos acima só diferem em preço, período e bónus, nunca em
+// funcionalidade, por isso é uma lista só, mostrada uma vez, para quem já
+// viu a landing reconhecer exatamente o que está a comprar.
+const PLAN_INCLUDES = [
+  'Alunos, planos e preços sem limite',
+  'Agenda com dia, semana, mês e lista',
+  'Faltas, reposições e crédito com validade',
+  'Avaliações físicas, com fotos de progresso',
+  'Prescrição de treino e biblioteca com 2076 exercícios',
+  'Documentos e formulários com o seu timbre',
+  'Relatórios de atividade e de progresso do aluno',
+  'Ficha 360º de cada aluno',
+  'Controlo financeiro completo',
+  'Autenticação de dois fatores e suporte por e-mail',
+];
+
 // Todos os pontos de dobra cutânea possíveis, usados por um ou mais protocolos abaixo.
 const ALL_FOLD_SITES = [
   { id: 'assessFoldChest', label: 'Peitoral' },
@@ -4548,18 +4565,21 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
                 </div>
                 <div className="text-xs text-faint font-body mt-1">{plan.note}</div>
               </div>
-              {plan.bonusLabel && (
+              {plan.bonusLabel ? (
                 <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)' }}>
                   <Gift size={14} style={{ flexShrink: 0 }} />
                   <span className="text-xs font-body font-semibold">{plan.bonusLabel}</span>
                 </div>
+              ) : (
+                <div className="rounded-lg px-3 py-2 border border-hair">
+                  <span className="text-xs font-body text-faint">Sem compromisso, cancele a qualquer momento</span>
+                </div>
               )}
-              <ul className="text-sm text-muted font-body flex flex-col gap-2">
-                <li>Gestão completa de alunos e planos</li>
-                <li>Agenda semanal e mensal</li>
-                <li>Avaliações físicas com fotos</li>
-                <li>Controlo financeiro do personal trainer</li>
-              </ul>
+              <p className="text-xs text-muted font-body">
+                {plan.id === 'mensal' && 'Para começar sem compromisso, ou testar antes de decidir o período.'}
+                {plan.id === 'trimestral' && 'O equilíbrio entre poupança e liberdade — o mais escolhido pelos treinadores.'}
+                {plan.id === 'anual' && 'Para quem já sabe que fica — o custo mensal mais baixo dos três.'}
+              </p>
               <div className="mt-auto flex flex-col gap-2">
                 <button
                   type="button"
@@ -4591,6 +4611,18 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn }) {
             </div>
           ))}
         </section>
+
+        <div className="border border-hair rounded-xl bg-surface p-5">
+          <h2 className="font-display text-sm font-semibold text-primary mb-3">Incluído em qualquer plano</h2>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+            {PLAN_INCLUDES.map((inc) => (
+              <li key={inc} className="flex items-start gap-2 text-sm font-body text-muted">
+                <CheckCircle2 size={14} className="text-brass flex-shrink-0" style={{ marginTop: 3 }} />
+                <span>{inc}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-hair rounded-xl p-4 bg-surface">
           <div>

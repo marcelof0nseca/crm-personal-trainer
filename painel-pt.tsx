@@ -8,7 +8,7 @@ import {
   Camera, ArrowLeft, LineChart as LineChartIcon, Tag,
   Coffee, Dumbbell, UtensilsCrossed, Stethoscope, Gift, CreditCard, Mail, CircleUser, KeyRound, ShieldCheck,
   RefreshCcw, Printer, Pencil, Copy, ClipboardPaste, GripVertical, Bell, Archive, BookMarked,
-  Sun, Moon, Monitor, Send, ImagePlus, Eye, History, Star, Clock,
+  Sun, Moon, Monitor, Send, ImagePlus, Eye, EyeOff, History, Star, Clock, Lock,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
@@ -4288,6 +4288,41 @@ function MfaChallengeScreen({ onVerificado, onSair }) {
   );
 }
 
+// Campo de palavra-passe com o olho para mostrar/esconder -- o próprio
+// `type` do input muda entre "password" e "text", não é um truque de CSS.
+function PasswordField({ label, value, onChange, placeholder, autoComplete }) {
+  const [visivel, setVisivel] = useState(false);
+  return (
+    <FormField label={label}>
+      <div className="relative">
+        <Lock size={15} className="text-faint" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+        <input
+          type={visivel ? 'text' : 'password'}
+          value={value}
+          onChange={onChange}
+          className="input-field"
+          style={{ paddingLeft: 36, paddingRight: 38 }}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+        />
+        <button
+          type="button"
+          onClick={() => setVisivel((v) => !v)}
+          aria-label={visivel ? 'Esconder palavra-passe' : 'Mostrar palavra-passe'}
+          className="tap"
+          style={{
+            position: 'absolute', right: 2, top: '50%', transform: 'translateY(-50%)',
+            width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: 'var(--text-faint)', background: 'none', border: 'none', borderRadius: 'var(--r-sm)', cursor: 'pointer',
+          }}
+        >
+          {visivel ? <EyeOff size={16} /> : <Eye size={16} />}
+        </button>
+      </div>
+    </FormField>
+  );
+}
+
 function LoginScreen({ onBack, initialMode = 'signin' }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -4300,6 +4335,7 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
   const [captchaReset, setCaptchaReset] = useState(0);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [legalDoc, setLegalDoc] = useState(null);
+  const [recoverySent, setRecoverySent] = useState(false);
 
   useEffect(() => {
     if (mode !== 'signin' || !email) return;
@@ -4320,6 +4356,12 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
   const secondsLeft = lockedUntil ? Math.max(0, Math.ceil((lockedUntil - now) / 1000)) : 0;
   const isLocked = secondsLeft > 0;
 
+  function trocarModo(novoModo) {
+    setMode(novoModo);
+    setMessage('');
+    setRecoverySent(false);
+  }
+
   async function submit(e) {
     e.preventDefault();
     setMessage('');
@@ -4327,8 +4369,12 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
       setMessage('Supabase não configurado.');
       return;
     }
-    if (!email || !password) {
-      setMessage('Introduza o e-mail e a palavra-passe.');
+    if (!email) {
+      setMessage('Introduza o e-mail.');
+      return;
+    }
+    if (mode !== 'recover' && !password) {
+      setMessage('Introduza a palavra-passe.');
       return;
     }
     // Consentimento obrigatório no registo (não no início de sessão).
@@ -4350,6 +4396,18 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
     }
     setBusy(true);
     const options = captchaToken ? { captchaToken } : undefined;
+    if (mode === 'recover') {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + window.location.pathname,
+        captchaToken,
+      });
+      setCaptchaToken('');
+      setCaptchaReset((n) => n + 1);
+      setBusy(false);
+      if (error) { setMessage(error.message); return; }
+      setRecoverySent(true);
+      return;
+    }
     const action = mode === 'signup'
       ? supabase.auth.signUp({ email, password, options })
       : supabase.auth.signInWithPassword({ email, password, options });
@@ -4379,62 +4437,129 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
     setBusy(false);
   }
 
+  const titulo = mode === 'signup' ? 'Criar acesso' : mode === 'recover' ? 'Recuperar acesso' : 'Entrar no painel';
+  const subtitulo = mode === 'signup'
+    ? 'Crie a sua conta para gerir alunos, agenda, avaliações e finanças num só sítio.'
+    : mode === 'recover'
+      ? 'Indique o e-mail da conta e enviamos um link para definir uma nova palavra-passe.'
+      : 'Inicie sessão para aceder ao seu CRM de alunos, agenda, avaliações e finanças.';
+
   return (
-    <div className="min-h-screen bg-base flex flex-col px-4">
-      <div className="flex-1 flex items-center justify-center">
-      <form onSubmit={submit} className="bg-surface border border-hair rounded-xl p-5 w-full max-w-sm flex flex-col gap-4">
-        <div className="flex items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2.5">
-            <img src={LOGO_SRC} alt="PTMANAGER" style={{ width: 34, height: 34, flexShrink: 0 }} />
-            <span className="font-display font-semibold text-xl tracking-wide text-primary">PT<span style={{ color: 'var(--brass)' }}>MANAGER</span></span>
+    <div
+      className="min-h-screen flex flex-col px-4"
+      style={{
+        backgroundColor: 'var(--bg-base)',
+        backgroundImage: 'radial-gradient(ellipse 640px 420px at 50% 0%, var(--brass-soft), transparent 70%)',
+      }}
+    >
+      <div className="flex-1 flex items-center justify-center py-10">
+        <div className="w-full max-w-sm flex flex-col gap-5">
+          <div className="flex items-center justify-between gap-2.5 px-1">
+            <div className="flex items-center gap-2.5">
+              <img src={LOGO_SRC} alt="PTMANAGER" style={{ width: 30, height: 30, flexShrink: 0 }} />
+              <span className="font-display font-semibold text-lg tracking-wide text-primary">PT<span style={{ color: 'var(--brass)' }}>MANAGER</span></span>
+            </div>
+            {onBack && (
+              <button type="button" onClick={onBack} className="text-xs font-body link-sky flex-shrink-0">Voltar</button>
+            )}
           </div>
-          {onBack && (
-            <button type="button" onClick={onBack} className="text-xs font-body link-sky flex-shrink-0">Voltar</button>
-          )}
+
+          <div
+            className="bg-surface border border-hair rounded-2xl p-7 flex flex-col gap-5"
+            style={{ boxShadow: '0 30px 70px -34px rgba(0,0,0,0.35), 0 14px 30px -18px rgba(0,0,0,0.25)' }}
+          >
+            {mode === 'recover' && recoverySent ? (
+              <div className="flex flex-col gap-4 items-center text-center py-4">
+                <div className="p-3 rounded-full flex-shrink-0" style={{ backgroundColor: 'var(--brass-soft)' }}>
+                  <Mail size={22} className="text-brass" />
+                </div>
+                <div>
+                  <h1 className="font-display text-lg font-semibold text-primary">Verifique o seu e-mail</h1>
+                  <p className="text-sm font-body text-muted mt-1.5">
+                    Se existir uma conta com o e-mail <strong className="text-primary">{email}</strong>, enviámos um link para definir uma nova palavra-passe.
+                  </p>
+                </div>
+                <button type="button" onClick={() => trocarModo('signin')} className="text-sm font-body link-sky">Voltar a entrar</button>
+              </div>
+            ) : (
+              <form onSubmit={submit} className="flex flex-col gap-4">
+                <div>
+                  <h1 className="font-display text-xl font-semibold text-primary">{titulo}</h1>
+                  <p className="text-xs font-body text-muted mt-1.5" style={{ lineHeight: 1.5 }}>{subtitulo}</p>
+                </div>
+                <FormField label="E-mail">
+                  <div className="relative">
+                    <Mail size={15} className="text-faint" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="input-field"
+                      style={{ paddingLeft: 36 }}
+                      placeholder="voce@email.com"
+                      autoComplete="email"
+                    />
+                  </div>
+                </FormField>
+                {mode !== 'recover' && (
+                  <PasswordField
+                    label="Palavra-passe"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={mode === 'signup' ? 'Mínimo 6 caracteres' : 'A sua palavra-passe'}
+                    autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                  />
+                )}
+                {mode === 'signin' && (
+                  <button
+                    type="button"
+                    onClick={() => trocarModo('recover')}
+                    className="text-xs font-body link-sky text-right"
+                    style={{ marginTop: -8 }}
+                  >
+                    Esqueceu a palavra-passe?
+                  </button>
+                )}
+                {mode === 'signup' && (
+                  <label className="flex items-start gap-2.5 text-xs font-body text-muted cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={acceptedTerms}
+                      onChange={(e) => { setAcceptedTerms(e.target.checked); setMessage(''); }}
+                      style={{ accentColor: 'var(--brass)', marginTop: 2, flexShrink: 0, width: 16, height: 16 }}
+                    />
+                    <span>
+                      Li e aceito os{' '}
+                      <button type="button" onClick={() => setLegalDoc('termos')} className="link-sky" style={{ fontSize: 'inherit' }}>Termos de Utilização</button>
+                      {' '}e a{' '}
+                      <button type="button" onClick={() => setLegalDoc('privacidade')} className="link-sky" style={{ fontSize: 'inherit' }}>Política de Privacidade</button>.
+                    </span>
+                  </label>
+                )}
+                {TURNSTILE_SITE_KEY && !isLocked && (
+                  <Turnstile siteKey={TURNSTILE_SITE_KEY} onVerify={setCaptchaToken} resetSignal={captchaReset} />
+                )}
+                {isLocked ? (
+                  <div className="text-xs font-body text-rust">Muitas tentativas de login. Tente novamente em {secondsLeft}s.</div>
+                ) : message && <div className="text-xs font-body text-rust">{message}</div>}
+                <button
+                  type="submit"
+                  disabled={busy || isLocked || (Boolean(TURNSTILE_SITE_KEY) && !captchaToken) || (mode === 'signup' && !acceptedTerms)}
+                  className="btn btn-primary w-full"
+                >
+                  {isLocked ? `Aguarde ${secondsLeft}s` : busy ? 'Aguarde...' : mode === 'signup' ? 'Criar conta' : mode === 'recover' ? 'Enviar link de recuperação' : 'Entrar'}
+                </button>
+                {mode === 'recover' ? (
+                  <button type="button" onClick={() => trocarModo('signin')} className="text-xs font-body link-sky text-center">Voltar a entrar</button>
+                ) : (
+                  <button type="button" onClick={() => trocarModo(mode === 'signup' ? 'signin' : 'signup')} className="text-xs font-body link-sky text-center">
+                    {mode === 'signup' ? 'Já tenho conta' : 'Criar primeira conta'}
+                  </button>
+                )}
+              </form>
+            )}
+          </div>
         </div>
-        <div>
-          <h1 className="font-display text-lg font-semibold text-primary">{mode === 'signup' ? 'Criar acesso' : 'Entrar no painel'}</h1>
-          <p className="text-xs font-body text-muted mt-1">Inicie sessão para aceder ao seu CRM de alunos, agenda, avaliações e finanças.</p>
-        </div>
-        <FormField label="E-mail">
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="input-field" placeholder="voce@email.com" />
-        </FormField>
-        <FormField label="Palavra-passe">
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="input-field" placeholder="Mínimo 6 caracteres" />
-        </FormField>
-        {mode === 'signup' && (
-          <label className="flex items-start gap-2.5 text-xs font-body text-muted cursor-pointer">
-            <input
-              type="checkbox"
-              checked={acceptedTerms}
-              onChange={(e) => { setAcceptedTerms(e.target.checked); setMessage(''); }}
-              style={{ accentColor: 'var(--brass)', marginTop: 2, flexShrink: 0, width: 16, height: 16 }}
-            />
-            <span>
-              Li e aceito os{' '}
-              <button type="button" onClick={() => setLegalDoc('termos')} className="link-sky" style={{ fontSize: 'inherit' }}>Termos de Utilização</button>
-              {' '}e a{' '}
-              <button type="button" onClick={() => setLegalDoc('privacidade')} className="link-sky" style={{ fontSize: 'inherit' }}>Política de Privacidade</button>.
-            </span>
-          </label>
-        )}
-        {TURNSTILE_SITE_KEY && !isLocked && (
-          <Turnstile siteKey={TURNSTILE_SITE_KEY} onVerify={setCaptchaToken} resetSignal={captchaReset} />
-        )}
-        {isLocked ? (
-          <div className="text-xs font-body text-rust">Muitas tentativas de login. Tente novamente em {secondsLeft}s.</div>
-        ) : message && <div className="text-xs font-body text-rust">{message}</div>}
-        <button
-          type="submit"
-          disabled={busy || isLocked || (Boolean(TURNSTILE_SITE_KEY) && !captchaToken) || (mode === 'signup' && !acceptedTerms)}
-          className="btn btn-primary w-full"
-        >
-          {isLocked ? `Aguarde ${secondsLeft}s` : busy ? 'Aguarde...' : mode === 'signup' ? 'Criar conta' : 'Entrar'}
-        </button>
-        <button type="button" onClick={() => { setMode(mode === 'signup' ? 'signin' : 'signup'); setMessage(''); }} className="text-xs font-body link-sky">
-          {mode === 'signup' ? 'Já tenho conta' : 'Criar primeira conta'}
-        </button>
-      </form>
       </div>
       <div className="flex items-center justify-center gap-3 pb-2 text-2xs font-body">
         <button type="button" onClick={() => setLegalDoc('termos')} className="link-sky">Termos</button>
@@ -4442,6 +4567,80 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
         <button type="button" onClick={() => setLegalDoc('privacidade')} className="link-sky">Privacidade</button>
       </div>
       {legalDoc && <LegalModal docId={legalDoc} supportEmail={SUPPORT_EMAIL} onClose={() => setLegalDoc(null)} />}
+    </div>
+  );
+}
+
+// Ecrã mostrado quando o link do e-mail de recuperação traz uma sessão de
+// recuperação (evento `PASSWORD_RECOVERY`). Depois de gravar a nova
+// palavra-passe, a sessão já fica válida -- não é preciso voltar a entrar.
+function ResetPasswordScreen({ onDone }) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const [done, setDone] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault();
+    setMessage('');
+    if (!password || !confirm) { setMessage('Preencha as duas palavras-passe.'); return; }
+    if (password.length < 6) { setMessage('A palavra-passe deve ter pelo menos 6 caracteres.'); return; }
+    if (password !== confirm) { setMessage('As palavras-passe não coincidem.'); return; }
+    if (!supabase) { setMessage('Supabase não configurado.'); return; }
+    setBusy(true);
+    const { error } = await supabase.auth.updateUser({ password });
+    setBusy(false);
+    if (error) { setMessage(error.message); return; }
+    setDone(true);
+  }
+
+  return (
+    <div
+      className="min-h-screen flex flex-col px-4"
+      style={{
+        backgroundColor: 'var(--bg-base)',
+        backgroundImage: 'radial-gradient(ellipse 640px 420px at 50% 0%, var(--brass-soft), transparent 70%)',
+      }}
+    >
+      <div className="flex-1 flex items-center justify-center py-10">
+        <div className="w-full max-w-sm flex flex-col gap-5">
+          <div className="flex items-center gap-2.5 px-1">
+            <img src={LOGO_SRC} alt="PTMANAGER" style={{ width: 30, height: 30, flexShrink: 0 }} />
+            <span className="font-display font-semibold text-lg tracking-wide text-primary">PT<span style={{ color: 'var(--brass)' }}>MANAGER</span></span>
+          </div>
+          <div
+            className="bg-surface border border-hair rounded-2xl p-7 flex flex-col gap-5"
+            style={{ boxShadow: '0 30px 70px -34px rgba(0,0,0,0.35), 0 14px 30px -18px rgba(0,0,0,0.25)' }}
+          >
+            {done ? (
+              <div className="flex flex-col gap-4 items-center text-center py-4">
+                <div className="p-3 rounded-full flex-shrink-0" style={{ backgroundColor: 'var(--brass-soft)' }}>
+                  <CheckCircle2 size={22} className="text-brass" />
+                </div>
+                <div>
+                  <h1 className="font-display text-lg font-semibold text-primary">Palavra-passe atualizada</h1>
+                  <p className="text-sm font-body text-muted mt-1.5">Já pode continuar para o painel.</p>
+                </div>
+                <button type="button" onClick={onDone} className="btn btn-primary w-full">Continuar</button>
+              </div>
+            ) : (
+              <form onSubmit={submit} className="flex flex-col gap-4">
+                <div>
+                  <h1 className="font-display text-xl font-semibold text-primary">Defina uma nova palavra-passe</h1>
+                  <p className="text-xs font-body text-muted mt-1.5" style={{ lineHeight: 1.5 }}>Escolha uma palavra-passe nova para a sua conta.</p>
+                </div>
+                <PasswordField label="Nova palavra-passe" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" autoComplete="new-password" />
+                <PasswordField label="Confirmar nova palavra-passe" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
+                {message && <div className="text-xs font-body text-rust">{message}</div>}
+                <button type="submit" disabled={busy} className="btn btn-primary w-full">
+                  {busy ? 'A guardar...' : 'Guardar nova palavra-passe'}
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -15199,6 +15398,7 @@ function AppInner() {
   const [showLogin, setShowLogin] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [loginMode, setLoginMode] = useState('signin');
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
   const storageOk = browserStorageAvailable();
 
   function openLogin(mode = 'signin') {
@@ -15225,7 +15425,12 @@ function AppInner() {
       setAuthReady(true);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      // O link do e-mail de recuperação traz uma sessão temporária e este
+      // evento próprio -- sem o distinguir, `!user` deixava de ser verdade e
+      // a aplicação seguia direto para o painel em vez de pedir a nova
+      // palavra-passe.
+      if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true);
       setUser(session?.user || null);
       setAuthReady(true);
     });
@@ -16733,9 +16938,15 @@ function AppInner() {
   }
 
   if (!authReady || !subscriptionReady || loading) return <LoadingScreen />;
-  // Antes de tudo o resto: a conta tem dois fatores e esta sessão ainda está a
-  // meio caminho. O portão é da interface — para ser mesmo um portão, é preciso
-  // a política `app_data_exige_aal2` do supabase-schema.sql.
+  // Antes de tudo o resto: veio do link de recuperação de palavra-passe. A
+  // sessão já existe (por isso `!user` já não seria verdade), mas ainda não
+  // serve para nada até gravar a palavra-passe nova.
+  if (passwordRecovery) {
+    return <ResetPasswordScreen onDone={() => setPasswordRecovery(false)} />;
+  }
+  // A conta tem dois fatores e esta sessão ainda está a meio caminho. O
+  // portão é da interface — para ser mesmo um portão, é preciso a política
+  // `app_data_exige_aal2` do supabase-schema.sql.
   if (mfaPendente) {
     return <MfaChallengeScreen onVerificado={() => setMfaPendente(false)} onSair={signOut} />;
   }

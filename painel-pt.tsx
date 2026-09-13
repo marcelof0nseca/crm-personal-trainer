@@ -2739,8 +2739,8 @@ function fmtDataHora(iso) {
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleString('pt-PT', { dateStyle: 'short', timeStyle: 'short' });
 }
-function periodBounds() {
-  const now = new Date();
+function periodBounds(referencia) {
+  const now = referencia || new Date();
   const weekStartD = startOfWeek(now);
   return {
     weekStart: fmtDateISO(weekStartD), weekEnd: fmtDateISO(addDays(weekStartD, 6)),
@@ -7510,18 +7510,27 @@ function NavTabs({ view, setView, isAdmin }) {
 function Dashboard({ students, sessions, finances, customCategories, setView, onAddSession, onOpenSession, onQuickStatus, onRelatorio }) {
   const activeStudents = useMemo(() => students.filter((s) => s.active), [students]);
 
+  // O mes que se esta a ver -- pode ser qualquer um, para tras ou para a
+  // frente. Comeca no mes de hoje.
+  const [monthCursor, setMonthCursor] = useState(() => new Date());
+  const monthCursorKey = monthKeyOf(monthCursor);
+  const noMesAtual = monthCursorKey === monthKeyOf(new Date());
+
   const totals = useMemo(() => activeStudents.reduce((acc, s) => {
-    const f = studentFinance(s);
+    const f = studentFinance(s, monthCursorKey);
     acc.gross += f.gross; acc.tax += f.tax; acc.gymFee += f.gymFee; acc.net += f.net;
     return acc;
-  }, { gross: 0, tax: 0, gymFee: 0, net: 0 }), [activeStudents]);
+  }, { gross: 0, tax: 0, gymFee: 0, net: 0 }), [activeStudents, monthCursorKey]);
 
   const today = fmtDateISO(new Date());
+  // "Esta semana" e "hoje" sao sempre o presente -- so a atividade do mes,
+  // a receita e o grafico por aluno acompanham o cursor.
   const bounds = useMemo(() => periodBounds(), []);
+  const monthBounds = useMemo(() => periodBounds(monthCursor), [monthCursor]);
 
   const todaySessions = useMemo(() => sessions.filter((s) => s.date === today).sort((a, b) => a.startTime.localeCompare(b.startTime)), [sessions, today]);
   const weekSessions = useMemo(() => sessions.filter((s) => s.kind !== 'evento' && s.date >= bounds.weekStart && s.date <= bounds.weekEnd), [sessions, bounds]);
-  const monthSessions = useMemo(() => sessions.filter((s) => s.kind !== 'evento' && s.date >= bounds.monthStart && s.date <= bounds.monthEnd), [sessions, bounds]);
+  const monthSessions = useMemo(() => sessions.filter((s) => s.kind !== 'evento' && s.date >= monthBounds.monthStart && s.date <= monthBounds.monthEnd), [sessions, monthBounds]);
 
   const faltasSemana = weekSessions.filter((s) => s.status === 'falta').length;
   const reposicoesPendentes = sessions.filter((s) => s.type === 'reposicao' && s.status === 'agendado' && s.date >= today).length;
@@ -7539,10 +7548,10 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
 
   // Mesma função usada pela aba Finanças: a entrada automática dos alunos entra
   // nos dois sítios com o mesmo valor.
-  const financeMonthTx = useMemo(() => {
-    const now = new Date();
-    return monthTransactions(finances, students, now.getFullYear(), now.getMonth());
-  }, [finances, students]);
+  const financeMonthTx = useMemo(
+    () => monthTransactions(finances, students, monthCursor.getFullYear(), monthCursor.getMonth()),
+    [finances, students, monthCursor],
+  );
   const financeEntradasMes = financeMonthTx.filter((t) => t.type === 'entrada').reduce((s, t) => s + (Number(t.amount) || 0), 0);
   const financeSaidasMes = financeMonthTx.filter((t) => t.type === 'gasto').reduce((s, t) => s + (Number(t.amount) || 0), 0);
   const financeSaldoMes = financeEntradasMes - financeSaidasMes;
@@ -7569,11 +7578,11 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
         const first = parts[0] || '—';
         // Se houver nomes próprios repetidos, junta a inicial do apelido.
         const short = firstNames[first] > 1 && parts[1] ? `${first} ${parts[1][0]}.` : first;
-        const f = studentFinance(s);
+        const f = studentFinance(s, monthCursorKey);
         return { name: short, fullName: s.name, bruto: f.gross, liquido: f.net, color: s.color };
       })
       .sort((a, b) => b.liquido - a.liquido);
-  }, [activeStudents]);
+  }, [activeStudents, monthCursorKey]);
 
   // Altura cresce com o nº de alunos para nenhum ficar escondido.
   const revenueChartHeight = Math.max(220, studentRevenueData.length * 34 + 40);
@@ -7598,6 +7607,8 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
     if (h < 18) return 'Boa tarde';
     return 'Boa noite';
   })();
+  const rotuloMes = `${MONTH_NAMES[monthCursor.getMonth()]} de ${monthCursor.getFullYear()}`;
+  const sufixoMes = noMesAtual ? '' : ` — ${rotuloMes}`;
 
   if (students.length === 0) {
     return (
@@ -7621,6 +7632,34 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
         )}
       </div>
 
+      {/* A receita, a atividade e o gráfico por aluno abaixo seguem este mês
+          -- "hoje" e "esta semana", que são sempre o presente, não mudam com
+          ele. */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => setMonthCursor(new Date(monthCursor.getFullYear(), monthCursor.getMonth() - 1, 1))}
+          type="button"
+          className="p-2 rounded-lg bg-surface border border-hair btn-surface"
+          aria-label="Mês anterior"
+        >
+          <ChevronLeft size={18} className="text-muted" />
+        </button>
+        <div className="text-center">
+          <div className="font-display font-medium text-lg tracking-wide text-primary uppercase">{rotuloMes}</div>
+          {!noMesAtual && (
+            <button onClick={() => setMonthCursor(new Date())} type="button" className="text-xs font-body link-sky">Ir para hoje</button>
+          )}
+        </div>
+        <button
+          onClick={() => setMonthCursor(new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 1))}
+          type="button"
+          className="p-2 rounded-lg bg-surface border border-hair btn-surface"
+          aria-label="Próximo mês"
+        >
+          <ChevronRight size={18} className="text-muted" />
+        </button>
+      </div>
+
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <StatCard label="Receita Bruta" value={currency(totals.gross)} icon={Wallet} accent="sky" />
         <StatCard label="Receita Líquida" value={currency(totals.net)} icon={TrendingUp} accent="brass" />
@@ -7631,12 +7670,12 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
       </div>
 
       <div className="bg-surface border border-hair rounded-xl p-4">
-        <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-3">Composição da Receita Mensal</div>
+        <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-3">Composição da Receita Mensal{sufixoMes}</div>
         <RevenueLoadBar gross={totals.gross} tax={totals.tax} gymFee={totals.gymFee} net={totals.net} height={36} />
       </div>
 
       <div>
-        <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-3">Atividade do Mês</div>
+        <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-3">Atividade do Mês{sufixoMes}</div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <StatCard label="Aulas Realizadas" value={aulasRealizadasMes} icon={CheckCircle2} accent="brass" />
           <StatCard label="Avaliações Realizadas" value={avaliacoesRealizadasMes} icon={ClipboardCheck} accent="sky" />
@@ -7665,7 +7704,7 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
         </div>
         <div className="bg-surface border border-hair rounded-xl p-4 min-w-0">
           <div className="flex items-baseline justify-between gap-2 mb-2">
-            <span className="text-2xs uppercase tracking-wide text-faint font-mono">Bruto vs. Líquido por Aluno</span>
+            <span className="text-2xs uppercase tracking-wide text-faint font-mono">Bruto vs. Líquido por Aluno{sufixoMes}</span>
             <span className="text-2xs font-body text-faint">{plural(studentRevenueData.length, 'aluno', 'alunos')}</span>
           </div>
           <ErrorBoundary compact>

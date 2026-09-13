@@ -43,7 +43,7 @@ O que ele faz na aplicação, todos os dias:
 | Separador | O que lá está |
 |---|---|
 | **Painel** | Receita bruta e líquida, impostos, taxa do ginásio, comparência, faltas |
-| **Agenda** | Dia · Semana · Mês · Lista. Marcar, arrastar, copiar, horários livres |
+| **Agenda** | Dia · Semana · Mês · Lista. Marcar, copiar, horários livres. **Sem arrastar-e-largar** — foi removido, ver secção 10 |
 | **Faltas** | Faltas, direito a reposição, créditos ligados à aula de origem |
 | **Alunos** | Fichas, plano, preço, cor de identificação. **Os treinos vivem aqui dentro** |
 | **Avaliações** | Dobras (5 protocolos), bioimpedância, 14 perímetros, cintura-anca, metas, fotografias, evolução, PDF timbrado |
@@ -301,6 +301,23 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   botões de estado do `SessionCard`. O padrão certo estava ao lado, na pega de
   arrastar: **irmão** do cartão, sobreposto em `position: absolute`, com o
   cartão a abrir-lhe um vão da mesma largura para o texto não passar por baixo.
+- **Um arrasto que passa no Playwright pode não funcionar num telemóvel real.**
+  Aconteceu com o de mover uma aula para outro dia: seguia o dedo, media a
+  bateria toda de testes automatizados (rato simulado, eventos sintéticos) e
+  ainda assim não funcionava no telemóvel do dono do produto. O rato do
+  Playwright não reproduz toque real — `setPointerCapture` ausente, o
+  navegador a decidir que o gesto é outra coisa, um alvo de toque pequeno
+  demais para se acertar com o dedo — nada disto aparece num teste de
+  desktop. Foi removido em vez de perseguido às cegas: sem o aparelho real à
+  frente, não há como diagnosticar. **Testar em Playwright prova que a lógica
+  funciona, não que o gesto funciona.**
+- **`newline=nl` ao escrever duplica o `\r` que o `.replace()` já pôs à mão.**
+  Se `sub()` já converteu `\n` em `\r\n` manualmente, abrir o ficheiro para
+  escrita com `newline=nl` (em vez de `newline=''`) faz o próprio `io`
+  traduzir cada `\n` outra vez — `\r\n` vira `\r\r\n`, no ficheiro inteiro,
+  não só onde se mexeu. Só se manifesta quando o ficheiro de entrada já é
+  CRLF; um `git checkout` deste CLAUDE.md, gravado como LF, já chega — ver a
+  armadilha do `autocrlf`, duas acima. Escrever sempre com `newline=''`.
 - **Funções escritas e nunca chamadas.** Já aconteceu com `sessoesChocam`, que
   esteve meses no ficheiro sem ninguém a invocar. Antes de escrever uma
   utilidade, `grep` para ver se já existe.
@@ -415,10 +432,10 @@ existe de verdade.
 
 | Área | |
 |---|---|
-| **Agenda** | Dia, semana, mês, lista · procura e filtros · **botão de horários na própria agenda**, com horário por dia, **exceções por data** e pré-visualização da semana · horários livres em lote · **arrastar larga e move, com desfazer** · **selecionar várias e mover, mudar a duração, bloquear ou apagar de uma vez** · copiar/colar · recorrência com "só esta / toda a série" · **replicar uma marcação por X semanas** · **três botões de confirmação com cor cheia: dada, falta, e falta com direito a reposição** · **aviso de conflito** |
+| **Agenda** | Dia, semana, mês, lista · procura e filtros · **botão de horários na própria agenda**, com horário por dia, **exceções por data** e pré-visualização da semana · horários livres em lote · **selecionar várias e mover, mudar a duração, bloquear ou apagar de uma vez** · copiar/colar · recorrência com "só esta / toda a série" · **replicar uma marcação por X semanas** · **três botões de confirmação com cor cheia: dada, falta, e falta com direito a reposição**, coloridos pelo **tipo da marcação** (`SESSION_TYPES`/`EVENT_TYPES`), não pelo aluno · **aviso de conflito**. **Sem arrastar o cartão para outro dia** — existiu, media todos os testes automatizados, mas não funcionava em telemóvel real e foi removido a pedido; mover uma sessão é pelo formulário (mudar a data) ou por "Selecionar várias" |
 | **Faltas** | Estados, direito a reposição, crédito ligado à aula de origem · **validade do crédito, estado "Expirada" e registo de auditoria** (quem concedeu, quando, o que aconteceu desde então) |
 | **Prescrição** | Treinos A/B/C, 2 076 exercícios, modelos, arquivo, PDF timbrado agrupado por bloco. Blocos, métodos como lista, 15 campos por exercício, duplicar, arrastar para reordenar · **combinações com nome e cor** (bi-set, supersérie, trissérie e mais nove), cada membro num tom da cor do grupo |
-| **Vista de treino** | O programa como se lê, e não como se escreve: um treino de cada vez, por bloco, com o resumo em números (exercícios, séries, pausa somada, volume). **A carga de cada série e os números do método editam-se ali mesmo**; o resto é no construtor. `TreinoVista`, ao lado de `PrescricaoBuilder` |
+| **Vista de treino** | O programa como se lê, e não como se escreve: um treino de cada vez, por bloco, com o resumo em números (exercícios, séries, pausa somada, volume). **A carga de cada série e os números do método editam-se ali mesmo**; o resto é no construtor. **Dois modos**: completo (tudo de uma vez) e **passo a passo** — um exercício por vez, uma combinação inteira (bi-set, trissérie…) num só passo, com setas e barra de progresso (`TreinoSegmentado`, `passosDoTreino`). Exercícios soltos também têm cor própria, mais discreta que a de uma combinação, só para se distinguirem na lista. `TreinoVista`, ao lado de `PrescricaoBuilder` |
 | **Biblioteca** | Procura que traduz o termo escrito (pt-BR e inglês de ginásio) · sinónimos por exercício · favoritos · pastas · progressões, regressões e substituições, com **troca de exercício num clique dentro do treino** |
 | **Avaliações** | Dobras, % massa gorda, perímetros, fotografias, gráfico de evolução, PDF · **rascunho e final, autosave, revisões com motivo, comparar e repor** |
 | **Documentos** | Timbre com logótipo próprio, estúdio, nº profissional e contactos · aviso de confidencialidade em todas as folhas · escolher que secções saem · **pré-visualizar antes de imprimir** · abrir o e-mail para o aluno |
@@ -430,6 +447,7 @@ existe de verdade.
 | **Segurança** | Auth, RLS por utilizador, Turnstile, termos e política em pt-PT, dados na UE, exportação e apagamento |
 | **Fiabilidade** | Gravação imediata, backup e restauro, **carimbo de versão contra perda silenciosa** |
 | **Admin** | Subscrições, receita, churn, alertas |
+| **Painel** | Navega para qualquer mês, para trás e para a frente (`monthCursor`) — a receita, a atividade e o gráfico por aluno seguem o mês visto; "hoje" e "esta semana" continuam presos ao presente, que não faz sentido navegar |
 | **Desenho de aplicação** | Escala de forma/toque/movimento em tokens CSS (`--r-*`, `--tap`, `--ease-folha`) · barra de topo contextual e barra de separadores em vidro translúcido (`backdrop-filter`, com salvaguarda para sem suporte e para transparência reduzida) · **modais viram folhas** que se puxam para fechar, com resistência progressiva no limite e projeção do lançamento (`useFolhaArrastavel`) · estados de premir, carregar (esqueleto) e vazio revistos · botões feitos à mão convergiram para `.btn`/`.btn-primary`/`.btn-ghost` |
 
 ### Falta, e é barato

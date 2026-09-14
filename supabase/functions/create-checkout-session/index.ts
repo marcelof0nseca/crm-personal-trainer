@@ -21,9 +21,11 @@ const PRICE_BY_PLAN: Record<string, string | undefined> = {
   anual: Deno.env.get('STRIPE_PRICE_YEARLY'),
 };
 
-// Só o mensal tem os 7 dias grátis -- trimestral e anual já têm o próprio
-// incentivo (meses grátis) e cobram desde o início.
-const TRIAL_DAYS_BY_PLAN: Record<string, number> = { mensal: 7 };
+// Os três planos têm 7 dias grátis. Em trimestral e anual, o trial soma-se
+// ao bónus de meses grátis que já tinham -- os dois incentivos coexistem de
+// propósito (decisão de produto), o bónus continua a aplicar-se à primeira
+// cobrança a sério, só que agora essa cobrança só acontece depois do trial.
+const TRIAL_DAYS_BY_PLAN: Record<string, number> = { mensal: 7, trimestral: 7, anual: 7 };
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {

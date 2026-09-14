@@ -14608,7 +14608,7 @@ function AdminView() {
       {secao === 'visao' && (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <StatCard label="Contas ativas" value={m.contasAtivas} sub={`${m.contasTotal} no total`} icon={Users} accent="brass" />
+            <StatCard label="Contas ativas" value={m.contasAtivas} sub={`${m.contasTotal} no total · ${m.emTrial} em trial`} icon={Users} accent="brass" />
             <StatCard label="MRR" value={currency(m.mrr)} sub="Receita mensal recorrente" icon={TrendingUp} accent="brass" />
             <StatCard label="Em atraso" value={m.inadimplentes} icon={AlertTriangle} accent="rust" />
             <StatCard label="Cancelam. agendados" value={m.cancelamentosAgendados} icon={UserX} accent="rust" />
@@ -14674,6 +14674,7 @@ function AdminView() {
             <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} aria-label="Filtrar por estado" className="input-field">
               <option value="todos">Todos os estados</option>
               <option value="ativas">Ativas</option>
+              <option value="trialing">Em trial</option>
               <option value="past_due">Em atraso</option>
               <option value="canceled">Canceladas</option>
               <option value="sem_plano">Sem plano</option>

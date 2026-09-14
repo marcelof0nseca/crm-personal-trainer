@@ -83,7 +83,14 @@ Deno.serve(async (req) => {
       const sub = subsPorUser[u.id] || null;
       const st = statsPorUser[u.id] || null;
       const fimCiclo = sub?.current_period_end ? Date.parse(sub.current_period_end) : null;
-      const ativa = sub?.plan_status === 'active' && (fimCiclo === null || fimCiclo > agora);
+      const dentroDoCiclo = fimCiclo === null || fimCiclo > agora;
+      // "ativa" conta quem esta mesmo a usar a aplicacao agora -- inclui o
+      // trial, que da acesso completo. "pagante" e so quem ja paga a sério,
+      // e e essa que entra no MRR: contar o trial ali inflacionava receita
+      // que ainda nao existe.
+      const pagante = sub?.plan_status === 'active' && dentroDoCiclo;
+      const emTrial = sub?.plan_status === 'trialing' && dentroDoCiclo;
+      const ativa = pagante || emTrial;
       return {
         userId: u.id,
         email: u.email,
@@ -92,6 +99,8 @@ Deno.serve(async (req) => {
         plano: sub?.plan_tier || null,
         estado: sub?.plan_status || 'sem_plano',
         ativa,
+        pagante,
+        emTrial,
         valor: sub?.plan_value ?? null,
         intervalo: sub?.billing_interval || null,
         fimCiclo: sub?.current_period_end || null,
@@ -110,7 +119,8 @@ Deno.serve(async (req) => {
     });
 
     const ativas = contas.filter((c) => c.ativa);
-    const mrr = ativas.reduce((soma, c) => {
+    const pagantes = contas.filter((c) => c.pagante);
+    const mrr = pagantes.reduce((soma, c) => {
       const meses = ACCESS_MONTHS[c.plano || ''] || 1;
       return soma + (Number(c.valor) || 0) / meses;
     }, 0);
@@ -122,6 +132,7 @@ Deno.serve(async (req) => {
     const metricas = {
       contasTotal: contas.length,
       contasAtivas: ativas.length,
+      emTrial: contas.filter((c) => c.emTrial).length,
       mrr: Math.round(mrr * 100) / 100,
       inadimplentes: contas.filter((c) => c.estado === 'past_due').length,
       cancelamentosAgendados: contas.filter((c) => c.cancelamentoAgendado).length,

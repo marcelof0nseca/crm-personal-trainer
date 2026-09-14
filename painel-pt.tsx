@@ -14471,6 +14471,9 @@ const ADMIN_SECOES = [
 
 const EVENTO_LABELS = {
   created: { label: 'Nova subscrição', color: '#5FBFA0' },
+  trial_started: { label: 'Trial iniciado', color: '#5FC4D0' },
+  trial_converted: { label: 'Trial convertido', color: '#5FBFA0' },
+  trial_canceled: { label: 'Cancelada no trial', color: '#F5B44C' },
   renewed: { label: 'Renovação', color: '#5FC4D0' },
   upgraded: { label: 'Upgrade', color: '#1EA6B4' },
   downgraded: { label: 'Downgrade', color: '#F5B44C' },
@@ -14483,6 +14486,7 @@ const EVENTO_LABELS = {
 
 const ESTADO_CONTA = {
   active: { label: 'Ativa', color: '#5FBFA0' },
+  trialing: { label: 'Em período gratuito', color: '#5FC4D0' },
   past_due: { label: 'Em atraso', color: '#D6534A' },
   canceled: { label: 'Cancelada', color: '#8C8C8C' },
   sem_plano: { label: 'Sem plano', color: '#7C838F' },

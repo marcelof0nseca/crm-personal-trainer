@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
     }, 0);
 
     const cancelamentos30 = eventos.filter((e: any) =>
-      (e.event_type === 'canceled' || e.event_type === 'cancel_scheduled')
+      (e.event_type === 'canceled' || e.event_type === 'cancel_scheduled' || e.event_type === 'trial_canceled')
       && Date.parse(e.occurred_at) >= ha30dias).length;
 
     const metricas = {

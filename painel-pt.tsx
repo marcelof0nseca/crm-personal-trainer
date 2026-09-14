@@ -5,9 +5,9 @@ import {
   TrendingUp, AlertTriangle, CheckCircle2, RotateCcw, Shuffle, Repeat, ClipboardCheck,
   Sparkles, UserX, ChevronLeft, ChevronRight, Search, Wallet, Percent, Building2,
   Loader2, Settings, Check, Info, Activity, Ban, Download, Upload,
-  Camera, ArrowLeft, LineChart as LineChartIcon, Tag,
-  Coffee, Dumbbell, UtensilsCrossed, Stethoscope, Gift, CreditCard, Mail, CircleUser, KeyRound, ShieldCheck,
-  RefreshCcw, Printer, Pencil, Copy, ClipboardPaste, GripVertical, Bell, Archive, BookMarked,
+  Camera, ArrowLeft, LineChart as LineChartIcon,
+  Coffee, Dumbbell, Gift, CreditCard, Mail, CircleUser, KeyRound, ShieldCheck,
+  RefreshCcw, Printer, Pencil, Copy, GripVertical, Bell, Archive, BookMarked,
   Sun, Moon, Monitor, Send, ImagePlus, Eye, EyeOff, History, Star, Clock, Lock,
 } from 'lucide-react';
 import {
@@ -16,6 +16,15 @@ import {
 import { supabase, supabaseConfigured } from './src/supabaseClient';
 import logoSrc from './src/assets/ptmanager-logo.png';
 import LandingPage from './src/components/LandingPage';
+import { StatCard, RevenueLoadBar, StudentCard } from './src/components/DashboardAtoms';
+import {
+  SESSION_TYPES, EVENT_TYPES, STATUS_OPTIONS, acentoTexto, iconOf, sessionTypeFor, eventTypeFor, SessionCard,
+} from './src/components/AgendaAtoms';
+import {
+  CAMPO_SERIE, TIPOS_SERIE, TIPO_SERIE_OMISSAO, CAMPOS_POR_METODO, CAMPOS_EXTRA,
+  tipoDeSerie, camposDoMetodo, extrasPreenchidos, descreverLinha,
+  CargaDaSerie, NumerosDoMetodo, ExercicioVista,
+} from './src/components/TreinoAtoms';
 import Turnstile from './src/components/Turnstile';
 import LegalModal from './src/components/LegalDocs';
 import {
@@ -33,30 +42,6 @@ const DAY_NAMES = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', '
 const DAY_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
-const SESSION_TYPES = [
-  { id: 'fixo', label: 'Horário Fixo', icon: Repeat, color: '#4A90D9' },
-  { id: 'flutuante', label: 'Horário Flutuante', icon: Shuffle, color: '#9B8AC4' },
-  { id: 'reposicao', label: 'Reposição', icon: RotateCcw, color: '#5FBFA0' },
-  { id: 'avaliacao', label: 'Avaliação Física', icon: ClipboardCheck, color: '#D6764A' },
-  { id: 'experimental', label: 'Aula Experimental', icon: Sparkles, color: '#E08FB0' },
-];
-
-const EVENT_TYPES = [
-  { id: 'horario_livre', label: 'Horário Livre', icon: Coffee, color: '#5FC4D0' },
-  { id: 'bloqueado', label: 'Bloqueado', icon: Ban, color: '#8C8C8C' },
-  { id: 'reuniao', label: 'Reunião', icon: Users, color: '#9B8AC4' },
-  { id: 'treino_pessoal', label: 'Meu Treino', icon: Dumbbell, color: '#6FCF97' },
-  { id: 'almoco', label: 'Horário de Almoço', icon: UtensilsCrossed, color: '#F2A65A' },
-  { id: 'consulta_medica', label: 'Consulta Médica', icon: Stethoscope, color: '#EF88AD' },
-  { id: 'outro', label: 'Outro', icon: Tag, color: '#8C8C8C' },
-];
-
-const STATUS_OPTIONS = [
-  { id: 'agendado', label: 'Agendado', color: '#8C8C8C' },
-  { id: 'realizado', label: 'Realizado', color: '#5FBFA0' },
-  { id: 'falta', label: 'Falta', color: '#D6534A' },
-  { id: 'cancelado', label: 'Cancelado', color: '#5C5C5C' },
-];
 
 // O Recharts recebe estilos como objetos JS, mas tanto os estilos em linha como
 // os atributos de apresentação do SVG resolvem `var()`. Escrito assim, os
@@ -75,15 +60,6 @@ const CHART = {
   tick: { fill: 'var(--text-faint)', fontSize: 11 },
   grid: 'var(--border-hair)',
 };
-
-// As cores de tipo de evento, de estado e de categoria foram escolhidas para
-// fundo preto: sobre branco, várias descem abaixo de 3:1 e deixam de se ler.
-// Como preenchimento (bolinhas, fatias de gráfico) não há problema -- o que
-// precisa de correção é o texto e os ícones. No tema escuro isto devolve a cor
-// intacta, porque a mistura é de 0%.
-function acentoTexto(hex) {
-  return `color-mix(in srgb, ${hex}, var(--acc-mix) var(--acc-amt))`;
-}
 
 const STUDENT_COLORS = ['#5DA9E9', '#C77DFF', '#4EC5D4', '#EF88AD', '#7EC4CF', '#8FA6C2', '#A78BFA', '#7FB3B3', '#6FCF97', '#E8735A'];
 const PLAN_TYPES = ['1x por semana', '2x por semana', '3x por semana', '4x por semana', '5x por semana', 'Personalizado'];
@@ -338,14 +314,19 @@ const SALES_PLANS = [
   {
     id: 'trimestral', name: 'Trimestral', price: '€39,90', value: 39.90, interval: 'Trimestral',
     note: '3 meses pagos + 1 grátis', paidMonths: 3, bonusMonths: 1, accessMonths: 4,
-    bonusLabel: '+1 mês grátis', perMonth: '€9,98/mês', highlight: true,
+    bonusLabel: '+1 mês grátis', perMonth: '€9,98/mês', highlight: true, trialDays: 7,
   },
   {
     id: 'anual', name: 'Anual', price: '€129,90', value: 129.90, interval: 'Anual',
     note: '12 meses pagos + 2 grátis', paidMonths: 12, bonusMonths: 2, accessMonths: 14,
-    bonusLabel: '+2 meses grátis', perMonth: '€9,28/mês', highlight: false,
+    bonusLabel: '+2 meses grátis', perMonth: '€9,28/mês', highlight: false, trialDays: 7,
   },
 ];
+
+// Só o mensal cobra por mês -- os outros dois cobram o período inteiro de
+// uma vez. Usado para descrever a cobrança que vem depois do trial sem
+// inventar um "€39,90/mês" que a Stripe nunca cobraria assim.
+const CADENCIA_POR_PLANO = { mensal: '/mês', trimestral: ' a cada 3 meses', anual: ' a cada 12 meses' };
 
 // Mesma lista da landing (src/components/LandingPage.tsx, PLAN_INCLUDES) --
 // os três planos acima só diferem em preço, período e bónus, nunca em
@@ -2068,56 +2049,6 @@ function descreverCombinacao(combinacao) {
    em todas as linhas era ilegível; mostrar só quatro não chegava para corrida
    nem para cardio.
    ----------------------------------------------------------------- */
-const CAMPO_SERIE = {
-  reps: ['Reps', '10'],
-  carga: ['Carga', '40 kg'],
-  tempo: ['Tempo', '40 s'],
-  duracao: ['Duração', '12 min'],
-  distancia: ['Distância', '400 m'],
-  velocidade: ['Velocidade', '10 km/h'],
-  ritmo: ['Ritmo', '5:30 /km'],
-  potencia: ['Potência', '180 W'],
-  inclinacao: ['Inclinação', '6%'],
-  cadencia: ['Cadência', '3-1-1'],
-  percentagem1rm: ['% 1RM', '75%'],
-};
-
-const TIPOS_SERIE = [
-  { id: 'reps_carga', label: 'Repetições e carga', campos: ['reps', 'carga'] },
-  { id: 'reps_carga_tempo', label: 'Repetições, carga e tempo', campos: ['reps', 'carga', 'tempo'] },
-  { id: 'reps_tempo', label: 'Repetições e tempo', campos: ['reps', 'tempo'] },
-  { id: 'reps_1rm', label: 'Repetições e % de 1RM', campos: ['reps', 'percentagem1rm'] },
-  { id: 'cadencia', label: 'Repetições, carga e cadência', campos: ['reps', 'carga', 'cadencia'] },
-  { id: 'tempo_inclinacao', label: 'Tempo e inclinação', campos: ['tempo', 'inclinacao'] },
-  { id: 'corrida', label: 'Corrida', campos: ['distancia', 'tempo', 'ritmo'] },
-  { id: 'cardio', label: 'Cardio', campos: ['duracao', 'velocidade', 'potencia'] },
-  { id: 'observacao', label: 'Só observação', campos: [] },
-];
-const TIPO_SERIE_OMISSAO = 'reps_carga';
-
-function tipoDeSerie(id) {
-  return TIPOS_SERIE.find((t) => t.id === id) || TIPOS_SERIE[0];
-}
-
-// Os métodos que precisam de números próprios. Escolher EMOM e não haver onde
-// pôr os minutos deixava o método a valer só como etiqueta.
-const CAMPOS_POR_METODO = {
-  'EMOM': [['minutos', 'Minutos', '12']],
-  'AMRAP': [['minutos', 'Minutos', '15']],
-  'Tabata': [['rondas', 'Rondas', '8'], ['trabalho', 'Trabalho (s)', '20'], ['pausa', 'Pausa (s)', '10']],
-  'Circuito': [['voltas', 'Voltas', '3'], ['pausaVolta', 'Pausa entre voltas (s)', '90']],
-  'Intervalado': [['esforco', 'Esforço (s)', '30'], ['recuperacao', 'Recuperação (s)', '60']],
-  'For time': [['limite', 'Tempo limite', '10 min']],
-  'Drop-set': [['quedas', 'Quedas', '2'], ['reducao', 'Redução por queda (%)', '20']],
-  'Rest-pause': [['pausas', 'Pausas', '3'], ['pausaSeg', 'Pausa (s)', '15']],
-  'Back-off': [['reducao', 'Redução (%)', '15']],
-  'Pirâmide': [['sentido', 'Sentido', 'crescente']],
-};
-
-function camposDoMetodo(metodo) {
-  return CAMPOS_POR_METODO[metodo] || [];
-}
-
 function novaLinhaSerie(anterior) {
   // Copia a linha anterior: a segunda série quase nunca é diferente da
   // primeira, e quando é, muda-se um campo em vez de escrever tudo.
@@ -2149,30 +2080,6 @@ function migrarExercicioParaLinhas(ex) {
 // A1, A2, B1, B2... A letra vem da ordem por que os grupos aparecem no treino.
 // Um grupo com um exercício só não é supersérie nenhuma e não leva etiqueta —
 // pode acontecer depois de apagar o par.
-// Uma linha de série numa frase: "10 × 40 kg · RPE 8". É o que o aluno lê no
-// PDF, e por isso não leva rótulos que ele não precise de decifrar.
-// `semCarga` serve a vista de treino, onde a carga tem coluna propria e
-// editavel: reperti-la na descricao punha o mesmo numero duas vezes na linha.
-function descreverLinha(linha, opcoes) {
-  if (!linha) return '';
-  const tipo = tipoDeSerie(linha.tipo);
-  if (tipo.id === 'observacao') return linha.notas || '';
-  const semCarga = Boolean(opcoes && opcoes.semCarga);
-  const partes = tipo.campos
-    .map((campo) => {
-      if (semCarga && campo === 'carga') return null;
-      const valor = String(linha[campo] || '').trim();
-      if (!valor) return null;
-      if (campo === 'reps') return valor;
-      if (campo === 'carga') return `× ${valor}`;
-      return `${CAMPO_SERIE[campo][0]} ${valor}`;
-    })
-    .filter(Boolean);
-  if (linha.rpe) partes.push(`RPE ${linha.rpe}`);
-  if (linha.rir) partes.push(`RIR ${linha.rir}`);
-  return partes.join(' · ');
-}
-
 // O método com os números que ele levar: "Tabata (8 rondas, 20 s / 10 s)".
 function descreverMetodo(ex) {
   if (!ex.metodo) return '';
@@ -2267,18 +2174,6 @@ const CAMPOS_BASE = [
   ['carga', 'Carga', '22 kg'],
   ['descanso', 'Descanso (s)', '90'],
 ];
-
-// O que é do exercício e não de cada série. Carga, repetições, tempo, RPE e
-// companhia mudam de série para série e por isso vivem nas linhas — tê-los
-// aqui também era pedir o mesmo número em dois sítios.
-const CAMPOS_EXTRA = [
-  ['alternativa', 'Alternativa em casa', 'Agachamento livre'],
-  ['equipamentoAlt', 'Se não houver equipamento', 'Elástico em vez de polia'],
-];
-
-function extrasPreenchidos(ex) {
-  return CAMPOS_EXTRA.filter(([campo]) => ex[campo]);
-}
 
 // Agrupa mantendo a ordem dos blocos e, dentro de cada um, a ordem em que o
 // treinador os pôs. Blocos vazios não aparecem.
@@ -2733,7 +2628,24 @@ function conflitosDe(sessions, alvo) {
   return (sessions || []).filter((s) => s.id !== alvo.id
     && s.status !== 'cancelado'
     && s.type !== 'horario_livre'
+    // Sessões do mesmo grupo (a mesma marcação, vários alunos) partilham o
+    // horário de propósito -- não é um choque, é o próprio grupo.
+    && !(alvo.groupId && s.groupId === alvo.groupId)
     && sessoesChocam(s, alvo));
+}
+
+// Reservar por cima de um "Horário Livre" já existente devia ocupá-lo, e não
+// deixá-lo por baixo a continuar a dizer que aquele tempo está livre. Só se
+// aplica a quem está a ocupar tempo a sério -- criar um horário livre não
+// deve comer outros horários livres vizinhos.
+function semLivresCobertosPor(lista, novasSessoes) {
+  if (novasSessoes.some((s) => s.type === 'horario_livre')) return lista;
+  const cobertos = new Set();
+  for (const s of lista) {
+    if (s.type !== 'horario_livre') continue;
+    if (novasSessoes.some((n) => sessoesChocam(s, n))) cobertos.add(s.id);
+  }
+  return cobertos.size ? lista.filter((s) => !cobertos.has(s.id)) : lista;
 }
 
 function startOfWeek(date) {
@@ -2778,24 +2690,6 @@ function categoryFor(type, categoryId, customCategories) {
     ? [...INCOME_CATEGORIES, ...((customCategories && customCategories.income) || [])]
     : [...EXPENSE_CATEGORIES, ...((customCategories && customCategories.expense) || [])];
   return list.find((c) => c.id === categoryId) || list[list.length - 1];
-}
-// Um ícone é um componente React e NÃO sobrevive a JSON.stringify: as categorias
-// personalizadas eram gravadas com o componente e voltavam do armazenamento como
-// {}, fazendo o React rebentar ao renderizá-las (erro #130). Validar sempre antes
-// de usar, e cair no ícone genérico quando o valor não for renderizável.
-function iconOf(candidate, fallback = Tag) {
-  if (typeof candidate === 'function') return candidate;
-  if (candidate && typeof candidate === 'object' && candidate.$$typeof) return candidate;
-  return fallback;
-}
-
-function sessionTypeFor(typeId, customCategories) {
-  const list = [...SESSION_TYPES, ...((customCategories && customCategories.sessionTypes) || [])];
-  return list.find((t) => t.id === typeId) || SESSION_TYPES[0];
-}
-function eventTypeFor(typeId, customCategories) {
-  const list = [...EVENT_TYPES, ...((customCategories && customCategories.eventTypes) || [])];
-  return list.find((t) => t.id === typeId) || EVENT_TYPES[0];
 }
 function statusLabel(type, status) {
   if (type === 'entrada') return status === 'concluido' ? 'Recebido' : 'Previsto';
@@ -4843,7 +4737,13 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn, subscription }) 
 
         <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {SALES_PLANS.map((plan) => {
+            // O bónus de meses grátis usa o mesmo sinal de "primeira vez" que o
+            // trial (a mesma linha, ou a sua ausência, em personal_subscriptions)
+            // -- mostrar o rótulo do bónus a quem já teve conta prometia algo
+            // que o webhook nunca ia conceder.
             const temTrial = Boolean(plan.trialDays) && podeExperimentarGratis;
+            const temBonus = Boolean(plan.bonusLabel) && podeExperimentarGratis;
+            const cadencia = CADENCIA_POR_PLANO[plan.id] || '/mês';
             return (
             <div key={plan.id} className="bg-surface border rounded-xl p-5 flex flex-col gap-4" style={{ borderColor: plan.highlight ? 'var(--brass)' : 'var(--border-hair)' }}>
               <div className="flex items-center justify-between gap-3">
@@ -4857,23 +4757,27 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn, subscription }) 
                 </div>
                 <div className="text-xs text-faint font-body mt-1">{temTrial ? `${plan.note} — a partir do 8º dia` : plan.note}</div>
               </div>
-              {temTrial ? (
-                <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)' }}>
-                  <Clock size={14} style={{ flexShrink: 0 }} />
-                  <span className="text-xs font-body font-semibold">{plan.trialDays} dias grátis, sem cobrança agora</span>
-                </div>
-              ) : plan.bonusLabel ? (
-                <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)' }}>
-                  <Gift size={14} style={{ flexShrink: 0 }} />
-                  <span className="text-xs font-body font-semibold">{plan.bonusLabel}</span>
-                </div>
-              ) : (
-                <div className="rounded-lg px-3 py-2 border border-hair">
-                  <span className="text-xs font-body text-faint">Sem compromisso, cancele a qualquer momento</span>
-                </div>
-              )}
+              <div className="flex flex-col gap-2">
+                {temTrial && (
+                  <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)' }}>
+                    <Clock size={14} style={{ flexShrink: 0 }} />
+                    <span className="text-xs font-body font-semibold">{plan.trialDays} dias grátis, sem cobrança agora</span>
+                  </div>
+                )}
+                {temBonus && (
+                  <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)' }}>
+                    <Gift size={14} style={{ flexShrink: 0 }} />
+                    <span className="text-xs font-body font-semibold">{temTrial ? `${plan.bonusLabel} na primeira cobrança` : plan.bonusLabel}</span>
+                  </div>
+                )}
+                {!temTrial && !temBonus && (
+                  <div className="rounded-lg px-3 py-2 border border-hair">
+                    <span className="text-xs font-body text-faint">Sem compromisso, cancele a qualquer momento</span>
+                  </div>
+                )}
+              </div>
               <p className="text-xs text-muted font-body">
-                {temTrial && `O cartão fica registado, mas só é cobrado se não cancelar antes do fim dos ${plan.trialDays} dias — a partir daí, €${plan.value.toFixed(2).replace('.', ',')}/mês.`}
+                {temTrial && `O cartão fica registado, mas só é cobrado se não cancelar antes do fim dos ${plan.trialDays} dias — a partir daí, ${plan.price}${cadencia}${temBonus ? ` (inclui ${plan.bonusLabel.replace('+', '')})` : ''}.`}
                 {!temTrial && plan.id === 'mensal' && 'Para começar sem compromisso, ou testar antes de decidir o período.'}
                 {!temTrial && plan.id === 'trimestral' && 'O equilíbrio entre poupança e liberdade — o mais escolhido pelos treinadores.'}
                 {!temTrial && plan.id === 'anual' && 'Para quem já sabe que fica — o custo mensal mais baixo dos três.'}
@@ -6308,22 +6212,6 @@ function SettingsModal({
 }
 
 
-function StatCard({ label, value, icon: Icon, accent = 'brass', sub }) {
-  const hex = ACCENT_HEX[accent];
-  return (
-    <div className="card card-hover p-4 flex flex-col gap-2.5 min-w-0">
-      <div className="flex items-start justify-between gap-2">
-        <span className="text-2xs uppercase tracking-wide text-muted font-body leading-tight">{label}</span>
-        <span className="rounded-md p-1.5 flex-shrink-0" style={{ backgroundColor: `${hex}1F` }}>
-          <Icon size={14} style={{ color: hex, display: 'block' }} />
-        </span>
-      </div>
-      <span className="font-mono text-xl sm:text-2xl text-primary font-semibold leading-none truncate" style={{ letterSpacing: '-0.02em' }}>{value}</span>
-      {sub && <span className="text-2xs text-faint font-body leading-tight">{sub}</span>}
-    </div>
-  );
-}
-
 function StudentSessionsCard({ student, weekCount, monthCount, yearCount, pendingFaltasCount }) {
   return (
     <div className="bg-elevated border border-hair rounded-lg p-3 flex flex-col gap-3">
@@ -6397,29 +6285,6 @@ function AlertChip({ icon: Icon, label, count, accent }) {
         <div className="font-mono text-lg leading-none" style={{ color: active ? 'var(--text-primary)' : 'var(--text-faint)' }}>{count}</div>
         <div className="text-2xs text-faint font-body truncate mt-1">{label}</div>
       </div>
-    </div>
-  );
-}
-
-function RevenueLoadBar({ gross, tax, gymFee, net, height = 32, showLabels = true }) {
-  const total = gross > 0 ? gross : 1;
-  const netPct = Math.max(0, (net / total) * 100);
-  const taxPct = Math.max(0, (tax / total) * 100);
-  const gymPct = Math.max(0, (gymFee / total) * 100);
-  return (
-    <div>
-      <div className="w-full rounded-lg overflow-hidden border border-hair flex" style={{ height }}>
-        <div style={{ width: `${netPct}%`, backgroundColor: 'var(--brass)' }} title={`Líquido: ${currency(net)}`} />
-        <div style={{ width: `${taxPct}%`, backgroundColor: 'var(--rust)' }} title={`Imposto: ${currency(tax)}`} />
-        <div style={{ width: `${gymPct}%`, backgroundColor: 'var(--slate-acc)' }} title={`Taxa Ginásio: ${currency(gymFee)}`} />
-      </div>
-      {showLabels && (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-2xs font-body">
-          <span className="flex items-center gap-1.5 text-muted"><span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: 'var(--brass)' }} />Líquido {currency(net)}</span>
-          <span className="flex items-center gap-1.5 text-muted"><span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: 'var(--rust)' }} />Imposto {currency(tax)}</span>
-          <span className="flex items-center gap-1.5 text-muted"><span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: 'var(--slate-acc)' }} />Taxa Ginásio {currency(gymFee)}</span>
-        </div>
-      )}
     </div>
   );
 }
@@ -7438,169 +7303,6 @@ function PhotoPicker({ photoIds, onAdd, onRemove, photosById, busy }) {
   );
 }
 
-/* ============================== SESSION CARD ============================== */
-
-// compact = coluna estreita da semana no desktop. Aí o rótulo do tipo é
-// omitido (o ícone colorido já o identifica) e as ações ficam lado a lado,
-// para o nome do aluno ter a largura toda.
-/* ===================== ARRASTAR PARA REMARCAR ===================== */
-
-// Arrasto com Pointer Events, e nao com HTML5 drag-and-drop: o HTML5 DnD nao
-// funciona em toque, que e onde a agenda mais se usa.
-//
-// A pega e propria (nao o cartao inteiro) por causa do touch-action: para o
-// browser nos entregar o movimento em vez de deslizar a pagina, a zona tem de
-// ter touch-action: none -- e isso, aplicado ao cartao todo, impediria o
-// utilizador de fazer scroll comecando em cima de uma aula.
-function SessionCard({ session, student, onOpen, onQuickStatus, customCategories, compact, selecao }) {
-  // Em modo de seleção o cartão deixa de abrir e passa a marcar-se: mover em
-  // bloco faz-se pela barra, com data à escolha.
-  const aSelecionar = Boolean(selecao && selecao.ativo);
-  const selecionada = aSelecionar && selecao.ids.includes(session.id);
-  const abrir = aSelecionar ? () => selecao.alternar(session.id) : onOpen;
-  const isEvento = session.kind === 'evento';
-  const type = isEvento ? eventTypeFor(session.type, customCategories) : sessionTypeFor(session.type, customCategories);
-  const TypeIcon = iconOf(type.icon);
-  const isFalta = session.status === 'falta';
-  const isCancelado = session.status === 'cancelado';
-  const isRealizado = session.status === 'realizado';
-  // A cor identifica o TIPO da marcação (horário fixo, reposição, avaliação,
-  // um evento pessoal…), não o aluno — cada tipo já tem cor própria fixa em
-  // SESSION_TYPES/EVENT_TYPES, pensada para se reconhecer a olho na agenda. O
-  // nome do aluno já vai escrito por extenso; usar a cor dele aqui apagava
-  // essa diferenciação por tipo, que é a que ajuda a ler o dia de relance.
-  const color = type.color;
-  const statusInfo = STATUS_OPTIONS.find((o) => o.id === session.status);
-
-  // Confirmar a aula, a falta e a falta com direito a reposição. Cada uma com
-  // a sua cor cheia: verde é aconteceu, vermelho é falta seca, dourado é falta
-  // que gera crédito. São irmãos do cartão e não filhos, pela mesma razão da
-  // pega de arrastar — um <button> dentro de um elemento com role="button" é
-  // ARIA inválido e o rótulo de cada ação entraria no nome acessível do
-  // cartão. Por isso ficam sobrepostos no canto, e o cartão abre-lhes um vão
-  // da mesma largura para o nome do aluno não passar por baixo.
-  const podeDar = !isEvento && !aSelecionar && !isRealizado && !isCancelado && !isFalta;
-  const podeFaltar = !isEvento && !aSelecionar && !isFalta && !isCancelado;
-  const nAcoes = (podeDar ? 1 : 0) + (podeFaltar ? 2 : 0);
-  const ladoAcao = compact ? 21 : 22;
-  // Compacto empilha-as em linha (a coluna é baixa); largo empilha em coluna.
-  const vaoAcoes = nAcoes === 0 ? 0 : (compact ? nAcoes * ladoAcao + (nAcoes - 1) * 4 : ladoAcao);
-  const acaoRapida = (estado, rotulo, titulo, Icone, fundo) => (
-    <button
-      key={estado}
-      onClick={(e) => { e.stopPropagation(); onQuickStatus(session, estado); }}
-      type="button"
-      className="rounded"
-      style={{ padding: 4, backgroundColor: fundo, lineHeight: 0 }}
-      aria-label={rotulo}
-      title={titulo}
-    >
-      <Icone size={compact ? 13 : 14} style={{ color: '#0A0A0A', display: 'block' }} />
-    </button>
-  );
-
-  return (
-    <div className="relative min-w-0">
-      {nAcoes > 0 && (
-        <div
-          className={`absolute flex gap-1 ${compact ? '' : 'flex-col'}`}
-          style={{ top: 8, right: 6, zIndex: 2 }}
-        >
-          {podeDar && acaoRapida('realizado', 'Marcar como realizado', 'Aula dada', CheckCircle2, 'var(--ok)')}
-          {podeFaltar && acaoRapida('falta', 'Falta sem direito a reposição', 'Falta, sem reposição', UserX, 'var(--rust)')}
-          {podeFaltar && acaoRapida('falta_reposicao', 'Falta com direito a reposição', 'Falta, com direito a reposição', RotateCcw, 'var(--gold)')}
-        </div>
-      )}
-    <div
-      onClick={abrir}
-      role="button"
-      tabIndex={0}
-      aria-pressed={aSelecionar ? selecionada : undefined}
-      onKeyDown={(e) => { if (e.key === 'Enter') abrir(); }}
-      className={`rounded-lg border border-hair pl-3 pr-1.5 py-2.5 cursor-pointer card-hover animate-in ${isCancelado ? 'opacity-50' : ''}`}
-      // Sem borderColor: a abreviada entra em conflito com borderLeftColor e o
-      // React avisa. O retorno do arrasto vem do realce da coluna e da sombra,
-      // que ja chegam.
-      style={{
-        // A célula inteira leva a cor, não só a tira da esquerda: de relance,
-        // a agenda passa a dizer-se pelas cores. A mistura é com `transparent`
-        // para funcionar por cima do fundo, seja ele claro ou escuro.
-        backgroundColor: `color-mix(in srgb, ${color} var(--celula-tinta), var(--bg-elevated))`,
-        borderStyle: isEvento ? 'dashed solid solid dashed' : 'solid',
-        borderLeftWidth: '3px',
-        borderLeftColor: color,
-        // Marcada: anel a toda a volta, que a cor da célula já ocupa o fundo.
-        boxShadow: selecionada ? '0 0 0 2px var(--brass)' : undefined,
-        opacity: aSelecionar && !selecionada ? 0.62 : undefined,
-      }}
-    >
-      {aSelecionar && (
-        <span className="flex items-center gap-1.5 mb-1.5">
-          <input
-            type="checkbox"
-            checked={selecionada}
-            readOnly
-            tabIndex={-1}
-            aria-hidden="true"
-            style={{ accentColor: 'var(--brass)', pointerEvents: 'none' }}
-          />
-          <span className="text-2xs font-body text-faint">{selecionada ? 'Selecionada' : 'Selecionar'}</span>
-        </span>
-      )}
-      {/* Compacto: hora + ações na 1.ª linha, nome na 2.ª, estado com a linha
-          toda na 3.ª — assim "Agendado" nunca é cortado a meio. */}
-      {compact ? (
-        <div className="flex flex-col gap-1 min-w-0">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="font-mono text-2xs text-muted nowrap">{session.startTime}</span>
-            <span className="rounded p-0.5 flex-shrink-0" style={{ backgroundColor: `color-mix(in srgb, ${type.color} 15%, transparent)` }}>
-              <TypeIcon size={10} style={{ color: acentoTexto(type.color), display: 'block' }} />
-            </span>
-            <span className="flex-1" />
-            {vaoAcoes > 0 && <span aria-hidden="true" style={{ width: vaoAcoes, flexShrink: 0 }} />}
-          </div>
-          <div
-            className={`font-body text-sm text-primary truncate ${isFalta ? 'line-through' : ''}`}
-            style={{ fontWeight: 500 }}
-            title={isEvento ? type.label : (student?.name || 'Aluno removido')}
-          >
-            {isEvento ? type.label : (student?.name || 'Aluno removido')}
-          </div>
-          <span className="badge self-start" style={{ color: acentoTexto(statusInfo?.color), backgroundColor: `color-mix(in srgb, ${statusInfo?.color} 14%, transparent)` }}>
-            {statusInfo?.label}
-          </span>
-        </div>
-      ) : (
-        <>
-          <div className="flex items-start justify-between gap-1">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 mb-1 min-w-0">
-                <span className="font-mono text-2xs text-muted nowrap">{session.startTime}</span>
-                <span className="rounded p-0.5 flex-shrink-0" style={{ backgroundColor: `color-mix(in srgb, ${type.color} 15%, transparent)` }}>
-                  <TypeIcon size={10} style={{ color: acentoTexto(type.color), display: 'block' }} />
-                </span>
-                {!isEvento && <span className="text-2xs font-body text-faint truncate">{type.label}</span>}
-              </div>
-              <div
-                className={`font-body text-sm text-primary truncate ${isFalta ? 'line-through' : ''}`}
-                style={{ fontWeight: 500 }}
-                title={isEvento ? type.label : (student?.name || 'Aluno removido')}
-              >
-                {isEvento ? type.label : (student?.name || 'Aluno removido')}
-              </div>
-            </div>
-            {vaoAcoes > 0 && <span aria-hidden="true" style={{ width: vaoAcoes, flexShrink: 0 }} />}
-          </div>
-          <span className="badge mt-1.5" style={{ color: acentoTexto(statusInfo?.color), backgroundColor: `color-mix(in srgb, ${statusInfo?.color} 14%, transparent)` }}>
-            {statusInfo?.label}
-          </span>
-        </>
-      )}
-    </div>
-    </div>
-  );
-}
-
 /* ============================== HEADER + NAV ============================== */
 
 // Barra superior. No telemóvel diz onde se está -- o nome do separador --
@@ -8164,7 +7866,7 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
 
 /* ============================== WEEKLY VIEW ============================== */
 
-function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSession, onPasteSession, temCopia, horario, students, compact, customCategories, selecao }) {
+function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSession, horario, students, compact, customCategories, selecao }) {
   const iso = fmtDateISO(date);
   const isToday = iso === fmtDateISO(new Date());
   const fechado = horario && !horario.aberto;
@@ -8205,11 +7907,6 @@ function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSess
             )
           ) : (
             <>
-              {temCopia && onPasteSession && (
-                <button onClick={() => onPasteSession(iso)} type="button" className="p-1.5 rounded-lg btn-surface" aria-label="Colar aqui" title="Colar aqui">
-                  <ClipboardPaste size={16} className="text-brass" style={{ display: 'block' }} />
-                </button>
-              )}
               <button onClick={() => onAddSession(iso)} type="button" className="p-1.5 rounded-lg btn-surface" aria-label="Adicionar">
                 <Plus size={16} className="text-muted" style={{ display: 'block' }} />
               </button>
@@ -8219,9 +7916,86 @@ function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSess
       </div>
       <div className="flex flex-col gap-2 min-w-0">
         {sessionsList.length === 0 && <div className="text-xs text-faint font-body py-3 text-center">Nada agendado</div>}
-        {sessionsList.map((s) => {
+        {/* Em seleção múltipla cada sessão tem de continuar a marcar-se
+            individualmente -- não agrupa, senão perde-se o id de cada uma. */}
+        {aSelecionar
+          ? sessionsList.map((s) => {
+            const student = students.find((st) => st.id === s.studentId);
+            return <SessionCard key={s.id} session={s} student={student} onOpen={() => onOpenSession(s)} onQuickStatus={onQuickStatus} customCategories={customCategories} compact={compact} selecao={selecao} />;
+          })
+          : itensDoDia(sessionsList).map((item) => (item.sessoes.length > 1 ? (
+            <GroupedSessionCard key={item.sessoes[0].groupId} sessoes={item.sessoes} students={students} onOpenSession={onOpenSession} compact={compact} customCategories={customCategories} />
+          ) : (
+            <SessionCard
+              key={item.sessoes[0].id}
+              session={item.sessoes[0]}
+              student={students.find((st) => st.id === item.sessoes[0].studentId)}
+              onOpen={() => onOpenSession(item.sessoes[0])}
+              onQuickStatus={onQuickStatus}
+              customCategories={customCategories}
+              compact={compact}
+              selecao={selecao}
+            />
+          )))}
+      </div>
+    </div>
+  );
+}
+
+// Sessões com o mesmo groupId (a mesma marcação, vários alunos) juntam-se num
+// item só, na ordem da primeira ocorrência de cada horário -- um grupo com
+// um único membro sobrevivente (os outros foram apagados) volta a mostrar-se
+// como uma sessão normal.
+function itensDoDia(sessionsList) {
+  const porGrupo = new Map();
+  const avulsas = [];
+  sessionsList.forEach((s) => {
+    if (!s.groupId) { avulsas.push({ startTime: s.startTime, sessoes: [s] }); return; }
+    if (!porGrupo.has(s.groupId)) porGrupo.set(s.groupId, []);
+    porGrupo.get(s.groupId).push(s);
+  });
+  const grupos = [...porGrupo.values()].map((sessoes) => ({ startTime: sessoes[0].startTime, sessoes }));
+  return [...avulsas, ...grupos].sort((a, b) => a.startTime.localeCompare(b.startTime));
+}
+
+// O cartão de um grupo: mesma linguagem visual do SessionCard (cor do tipo na
+// tira esquerda e no fundo), mas com uma linha por aluno lá dentro em vez de
+// um cartão por aluno -- abrir um nome leva à sessão desse aluno, sozinha,
+// onde se marca presença/falta ou se apaga só a dele.
+function GroupedSessionCard({ sessoes, students, onOpenSession, compact, customCategories }) {
+  const first = sessoes[0];
+  const type = sessionTypeFor(first.type, customCategories);
+  const TypeIcon = iconOf(type.icon);
+  const faixaHorario = first.endTime && first.endTime !== first.startTime ? `${first.startTime}–${first.endTime}` : first.startTime;
+  return (
+    <div
+      className="rounded-lg border border-hair pl-3 pr-2 py-2.5"
+      style={{ backgroundColor: `color-mix(in srgb, ${type.color} var(--celula-tinta), var(--bg-elevated))`, borderLeftWidth: '3px', borderLeftColor: type.color }}
+    >
+      <div className="flex items-center gap-1.5 mb-1.5 min-w-0">
+        <span className="font-mono text-2xs text-muted nowrap">{faixaHorario}</span>
+        <span className="rounded p-0.5 flex-shrink-0" style={{ backgroundColor: `color-mix(in srgb, ${type.color} 15%, transparent)` }}>
+          <TypeIcon size={10} style={{ color: acentoTexto(type.color), display: 'block' }} />
+        </span>
+        <span className="text-2xs font-body text-faint truncate">{type.label} · {sessoes.length} alunos</span>
+      </div>
+      <div className="flex flex-col gap-1">
+        {sessoes.map((s) => {
           const student = students.find((st) => st.id === s.studentId);
-          return <SessionCard key={s.id} session={s} student={student} onOpen={() => onOpenSession(s)} onQuickStatus={onQuickStatus} customCategories={customCategories} compact={compact} selecao={selecao} />;
+          const statusInfo = STATUS_OPTIONS.find((o) => o.id === s.status);
+          return (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => onOpenSession(s)}
+              className="flex items-center justify-between gap-2 text-left rounded-md px-1.5 py-1 btn-surface min-w-0"
+            >
+              <span className={`font-body text-sm text-primary truncate ${s.status === 'falta' ? 'line-through' : ''}`}>{student?.name || 'Aluno removido'}</span>
+              <span className="badge flex-shrink-0" style={{ color: acentoTexto(statusInfo?.color), backgroundColor: `color-mix(in srgb, ${statusInfo?.color} 14%, transparent)` }}>
+                {statusInfo?.label}
+              </span>
+            </button>
+          );
         })}
       </div>
     </div>
@@ -8460,7 +8234,7 @@ function BarraSelecao({ selecao }) {
 
 // Um dia inteiro, em coluna unica. Reaproveita a DayColumn da semana: o mesmo
 // cartao, o mesmo arrastar, o mesmo menu de colar.
-function DailyView({ sessions, students, dayCursor, setDayCursor, onOpenSession, onQuickStatus, onAddSession, onPasteSession, temCopia, definicoes, customCategories, selecao }) {
+function DailyView({ sessions, students, dayCursor, setDayCursor, onOpenSession, onQuickStatus, onAddSession, definicoes, customCategories, selecao }) {
   const iso = fmtDateISO(dayCursor);
   const doDia = sessions.filter((s) => s.date === iso).sort((a, b) => a.startTime.localeCompare(b.startTime));
   const horario = definicoes ? horarioDoDia(definicoes, iso) : null;
@@ -8494,8 +8268,6 @@ function DailyView({ sessions, students, dayCursor, setDayCursor, onOpenSession,
         onOpenSession={onOpenSession}
         onQuickStatus={onQuickStatus}
         onAddSession={onAddSession}
-        onPasteSession={onPasteSession}
-        temCopia={temCopia}
         customCategories={customCategories}
         selecao={selecao}
       />
@@ -8588,7 +8360,7 @@ function ListaView({ sessions, students, onOpenSession, customCategories }) {
   );
 }
 
-function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession, onQuickStatus, onAddSession, onPasteSession, onLibertarSemana, temCopia, definicoes, customCategories, selecao }) {
+function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession, onQuickStatus, onAddSession, onLibertarSemana, definicoes, customCategories, selecao }) {
   const [selectedDay, setSelectedDay] = useState(fmtDateISO(new Date()));
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
@@ -8689,7 +8461,7 @@ function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession
       </div>
 
       <div className="md:hidden">
-        <DayColumn date={days.find((d) => fmtDateISO(d) === selectedDay) || days[0]} sessionsList={sessionsForDay(selectedDay)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} onPasteSession={onPasteSession} temCopia={temCopia} horario={horarioDoDia(definicoes, selectedDay)} customCategories={customCategories} selecao={selecao} />
+        <DayColumn date={days.find((d) => fmtDateISO(d) === selectedDay) || days[0]} sessionsList={sessionsForDay(selectedDay)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} horario={horarioDoDia(definicoes, selectedDay)} customCategories={customCategories} selecao={selecao} />
       </div>
 
       {/* Largura mínima por coluna: abaixo disso os nomes ficavam ilegíveis.
@@ -8698,7 +8470,7 @@ function WeeklyView({ sessions, students, weekStart, setWeekStart, onOpenSession
         <div className="grid grid-cols-7 gap-3" style={{ minWidth: 980 }}>
           {days.map((d) => {
             const iso = fmtDateISO(d);
-            return <DayColumn key={iso} date={d} sessionsList={sessionsForDay(iso)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} onPasteSession={onPasteSession} temCopia={temCopia} horario={horarioDoDia(definicoes, iso)} compact customCategories={customCategories} selecao={selecao} />;
+            return <DayColumn key={iso} date={d} sessionsList={sessionsForDay(iso)} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} onAddSession={onAddSession} horario={horarioDoDia(definicoes, iso)} compact customCategories={customCategories} selecao={selecao} />;
           })}
         </div>
       </div>
@@ -8866,42 +8638,9 @@ function StudentsView({ students, sessions, onEdit, onNew }) {
         <EmptyState icon={Users} message={students.length === 0 ? 'Nenhum aluno registado ainda.' : 'Nenhum aluno encontrado.'} cta={students.length === 0 ? 'Registar primeiro aluno' : undefined} onCta={onNew} />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {filtered.map((s) => {
-            const f = studentFinance(s);
-            const pf = pendingFaltas(s.id, sessions);
-            return (
-              <div key={s.id} onClick={() => onEdit(s)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') onEdit(s); }} className="card card-hover p-4 cursor-pointer">
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
-                    <div className="min-w-0">
-                      <div className="font-body text-sm font-semibold text-primary truncate">{s.name}</div>
-                      <div className="text-xs text-faint font-body truncate">{s.planType}{s.memberNumber ? ` · Sócio ${s.memberNumber}` : ''}</div>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                    {!s.active && <span className="badge" style={{ backgroundColor: 'var(--wash-strong)', color: 'var(--text-faint)' }}>Inativo</span>}
-                    {pf > 0 && (
-                      <span className="badge" style={{ backgroundColor: 'var(--rust-soft)', color: 'var(--rust)' }}>
-                        <UserX size={10} />{pf} {pf > 1 ? 'faltas' : 'falta'}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <RevenueLoadBar gross={f.gross} tax={f.tax} gymFee={f.gymFee} net={f.net} height={16} showLabels={false} />
-                <div className="flex items-end justify-between mt-2.5 gap-2">
-                  <span className="flex flex-col min-w-0">
-                    <span className="text-2xs uppercase tracking-wide text-faint font-body">Bruto</span>
-                    <span className="font-mono text-xs text-muted">{currency(f.gross)}</span>
-                  </span>
-                  <span className="flex flex-col items-end min-w-0">
-                    <span className="text-2xs uppercase tracking-wide text-faint font-body">Líquido</span>
-                    <span className="font-mono text-sm text-brass font-semibold">{currency(f.net)}</span>
-                  </span>
-                </div>
-              </div>
-            );
-          })}
+          {filtered.map((s) => (
+            <StudentCard key={s.id} student={s} finance={studentFinance(s)} pendingFaltasCount={pendingFaltas(s.id, sessions)} onClick={() => onEdit(s)} />
+          ))}
         </div>
       )}
     </div>
@@ -9156,10 +8895,8 @@ function StudentFormModal({ student, sessions, customCategories, treinoCount = 0
 
 /* ============================== SESSION FORM MODAL ============================== */
 
-function SessionFormModal({ session, students, sessions, defaultDate, reposicaoDe, customCategories, definicoes, serieCount = 0, novaCopia = false, onAddCategory, onSave, onClose, onDelete, onCopy, onReplicar }) {
-  // Uma colagem chega com sessao preenchida mas ainda nao existe na agenda: nao
-  // e edicao, senao o modal oferecia eliminar algo que nunca foi gravado.
-  const isEdit = !!session && !novaCopia;
+function SessionFormModal({ session, students, sessions, defaultDate, reposicaoDe, customCategories, definicoes, serieCount = 0, onAddCategory, onSave, onClose, onDelete, onReplicar }) {
+  const isEdit = !!session;
   const [form, setForm] = useState(() => {
     if (session) return { kind: 'aula', ...session };
     const kind = students.length === 0 ? 'evento' : 'aula';
@@ -9190,6 +8927,9 @@ function SessionFormModal({ session, students, sessions, defaultDate, reposicaoD
   const [escopo, setEscopo] = useState('uma');
   const [replicarSemanas, setReplicarSemanas] = useState(4);
   const [aReplicar, setAReplicar] = useState(false);
+  // Outros alunos no mesmo horário -- só faz sentido numa marcação nova, sem
+  // repetição semanal (ver `plano` mais abaixo).
+  const [extraStudentIds, setExtraStudentIds] = useState([]);
 
   function set(field, value) {
     setForm((f) => ({ ...f, [field]: typeof value === 'function' ? value(f[field]) : value }));
@@ -9254,7 +8994,7 @@ function SessionFormModal({ session, students, sessions, defaultDate, reposicaoD
       return;
     }
     setError('');
-    onSave(form, plano, escopo);
+    onSave(form, plano, escopo, extraStudentIds);
   }
 
   return (
@@ -9281,6 +9021,41 @@ function SessionFormModal({ session, students, sessions, defaultDate, reposicaoD
                   {sortedStudents.map((s) => <option key={s.id} value={s.id}>{s.name}{!s.active ? ' (inativo)' : ''}</option>)}
                 </select>
               </FormField>
+            )}
+
+            {/* Vários alunos no mesmo horário -- só ao criar (editar mexe
+                sempre numa sessão de cada vez) e só sem repetição semanal
+                (gerarSerie só sabe repetir um aluno só). */}
+            {!isEvento && !isEdit && !repeat && sortedStudents.length > 1 && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-body text-muted">Mais alunos neste horário (opcional)</span>
+                <div className="flex gap-1.5 flex-wrap" role="group" aria-label="Outros alunos no mesmo horário">
+                  {sortedStudents.filter((s) => s.id !== form.studentId).map((s) => {
+                    const on = extraStudentIds.includes(s.id);
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setExtraStudentIds((atual) => (on ? atual.filter((x) => x !== s.id) : [...atual, s.id]))}
+                        aria-pressed={on}
+                        className="px-2.5 py-1.5 rounded-full text-xs font-body flex-shrink-0"
+                        style={{
+                          border: `1px solid ${on ? 'var(--brass)' : 'var(--border-hair)'}`,
+                          backgroundColor: on ? 'var(--brass-soft)' : 'transparent',
+                          color: on ? 'var(--brass)' : 'var(--text-muted)',
+                        }}
+                      >
+                        {s.name}
+                      </button>
+                    );
+                  })}
+                </div>
+                {extraStudentIds.length > 0 && (
+                  <span className="text-2xs font-body text-faint">
+                    {plural(extraStudentIds.length + 1, 'aula será criada', 'aulas serão criadas')}, uma por aluno, no mesmo horário.
+                  </span>
+                )}
+              </div>
             )}
 
             <FormField label="Data">
@@ -9630,17 +9405,6 @@ function SessionFormModal({ session, students, sessions, defaultDate, reposicaoD
               title="Eliminar"
             >
               <Trash2 size={16} /><span className="hidden sm:inline">Eliminar</span>
-            </button>
-          )}
-          {isEdit && onCopy && (
-            <button
-              onClick={() => onCopy(form)}
-              type="button"
-              className="btn btn-ghost flex-shrink-0"
-              aria-label="Copiar para colar noutro dia"
-              title="Copiar para colar noutro dia"
-            >
-              <Copy size={16} /><span className="hidden sm:inline">Copiar</span>
             </button>
           )}
           {(isEvento || students.length > 0) && (
@@ -10482,52 +10246,6 @@ function useArrastarExercicio(onReordenar) {
    quantas series, em que bloco -- muda-se no construtor, que esta a um clique.
    -------------------------------------------------------------------- */
 
-// A carga de uma serie, editavel no sitio. Enter salta para a seguinte: quem
-// esta a atualizar as cargas de um treino inteiro faz isso doze vezes seguidas.
-function CargaDaSerie({ valor, rotulo, onMudar }) {
-  return (
-    <input
-      value={valor || ''}
-      data-carga-vista=""
-      onChange={(e) => onMudar(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key !== 'Enter') return;
-        e.preventDefault();
-        const todos = Array.from(document.querySelectorAll('[data-carga-vista]'));
-        const proximo = todos[todos.indexOf(e.currentTarget) + 1];
-        if (proximo) { proximo.focus(); proximo.select(); } else e.currentTarget.blur();
-      }}
-      aria-label={rotulo}
-      className="input-field font-mono"
-      placeholder="—"
-      style={{ fontSize: 13, textAlign: 'right', padding: '4px 8px' }}
-    />
-  );
-}
-
-// Os numeros de um metodo, na vista. Sao os mesmos campos do construtor, mas
-// so aparecem depois de se tocar na etiqueta: fechados, o treino le-se.
-function NumerosDoMetodo({ campos, params, prefixo, onMudar }) {
-  if (campos.length === 0) return null;
-  return (
-    <div className="flex gap-2 flex-wrap" style={{ paddingTop: 2 }}>
-      {campos.map(([campo, rotulo, exemplo]) => (
-        <div key={campo} className="flex flex-col gap-1" style={{ flex: '1 1 118px', minWidth: 104 }}>
-          <span className="text-2xs font-body text-faint">{rotulo}</span>
-          <input
-            value={params[campo] || ''}
-            onChange={(e) => onMudar({ ...params, [campo]: e.target.value })}
-            aria-label={`${rotulo} ${prefixo}`}
-            className="input-field"
-            placeholder={exemplo}
-            style={{ fontSize: 13 }}
-          />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 // A barra de uma combinacao, sobre o primeiro membro. A cor e a mesma dos
 // exercicios que ela junta -- e o que os liga a olho.
 function BarraCombinacao({ info, combinacao, onMudar }) {
@@ -10672,126 +10390,6 @@ function TreinoSegmentado({ treino, infos, blocos, biblioteca, onMudarExercicio,
           Seguinte <ChevronRight size={16} />
         </button>
       </div>
-    </div>
-  );
-}
-
-function ExercicioVista({ ex, biblioteca, grupoInfo, onMudar, comCabecalho }) {
-  const [numeros, setNumeros] = useState(false);
-  const daBiblioteca = biblioteca.find((b) => b.id === ex.exercicioId);
-  const linhas = Array.isArray(ex.linhas) && ex.linhas.length ? ex.linhas : [];
-  const camposMetodo = camposDoMetodo(ex.metodo);
-  const extras = extrasPreenchidos(ex);
-  const subtitulo = [daBiblioteca && daBiblioteca.grupo, daBiblioteca && daBiblioteca.equipamento]
-    .filter(Boolean).join(' · ');
-
-  function mudarLinha(id, campo, valor) {
-    onMudar({ ...ex, linhas: linhas.map((l) => (l.id === id ? { ...l, [campo]: valor } : l)) });
-  }
-
-  return (
-    <div
-      className="rounded-lg px-3 py-2.5 flex flex-col gap-2 min-w-0"
-      style={{
-        // Sem borda a toda a volta: com uma dúzia de exercícios, doze caixas
-        // fechadas viram uma grelha. O que separa é o fundo e a tira da cor.
-        backgroundColor: grupoInfo
-          ? `color-mix(in srgb, ${grupoInfo.cor} ${grupoInfo.tinta}%, var(--bg-elevated))`
-          : 'var(--bg-elevated)',
-        borderLeft: grupoInfo ? `3px solid ${grupoInfo.cor}` : '3px solid transparent',
-      }}
-    >
-      <div className="flex items-baseline gap-2 flex-wrap min-w-0">
-        {grupoInfo && grupoInfo.etiqueta && (
-          <span className="font-mono text-2xs flex-shrink-0" style={{ color: acentoTexto(grupoInfo.cor), fontWeight: 700 }}>
-            {grupoInfo.etiqueta}
-          </span>
-        )}
-        <span className="font-body text-sm text-primary min-w-0" style={{ fontWeight: 600 }}>
-          {ex.nome || 'Exercício'}
-        </span>
-        {subtitulo && <span className="text-2xs font-body text-faint truncate">{subtitulo}</span>}
-        {ex.metodo && (
-          camposMetodo.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => setNumeros((n) => !n)}
-              aria-expanded={numeros}
-              className="badge flex-shrink-0"
-              style={{
-                marginLeft: 'auto',
-                color: 'var(--brass)',
-                backgroundColor: 'var(--brass-soft)',
-                cursor: 'pointer',
-              }}
-              title="Ver e mudar os números deste método"
-            >
-              {ex.metodo}
-            </button>
-          ) : (
-            <span className="badge flex-shrink-0" style={{ marginLeft: 'auto', color: 'var(--brass)', backgroundColor: 'var(--brass-soft)' }}>
-              {ex.metodo}
-            </span>
-          )
-        )}
-      </div>
-
-      {numeros && (
-        <NumerosDoMetodo
-          campos={camposMetodo}
-          params={ex.metodoParams || {}}
-          prefixo={`de ${ex.nome || 'exercício'}`}
-          onMudar={(novos) => onMudar({ ...ex, metodoParams: novos })}
-        />
-      )}
-
-      {linhas.length === 0 ? (
-        <span className="text-2xs font-body text-faint">Sem séries escritas.</span>
-      ) : (
-        <div className="flex flex-col gap-1">
-          {comCabecalho && (
-            <div className="flex items-center gap-2 text-2xs font-body text-faint" style={{ paddingRight: 2 }}>
-              <span className="nowrap" style={{ width: 34, flexShrink: 0 }}>Série</span>
-              <span className="flex-1 min-w-0">Prescrição</span>
-              <span className="nowrap" style={{ width: 92, textAlign: 'right' }}>Carga</span>
-              <span className="nowrap" style={{ width: 56, textAlign: 'right' }}>Descanso</span>
-            </div>
-          )}
-          {linhas.map((linha, i) => {
-            const tipo = tipoDeSerie(linha.tipo);
-            const temCarga = tipo.campos.includes('carga');
-            const texto = descreverLinha(linha, { semCarga: true });
-            return (
-              <div key={linha.id} className="flex items-center gap-2 min-w-0" style={{ paddingRight: 2 }}>
-                <span className="font-mono text-2xs text-faint flex-shrink-0" style={{ width: 34 }}>{i + 1}</span>
-                <span className="text-xs font-body text-primary flex-1 min-w-0 truncate" title={texto}>
-                  {texto || '—'}
-                </span>
-                <span style={{ width: 92, flexShrink: 0 }}>
-                  {temCarga ? (
-                    <CargaDaSerie
-                      valor={linha.carga}
-                      rotulo={`Carga da série ${i + 1} de ${ex.nome || 'exercício'}`}
-                      onMudar={(v) => mudarLinha(linha.id, 'carga', v)}
-                    />
-                  ) : (
-                    <span className="block font-mono text-2xs text-faint" style={{ textAlign: 'right' }}>—</span>
-                  )}
-                </span>
-                <span className="font-mono text-2xs text-muted flex-shrink-0 nowrap" style={{ width: 56, textAlign: 'right' }}>
-                  {linha.descanso ? `${linha.descanso}${/^\d+$/.test(String(linha.descanso).trim()) ? ' s' : ''}` : '—'}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {(ex.notas || extras.length > 0) && (
-        <div className="text-2xs font-body text-faint min-w-0">
-          {[ex.notas, ...extras.map(([campo, rotulo]) => `${rotulo}: ${ex[campo]}`)].filter(Boolean).join(' · ')}
-        </div>
-      )}
     </div>
   );
 }
@@ -15491,7 +15089,6 @@ function AppInner() {
   const [pedirPeriodo, setPedirPeriodo] = useState(false);
   const [preencherForm, setPreencherForm] = useState(null); // { modelo, resposta }
   const [treinosStudentId, setTreinosStudentId] = useState(null);
-  const [clipboardSession, setClipboardSession] = useState(null);
   // Qual o bloco que foi alterado noutro sítio. Enquanto estiver preenchido, a
   // aplicação diz-lhe que o que está no ecrã não ficou guardado.
   const [conflito, setConflito] = useState(null);
@@ -16140,11 +15737,11 @@ function AppInner() {
   // `plano` descreve a repetição a criar: ou { semanas } (o formato antigo), ou
   // { semanas, dias, horas } para gerar vários dias e horas de uma vez.
   // `escopo` só conta ao editar: 'serie' propaga às irmãs, 'uma' fica por aqui.
-  function saveSession(session, plano, escopo) {
+  function saveSession(session, plano, escopo, extraStudentIds) {
     const isEvento = session.kind === 'evento';
     const novas = gerarSerie(session, plano);
     if (novas) {
-      persistSessions([...sessions, ...novas]);
+      persistSessions([...semLivresCobertosPor(sessions, novas), ...novas]);
       showToast(isEvento
         ? `${plural(novas.length, 'evento agendado', 'eventos agendados')}.`
         : `${plural(novas.length, 'aula agendada', 'aulas agendadas')}.`);
@@ -16153,6 +15750,22 @@ function AppInner() {
     }
 
     const exists = sessions.some((s) => s.id === session.id);
+
+    // Vários alunos no mesmo horário: só numa marcação nova (sem repetição
+    // semanal, que gerarSerie já tratou acima). Cada aluno fica com a sua
+    // própria sessão -- falta, reposição e avaliação continuam a funcionar
+    // sem tocar em mais nada -- e todas partilham um groupId novo, só para a
+    // interface as mostrar como um cartão só (ver GroupedSessionCard).
+    if (!exists && !isEvento && extraStudentIds && extraStudentIds.length > 0) {
+      const groupId = uid();
+      const membros = [session.studentId, ...extraStudentIds].filter(Boolean);
+      const grupo = membros.map((studentId, i) => ({ ...session, id: i === 0 ? session.id : uid(), studentId, groupId }));
+      persistSessions([...semLivresCobertosPor(sessions, grupo), ...grupo]);
+      showToast(`Aula agendada para ${grupo.length} alunos.`);
+      setShowSessionModal(false);
+      return;
+    }
+
     let next;
     if (exists && escopo === 'serie' && session.seriesId) {
       // Propaga só o que é comum à série. A data e o estado ficam de fora: cada
@@ -16184,7 +15797,7 @@ function AppInner() {
         };
       });
     }
-    persistSessions(next);
+    persistSessions(semLivresCobertosPor(next, [session]));
     if (!exists) {
       showToast(isEvento ? 'Evento agendado.' : 'Aula agendada.');
     } else if (escopo === 'serie' && session.seriesId) {
@@ -16748,17 +16361,6 @@ function AppInner() {
     showToast(`${plural(novos.length, 'horário livre criado', 'horários livres criados')}.`);
   }
 
-  function copySession(session) {
-    // Guarda uma copia limpa: sem id, sem serie e sem as ligacoes de reposicao,
-    // que pertencem a ocorrencia original e nao devem ser duplicadas.
-    const { id, seriesId, reposicaoDeSessionId, reposicaoSessionId, ...limpa } = session;
-    setClipboardSession(limpa);
-    setShowSessionModal(false);
-    showToast(session.kind === 'evento' ? 'Evento copiado. Escolha o dia para colar.' : 'Aula copiada. Escolha o dia para colar.');
-  }
-
-  // Colar e arrastar abrem sempre o modal em vez de gravar em silencio: e a
-  // caixa de confirmacao onde se pode mudar tudo antes de assumir.
   // Replica uma marcação que já existe pelas X semanas seguintes, no mesmo dia
   // da semana e à mesma hora. É a repetição que só se podia escolher ao criar:
   // quem marcou uma aula avulsa e depois quis fixá-la tinha de a apagar e voltar
@@ -16794,16 +16396,6 @@ function AppInner() {
     const alvo = new Set(ids);
     persistSessions(sessionsRef.current.filter((s) => !alvo.has(s.id)));
     showToast('Réplicas removidas.');
-  }
-
-  function pasteSession(dateIso) {
-    if (!clipboardSession) return;
-    setSessionModal({
-      session: { ...clipboardSession, id: uid(), date: dateIso, status: 'agendado' },
-      defaultDate: dateIso,
-      novaCopia: true,
-    });
-    setShowSessionModal(true);
   }
 
   /* ---------- seleção múltipla na agenda ---------- */
@@ -17228,8 +16820,8 @@ function AppInner() {
             <AgendaFiltros filtro={agendaFiltro} setFiltro={setAgendaFiltro} total={sessions.length} visiveis={sessoesVisiveis.length} />
           </div>
         )}
-        {view === 'agenda' && agendaScale === 'daily' && <DailyView sessions={sessoesVisiveis} students={students} dayCursor={dayCursor} setDayCursor={setDayCursor} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} onPasteSession={pasteSession} temCopia={Boolean(clipboardSession)} definicoes={definicoes} customCategories={customCategories} selecao={selecaoAgenda} />}
-        {view === 'agenda' && agendaScale === 'weekly' && <WeeklyView sessions={sessoesVisiveis} students={students} weekStart={weekStart} setWeekStart={setWeekStart} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} onPasteSession={pasteSession} onLibertarSemana={libertarSemana} temCopia={Boolean(clipboardSession)} definicoes={definicoes} customCategories={customCategories} selecao={selecaoAgenda} />}
+        {view === 'agenda' && agendaScale === 'daily' && <DailyView sessions={sessoesVisiveis} students={students} dayCursor={dayCursor} setDayCursor={setDayCursor} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} definicoes={definicoes} customCategories={customCategories} selecao={selecaoAgenda} />}
+        {view === 'agenda' && agendaScale === 'weekly' && <WeeklyView sessions={sessoesVisiveis} students={students} weekStart={weekStart} setWeekStart={setWeekStart} onOpenSession={openEditSession} onQuickStatus={quickStatus} onAddSession={openNewSession} onLibertarSemana={libertarSemana} definicoes={definicoes} customCategories={customCategories} selecao={selecaoAgenda} />}
         {view === 'agenda' && agendaScale === 'monthly' && <MonthlyView sessions={sessoesVisiveis} students={students} monthCursor={monthCursor} setMonthCursor={setMonthCursor} onOpenDay={setDayDetailIso} customCategories={customCategories} />}
         {view === 'agenda' && agendaScale === 'lista' && <ListaView sessions={sessoesVisiveis} students={students} onOpenSession={openEditSession} customCategories={customCategories} />}
         {view === 'faltas' && (
@@ -17329,7 +16921,6 @@ function AppInner() {
           reposicaoDe={sessionModal?.reposicaoDe}
           customCategories={customCategories}
           definicoes={definicoes}
-          novaCopia={Boolean(sessionModal?.novaCopia)}
           onReplicar={replicarSessao}
           serieCount={sessionModal?.session?.seriesId
             ? sessions.filter((s) => s.seriesId === sessionModal.session.seriesId).length
@@ -17338,7 +16929,6 @@ function AppInner() {
           onSave={saveSession}
           onClose={() => setShowSessionModal(false)}
           onDelete={deleteSession}
-          onCopy={copySession}
         />
       )}
       {showFaltaModal && (

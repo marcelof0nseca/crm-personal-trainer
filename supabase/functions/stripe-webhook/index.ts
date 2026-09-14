@@ -42,8 +42,15 @@ function periodEndOf(subscription) {
 }
 
 // O bónus só vale no primeiro ciclo: nas renovações o período volta ao normal.
+// Quando há trial, o primeiro ciclo A SÉRIO só começa quando o trial acaba
+// -- current_period_start desse ciclo fica ~7 dias depois de start_date, não
+// no dia seguinte. Comparar sempre contra start_date fazia isFirstCycle()
+// devolver falso logo na primeira cobrança pós-trial, apagando o bónus de
+// trimestral/anual sem nenhum erro a avisar (só não se notava em mensal,
+// que não tem bónus a perder). trial_end é o instante certo para comparar
+// quando existiu trial; sem trial, continua a ser start_date, como sempre.
 function isFirstCycle(subscription) {
-  const start = subscription.start_date;
+  const start = subscription.trial_end || subscription.start_date;
   const periodStart = periodStartOf(subscription);
   if (!start || !periodStart) return false;
   return Math.abs(periodStart - start) < 24 * 60 * 60;

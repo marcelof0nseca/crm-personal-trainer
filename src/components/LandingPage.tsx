@@ -5,6 +5,9 @@ import {
   MousePointerClick, CalendarX2, FileSignature, Stamp, BarChart3, UserSearch, Clock,
 } from 'lucide-react';
 import LegalModal from './LegalDocs';
+import { SessionCard } from './AgendaAtoms';
+import { StatCard, RevenueLoadBar, StudentCard } from './DashboardAtoms';
+import { ExercicioVista } from './TreinoAtoms';
 
 /* ============================== MOCK DATA (previews) ============================== */
 
@@ -21,11 +24,12 @@ const MOCK_SESSIONS = [
   { time: '17:00', name: 'Marta Silva', type: 'Reposição', color: '#5FBFA0' },
 ];
 
-const MOCK_STUDENTS = [
-  { name: 'Rita Almeida', plan: '3x/semana', status: 'Ativo', color: '#5DA9E9' },
-  { name: 'João Pereira', plan: '2x/semana', status: 'Ativo', color: '#C77DFF' },
-  { name: 'Marta Silva', plan: '1x/semana', status: 'Ativo', color: '#6FCF97' },
-  { name: 'Tiago Costa', plan: 'Personalizado', status: 'Inativo', color: '#8FA6C2' },
+// O mesmo StudentCard do painel (ver DashboardAtoms.tsx).
+const STUDENTS_DEMO = [
+  { student: { name: 'Rita Almeida', color: '#5DA9E9', active: true, planType: '3x/semana', memberNumber: '014' }, finance: { gross: 160, tax: 16, gymFee: 8, net: 136 }, pendingFaltasCount: 0 },
+  { student: { name: 'João Pereira', color: '#C77DFF', active: true, planType: '2x/semana', memberNumber: '027' }, finance: { gross: 120, tax: 12, gymFee: 6, net: 102 }, pendingFaltasCount: 1 },
+  { student: { name: 'Marta Silva', color: '#6FCF97', active: true, planType: '1x/semana', memberNumber: '031' }, finance: { gross: 60, tax: 6, gymFee: 3, net: 51 }, pendingFaltasCount: 0 },
+  { student: { name: 'Tiago Costa', color: '#8FA6C2', active: false, planType: 'Personalizado', memberNumber: '009' }, finance: { gross: 0, tax: 0, gymFee: 0, net: 0 }, pendingFaltasCount: 0 },
 ];
 
 const WEEK_DAYS = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM'];
@@ -35,12 +39,18 @@ const MOCK_WEEK_DAYS = [
   { d: '07', n: 2 }, { d: '08', n: 1 }, { d: '09', n: 0 },
 ];
 
-// Um dia real da agenda: aula, evento pessoal, reposição e avaliação.
-const MOCK_DAY_SESSIONS = [
-  { time: '08:00', name: 'Rita Almeida', type: 'Horário Fixo', color: '#5DA9E9', status: 'Realizado', statusColor: '#5FBFA0' },
-  { time: '10:30', name: 'João Pereira', type: 'Horário Fixo', color: '#C77DFF', status: 'Agendado', statusColor: '#8C8C8C' },
-  { time: '13:00', name: 'Horário de Almoço', type: 'Evento pessoal', color: '#F2A65A', status: 'Agendado', statusColor: '#8C8C8C', evento: true },
-  { time: '17:00', name: 'Tiago Costa', type: 'Reposição', color: '#5FBFA0', status: 'Agendado', statusColor: '#8C8C8C' },
+// O mesmo SessionCard do painel (ver AgendaAtoms.tsx) -- por isso os dados
+// aqui têm a forma real de uma sessão, não uma reprodução à parte.
+const AGENDA_DEMO_STUDENTS = [
+  { id: 'd1', name: 'Rita Almeida', color: '#5DA9E9', active: true },
+  { id: 'd2', name: 'João Pereira', color: '#C77DFF', active: true },
+  { id: 'd3', name: 'Tiago Costa', color: '#8FA6C2', active: true },
+];
+const AGENDA_DEMO_SESSIONS = [
+  { id: 'ds1', kind: 'aula', studentId: 'd1', date: '2026-08-06', startTime: '08:00', endTime: '09:00', type: 'fixo', status: 'realizado', notes: '' },
+  { id: 'ds2', kind: 'aula', studentId: 'd2', date: '2026-08-06', startTime: '10:30', endTime: '11:30', type: 'fixo', status: 'agendado', notes: '' },
+  { id: 'ds3', kind: 'evento', studentId: null, date: '2026-08-06', startTime: '13:00', endTime: '13:30', type: 'almoco', status: 'agendado', notes: '' },
+  { id: 'ds4', kind: 'aula', studentId: 'd3', date: '2026-08-06', startTime: '17:00', endTime: '18:00', type: 'reposicao', status: 'agendado', notes: '' },
 ];
 
 const FAT_TREND = [22, 20.5, 19.4, 18.2];
@@ -80,14 +90,18 @@ const PHOTO_GRADIENTS = [
   'linear-gradient(135deg, #D6534A 0%, #331917 100%)',
 ];
 
+// Só o mensal cobra por mês -- os outros dois cobram o período inteiro de
+// uma vez. Evita um "€39,90/mês" que a Stripe nunca cobraria assim.
+const CADENCIA_POR_PLANO = { mensal: '/mês', trimestral: ' a cada 3 meses', anual: ' a cada 12 meses' };
+
 const PAIN_POINTS = [
-  { icon: MessageCircle, text: 'Alunos espalhados no WhatsApp' },
-  { icon: CalendarDays, text: 'Agenda desorganizada' },
-  { icon: RotateCcw, text: 'Reposições esquecidas' },
-  { icon: ClipboardCheck, text: 'Avaliações físicas perdidas' },
-  { icon: Images, text: 'Fotos sem histórico' },
-  { icon: Wallet, text: 'Falta de clareza financeira' },
-  { icon: TrendingDown, text: 'Dificuldade em saber o lucro real' },
+  { icon: MessageCircle, text: 'Alunos espalhados no WhatsApp', depois: 'Cada aluno, num único perfil' },
+  { icon: CalendarDays, text: 'Agenda desorganizada', depois: 'A semana inteira, sob controlo' },
+  { icon: RotateCcw, text: 'Reposições esquecidas', depois: 'Crédito com validade e histórico' },
+  { icon: ClipboardCheck, text: 'Avaliações físicas perdidas', depois: 'Evolução sempre documentada' },
+  { icon: Images, text: 'Fotos sem histórico', depois: 'Fotos ligadas a cada avaliação' },
+  { icon: Wallet, text: 'Falta de clareza financeira', depois: 'Saldo e categorias à vista' },
+  { icon: TrendingDown, text: 'Dificuldade em saber o lucro real', depois: 'Receita líquida, calculada sozinha' },
 ];
 
 // Tudo o que existe de verdade e não tem secção própria mais acima — cada
@@ -154,8 +168,8 @@ const FEATURE_INDEX = [
 const FAQ_ITEMS = [
   { q: 'Preciso de instalar alguma coisa?', a: 'Não. O PTMANAGER funciona diretamente no navegador, em qualquer computador ou telemóvel — sem instalar nada.' },
   { q: 'Funciona no telemóvel e no tablet?', a: 'Sim. O painel é totalmente responsivo e funciona igualmente bem no telemóvel, tablet e computador.' },
-  { q: 'Como funcionam os meses grátis?', a: 'No plano trimestral paga 3 meses e fica com 4. No anual paga 12 meses e fica com 14. Os meses grátis são acrescentados ao primeiro período, logo após a confirmação do pagamento.' },
-  { q: 'Como funcionam os 7 dias grátis do plano mensal?', a: 'Regista o cartão ao criar a conta, mas não é cobrado nada nesse momento. Só ao 8º dia, se não tiver cancelado antes, a Stripe cobra a primeira mensalidade automaticamente. Vale só na primeira vez — não se repete ao cancelar e voltar a assinar.' },
+  { q: 'Como funcionam os meses grátis?', a: 'No plano trimestral paga 3 meses e fica com 4. No anual paga 12 meses e fica com 14. Somam-se aos 7 dias grátis: os meses extra entram já na primeira cobrança, feita ao fim do período gratuito.' },
+  { q: 'Como funcionam os 7 dias grátis?', a: 'Regista o cartão ao criar a conta, mas não é cobrado nada nesse momento — em qualquer dos três planos. Só ao 8º dia, se não tiver cancelado antes, a Stripe cobra automaticamente o valor do plano escolhido (no trimestral e no anual, já com os meses grátis incluídos). Vale só na primeira vez — não se repete ao cancelar e voltar a assinar.' },
   { q: 'Posso cancelar quando quiser?', a: 'Sim, a qualquer momento, no portal de subscrição da Stripe — inclui os 7 dias grátis: cancelar antes do fim do período não gera nenhuma cobrança.' },
   { q: 'Os meus alunos acedem ao sistema?', a: 'Não. O acesso é exclusivo do personal trainer — os seus alunos não precisam de conta nem de iniciar sessão.' },
   { q: 'Funciona em Portugal?', a: 'Sim. Preços em euros e suporte pensados para o mercado português.' },
@@ -218,9 +232,9 @@ const FEATURE_SECTIONS = [
     Mockup: AssessmentMockup,
   },
   {
-    heading: 'Quanto ganha realmente',
-    body: 'Receita bruta, impostos, taxa de ginásio e líquido — por aluno e no total — além das despesas e entradas pessoais do mês.',
-    bullets: ['Líquido calculado automaticamente', 'Controlo por aluno e vista geral', 'Despesas e entradas pessoais'],
+    heading: 'As suas contas, não só as dos alunos',
+    body: 'A receita dos alunos já aparece sozinha no Painel — bruta, líquida, com impostos e taxa de ginásio. A aba Finanças é para o resto: as suas entradas e saídas pessoais, por categoria, com saldo do mês e pendências à vista.',
+    bullets: ['Entradas e saídas próprias, por categoria', 'Saldo do mês sempre em evidência', 'Pendências por regularizar, destacadas'],
     Mockup: FinanceMockup,
   },
 ];
@@ -360,17 +374,8 @@ function StudentsMockup({ chromeless } = {}) {
   return (
     <MockupFrame label="alunos · 24 ativos" chromeless={chromeless}>
       <div className="flex flex-col gap-2">
-        {MOCK_STUDENTS.map((s) => (
-          <div key={s.name} className="bg-elevated border border-hair rounded-lg pl-3 pr-2.5 py-2.5 flex items-center gap-2.5" style={{ borderLeftWidth: '3px', borderLeftColor: s.color }}>
-            <span className="text-xs font-body text-primary truncate flex-1">{s.name}</span>
-            <span className="text-2xs font-body text-faint hidden sm:inline flex-shrink-0">{s.plan}</span>
-            <span
-              className="text-2xs font-body px-2 py-0.5 rounded-full flex-shrink-0"
-              style={{ color: s.status === 'Ativo' ? 'var(--brass)' : 'var(--text-faint)', backgroundColor: s.status === 'Ativo' ? 'rgba(30,166,180,0.14)' : 'rgba(255,255,255,0.05)' }}
-            >
-              {s.status}
-            </span>
-          </div>
+        {STUDENTS_DEMO.map((d) => (
+          <StudentCard key={d.student.name} student={d.student} finance={d.finance} pendingFaltasCount={d.pendingFaltasCount} onClick={() => {}} />
         ))}
       </div>
     </MockupFrame>
@@ -402,26 +407,17 @@ function AgendaMockup({ chromeless } = {}) {
         })}
       </div>
 
-      {/* Marcações do dia selecionado, com o nome de cada aluno */}
+      {/* Marcações do dia selecionado -- o mesmo SessionCard do painel */}
       <div className="flex flex-col gap-2">
-        {MOCK_DAY_SESSIONS.map((s) => (
-          <div
-            key={s.time}
-            className="rounded-lg border border-hair pl-2.5 pr-2 py-2 flex items-center gap-2.5"
-            style={{
-              backgroundColor: 'var(--bg-elevated)',
-              borderLeftWidth: 3,
-              borderLeftColor: s.color,
-              borderStyle: s.evento ? 'dashed solid solid dashed' : 'solid',
-            }}
-          >
-            <span className="font-mono text-2xs text-muted flex-shrink-0">{s.time}</span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-xs font-body text-primary truncate" style={{ fontWeight: 500 }}>{s.name}</span>
-              <span className="block text-2xs font-body text-faint truncate">{s.type}</span>
-            </span>
-            <span className="badge flex-shrink-0" style={{ color: s.statusColor, backgroundColor: `${s.statusColor}1F` }}>{s.status}</span>
-          </div>
+        {AGENDA_DEMO_SESSIONS.map((s) => (
+          <SessionCard
+            key={s.id}
+            session={s}
+            student={AGENDA_DEMO_STUDENTS.find((st) => st.id === s.studentId)}
+            onOpen={() => {}}
+            onQuickStatus={() => {}}
+            compact={false}
+          />
         ))}
       </div>
 
@@ -543,23 +539,62 @@ function AssessmentMockup({ chromeless } = {}) {
 // bloco só, sem a ficha ficar aos quadrados. Os exercícios soltos usam a
 // mesma paleta, tom mais discreto, só para se lerem separados uns dos outros.
 const COR_COMBO = '#1EA6B4';
-function LinhaExercicio({ etiqueta, nome, prescricao, carga, cor, tinta, corTexto }) {
-  return (
-    <div
-      className="rounded-lg px-3 py-2 mb-1.5"
-      style={{ backgroundColor: `color-mix(in srgb, ${cor} ${tinta}%, var(--bg-elevated))`, borderLeft: `3px solid ${cor}` }}
-    >
-      <div className="flex items-baseline gap-1.5 mb-0.5 min-w-0">
-        {etiqueta && <span className="font-mono text-2xs flex-shrink-0" style={{ color: corTexto || cor, fontWeight: 700 }}>{etiqueta}</span>}
-        <span className="text-xs font-body text-primary truncate" style={{ fontWeight: 600 }}>{nome}</span>
-      </div>
-      <div className="flex items-center justify-between text-2xs font-body text-faint">
-        <span>{prescricao}</span>
-        <span className="font-mono text-primary">{carga}</span>
-      </div>
-    </div>
-  );
-}
+
+// O mesmo ExercicioVista do painel (ver TreinoAtoms.tsx) -- os dados aqui já
+// têm a forma real de um exercício (linhas de série, não "3x10" em texto).
+const TREINO_DEMO_BIBLIOTECA = [
+  { id: 'ex1', grupo: 'Peito', equipamento: 'Barra' },
+  { id: 'ex2', grupo: 'Costas', equipamento: 'Barra' },
+  { id: 'ex3', grupo: 'Ombros', equipamento: 'Halteres' },
+  { id: 'ex4', grupo: 'Core', equipamento: 'Peso do corpo' },
+];
+const TREINO_DEMO_EXERCICIOS = [
+  {
+    ex: {
+      id: 'tx1', exercicioId: 'ex1', nome: 'Supino reto com barra',
+      linhas: [
+        { id: 'l1', tipo: 'reps_carga', reps: '10', carga: '40 kg' },
+        { id: 'l2', tipo: 'reps_carga', reps: '8', carga: '40 kg' },
+        { id: 'l3', tipo: 'reps_carga', reps: '8', carga: '40 kg' },
+      ],
+    },
+    grupoInfo: { etiqueta: 'A1', cor: COR_COMBO, tinta: 17 },
+  },
+  {
+    ex: {
+      id: 'tx2', exercicioId: 'ex2', nome: 'Remada curvada',
+      linhas: [
+        { id: 'l4', tipo: 'reps_carga', reps: '10', carga: '30 kg' },
+        { id: 'l5', tipo: 'reps_carga', reps: '10', carga: '30 kg' },
+        { id: 'l6', tipo: 'reps_carga', reps: '10', carga: '30 kg' },
+      ],
+    },
+    grupoInfo: { etiqueta: 'A2', cor: COR_COMBO, tinta: 11 },
+  },
+  {
+    ex: {
+      id: 'tx3', exercicioId: 'ex3', nome: 'Elevação lateral',
+      linhas: [
+        { id: 'l7', tipo: 'reps_carga', reps: '12', carga: '8 kg' },
+        { id: 'l8', tipo: 'reps_carga', reps: '12', carga: '8 kg' },
+        { id: 'l9', tipo: 'reps_carga', reps: '12', carga: '8 kg' },
+        { id: 'l10', tipo: 'reps_carga', reps: '12', carga: '8 kg' },
+      ],
+    },
+    grupoInfo: { cor: '#C77DFF', tinta: 12 },
+  },
+  {
+    ex: {
+      id: 'tx4', exercicioId: 'ex4', nome: 'Prancha frontal',
+      linhas: [
+        { id: 'l11', tipo: 'reps_tempo', tempo: '40 s' },
+        { id: 'l12', tipo: 'reps_tempo', tempo: '40 s' },
+        { id: 'l13', tipo: 'reps_tempo', tempo: '40 s' },
+      ],
+    },
+    grupoInfo: { cor: '#6FCF97', tinta: 7 },
+  },
+];
 
 function TreinosMockup({ chromeless } = {}) {
   return (
@@ -579,11 +614,11 @@ function TreinosMockup({ chromeless } = {}) {
         <span className="font-mono text-2xs flex-shrink-0" style={{ color: COR_COMBO, fontWeight: 700 }}>A</span>
         <span className="text-xs font-body text-primary ml-1.5" style={{ fontWeight: 500 }}>Bi-set · 2 exercícios seguidos</span>
       </div>
-      <LinhaExercicio etiqueta="A1" nome="Supino reto com barra" prescricao="3 séries · 8-10 reps" carga="40 kg" cor={COR_COMBO} tinta={17} />
-      <LinhaExercicio etiqueta="A2" nome="Remada curvada" prescricao="3 séries · 10 reps" carga="30 kg" cor={COR_COMBO} tinta={11} />
-
-      <LinhaExercicio nome="Elevação lateral" prescricao="4 séries · 12 reps" carga="8 kg" cor="#C77DFF" tinta={12} corTexto="#C77DFF" />
-      <LinhaExercicio nome="Prancha frontal" prescricao="3 séries · 40 s" carga="—" cor="#6FCF97" tinta={7} corTexto="#6FCF97" />
+      <div className="flex flex-col gap-1.5">
+        {TREINO_DEMO_EXERCICIOS.map((item) => (
+          <ExercicioVista key={item.ex.id} ex={item.ex} biblioteca={TREINO_DEMO_BIBLIOTECA} grupoInfo={item.grupoInfo} onMudar={() => {}} comCabecalho={false} />
+        ))}
+      </div>
 
       <div className="flex items-center gap-5 mt-3 pt-3 border-t border-hair">
         {[['4', 'exercícios'], ['10', 'séries'], ['1.240 kg', 'de volume']].map(([v, l]) => (
@@ -622,29 +657,38 @@ function TreinosMockup({ chromeless } = {}) {
   );
 }
 
+// A aba "Finanças" a sério é sobre as contas PESSOAIS do treinador -- entradas
+// e saídas próprias, por categoria -- não a receita dos alunos (essa já vive
+// no Painel, ver DashboardMockup). Categorias iguais às reais (ver
+// EXPENSE_CATEGORIES/INCOME_CATEGORIES em painel-pt.tsx).
+const FINANCE_DEMO_GASTOS = [
+  { categoria: 'Moradia', cor: '#5DA9E9', valor: 420 },
+  { categoria: 'Alimentação', cor: '#F2A65A', valor: 180 },
+  { categoria: 'Transporte', cor: '#6FCF97', valor: 95 },
+  { categoria: 'Assinaturas', cor: '#C77DFF', valor: 40 },
+];
+
 function FinanceMockup({ chromeless } = {}) {
+  const totalGastos = FINANCE_DEMO_GASTOS.reduce((soma, g) => soma + g.valor, 0);
   return (
-    <MockupFrame label="finanças · este mês" chromeless={chromeless}>
+    <MockupFrame label="finanças pessoais · este mês" chromeless={chromeless}>
       <div className="grid grid-cols-3 gap-2 mb-3">
-        <div className="bg-elevated border border-hair rounded-lg p-2.5 flex flex-col gap-0.5">
-          <span className="text-2xs uppercase text-faint font-body">Bruto</span>
-          <span className="font-mono text-sm text-primary">€2.340</span>
-        </div>
-        <div className="bg-elevated border border-hair rounded-lg p-2.5 flex flex-col gap-0.5">
-          <span className="text-2xs uppercase text-faint font-body">Impostos</span>
-          <span className="font-mono text-sm text-rust">€210</span>
-        </div>
-        <div className="bg-elevated border border-hair rounded-lg p-2.5 flex flex-col gap-0.5">
-          <span className="text-2xs uppercase text-faint font-body">Líquido</span>
-          <span className="font-mono text-sm text-brass">€1.890</span>
-        </div>
+        <StatCard label="Entradas" value="€1.240" icon={TrendingUp} accent="brass" />
+        <StatCard label="Saídas" value={`€${totalGastos}`} icon={Wallet} accent="rust" />
+        <StatCard label="Saldo" value={`€${1240 - totalGastos}`} icon={CheckCircle2} accent="sky" />
       </div>
       <div className="bg-elevated border border-hair rounded-lg p-3">
-        <div className="text-2xs uppercase text-faint font-body mb-2.5">Composição da receita</div>
-        <div className="w-full rounded-full overflow-hidden flex" style={{ height: 10 }}>
-          <div style={{ width: '81%', backgroundColor: 'var(--brass)' }} />
-          <div style={{ width: '9%', backgroundColor: 'var(--rust)' }} />
-          <div style={{ width: '10%', backgroundColor: 'var(--slate-acc)' }} />
+        <div className="text-2xs uppercase text-faint font-body mb-2.5">Gastos pessoais por categoria</div>
+        <div className="flex flex-col gap-1.5">
+          {FINANCE_DEMO_GASTOS.map((g) => (
+            <div key={g.categoria} className="flex items-center justify-between gap-2 text-xs font-body">
+              <span className="flex items-center gap-1.5 text-muted min-w-0">
+                <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: g.cor }} />
+                <span className="truncate">{g.categoria}</span>
+              </span>
+              <span className="font-mono text-primary flex-shrink-0">€{g.valor}</span>
+            </div>
+          ))}
         </div>
       </div>
     </MockupFrame>
@@ -792,9 +836,9 @@ const STORY_SCREENS = [
     Mockup: AssessmentMockup,
   },
   {
-    id: 'financas', label: 'Finanças', eyebrow: 'O seu negócio',
-    title: 'Quanto ganha realmente',
-    body: 'Receita bruta, impostos e taxa de ginásio calculados automaticamente, com o líquido sempre em evidência.',
+    id: 'financas', label: 'Finanças', eyebrow: 'A sua vida, não só o negócio',
+    title: 'As suas contas pessoais, organizadas',
+    body: 'Entradas e saídas próprias, por categoria, com saldo do mês sempre à vista — a receita dos alunos já tem o seu lugar no Painel.',
     Mockup: FinanceMockup,
   },
 ];
@@ -1115,6 +1159,29 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
               </Revelar>
             ))}
           </div>
+
+          {/* Antes -> depois: a mesma lista, com a resolução ao lado -- a
+              prova de que cada dor lá em cima tem mesmo uma resposta. */}
+          <Revelar atraso={90} className="mt-6 border border-hair rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--gold-soft)' }}>
+            <div className="px-5 py-3 border-b border-hair" style={{ borderColor: 'rgba(245,180,76,0.24)' }}>
+              <span className="text-2xs uppercase tracking-widest font-mono" style={{ color: 'var(--gold)' }}>Com o PTMANAGER</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2">
+              {PAIN_POINTS.map((p, i) => (
+                <div
+                  key={p.text}
+                  className="flex items-center gap-2.5 px-5 py-3"
+                  style={{
+                    borderTop: i > 1 ? '1px solid rgba(245,180,76,0.18)' : 'none',
+                    borderLeft: i % 2 === 1 ? '1px solid rgba(245,180,76,0.18)' : 'none',
+                  }}
+                >
+                  <CheckCircle2 size={15} style={{ color: 'var(--gold)', flexShrink: 0 }} />
+                  <span className="text-sm font-body text-primary">{p.depois}</span>
+                </div>
+              ))}
+            </div>
+          </Revelar>
         </section>
 
         {/* Telemóvel interativo */}
@@ -1164,10 +1231,32 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
           </div>
         </section>
 
+        {/* CTA intermédio -- depois de ver as funcionalidades todas, antes
+            dos preços, o momento certo para lembrar que dá para experimentar
+            primeiro. */}
+        {trialPlan && (
+          <section className="max-w-4xl mx-auto px-4 pb-4">
+            <Revelar
+              className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-2xl border px-6 py-5"
+              style={{ borderColor: 'rgba(245,180,76,0.28)', backgroundColor: 'var(--gold-soft)' }}
+            >
+              <div className="flex items-center gap-3 text-center sm:text-left">
+                <Clock size={20} style={{ color: 'var(--gold)', flexShrink: 0 }} />
+                <span className="text-sm font-body text-primary">
+                  Viu tudo o que o PTMANAGER faz — agora experimente, {trialPlan.trialDays} dias grátis.
+                </span>
+              </div>
+              <PrimaryButton onClick={onGetStarted} className="flex-shrink-0">Começar grátis</PrimaryButton>
+            </Revelar>
+          </section>
+        )}
+
         {/* Planos */}
         <section ref={plansRef} className="max-w-6xl mx-auto px-4 py-12 sm:py-16 flex flex-col gap-8 scroll-mt-16">
           <div className="flex flex-col gap-2 text-center items-center">
-            <h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary">Quanto mais tempo, mais meses grátis</h2>
+            <h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary">
+              {trialPlan ? `${trialPlan.trialDays} dias grátis, depois o plano que escolher` : 'Quanto mais tempo, mais meses grátis'}
+            </h2>
             <p className="text-sm text-muted font-body max-w-xl">
               Pagamento processado com segurança pela Stripe. Cancele quando quiser.
             </p>
@@ -1202,30 +1291,34 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
                   <div className="text-xs text-faint font-body mt-1">{plan.trialDays ? `${plan.note} — a partir do 8º dia` : plan.note}</div>
                 </div>
 
-                {plan.trialDays ? (
-                  <div
-                    className="flex items-center gap-2 rounded-lg px-3 py-2.5"
-                    style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)', border: '1px solid rgba(245,180,76,0.28)' }}
-                  >
-                    <Clock size={15} className="flex-shrink-0" />
-                    <span className="text-xs font-body font-semibold">{plan.trialDays} dias grátis, sem cobrança agora</span>
-                  </div>
-                ) : plan.bonusLabel ? (
-                  <div
-                    className="flex items-center gap-2 rounded-lg px-3 py-2.5"
-                    style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)', border: '1px solid rgba(245,180,76,0.28)' }}
-                  >
-                    <Gift size={15} className="flex-shrink-0" />
-                    <span className="text-xs font-body font-semibold">{plan.bonusLabel}</span>
-                  </div>
-                ) : (
-                  <div className="rounded-lg px-3 py-2.5 border border-hair">
-                    <span className="text-xs font-body text-faint">Sem compromisso, cancele a qualquer momento</span>
-                  </div>
-                )}
+                <div className="flex flex-col gap-2">
+                  {plan.trialDays && (
+                    <div
+                      className="flex items-center gap-2 rounded-lg px-3 py-2.5"
+                      style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)', border: '1px solid rgba(245,180,76,0.28)' }}
+                    >
+                      <Clock size={15} className="flex-shrink-0" />
+                      <span className="text-xs font-body font-semibold">{plan.trialDays} dias grátis, sem cobrança agora</span>
+                    </div>
+                  )}
+                  {plan.bonusLabel && (
+                    <div
+                      className="flex items-center gap-2 rounded-lg px-3 py-2.5"
+                      style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)', border: '1px solid rgba(245,180,76,0.28)' }}
+                    >
+                      <Gift size={15} className="flex-shrink-0" />
+                      <span className="text-xs font-body font-semibold">{plan.trialDays ? `${plan.bonusLabel} na primeira cobrança` : plan.bonusLabel}</span>
+                    </div>
+                  )}
+                  {!plan.trialDays && !plan.bonusLabel && (
+                    <div className="rounded-lg px-3 py-2.5 border border-hair">
+                      <span className="text-xs font-body text-faint">Sem compromisso, cancele a qualquer momento</span>
+                    </div>
+                  )}
+                </div>
 
                 <p className="text-xs text-muted font-body">
-                  {plan.trialDays && `Experimente ${plan.trialDays} dias de graça. Depois, ${plan.price}/mês — cancele antes do fim do período gratuito e não paga nada.`}
+                  {plan.trialDays && `Experimente ${plan.trialDays} dias de graça. Depois, ${plan.price}${CADENCIA_POR_PLANO[plan.id] || '/mês'}${plan.bonusLabel ? ` (inclui ${plan.bonusLabel.replace('+', '')})` : ''} — cancele antes do fim do período gratuito e não paga nada.`}
                   {!plan.trialDays && plan.id === 'mensal' && 'Para começar sem compromisso, ou testar antes de decidir o período.'}
                   {!plan.trialDays && plan.id === 'trimestral' && 'O equilíbrio entre poupança e liberdade — o mais escolhido pelos treinadores.'}
                   {!plan.trialDays && plan.id === 'anual' && 'Para quem já sabe que fica — o custo mensal mais baixo dos três.'}
@@ -1277,8 +1370,15 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
         <section className="max-w-6xl mx-auto px-4 pb-16">
           <Revelar className="border border-hair rounded-2xl p-8 sm:p-12 flex flex-col items-center text-center gap-4" style={{ backgroundColor: 'rgba(30,166,180,0.08)' }}>
             <h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary">Pronto para organizar a sua rotina?</h2>
-            <p className="text-sm text-muted font-body max-w-md">Crie a sua conta e comece a usar o PTMANAGER hoje mesmo.</p>
-            <PrimaryButton onClick={onGetStarted}>Começar agora</PrimaryButton>
+            <p className="text-sm text-muted font-body max-w-md">
+              {trialPlan
+                ? `Experimente ${trialPlan.trialDays} dias grátis — sem cobrança até decidir ficar.`
+                : 'Crie a sua conta e comece a usar o PTMANAGER hoje mesmo.'}
+            </p>
+            <PrimaryButton onClick={onGetStarted}>{trialPlan ? `Começar com ${trialPlan.trialDays} dias grátis` : 'Começar agora'}</PrimaryButton>
+            {trialPlan && (
+              <span className="text-2xs font-body text-faint">Depois, {trialPlan.perMonth} no plano mensal — cancele quando quiser.</span>
+            )}
           </Revelar>
         </section>
       </main>

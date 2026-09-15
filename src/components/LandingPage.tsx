@@ -1085,12 +1085,9 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
         <section className="max-w-6xl mx-auto px-4 pt-12 pb-16 sm:pt-16 sm:pb-24 grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-14 items-center">
           <div className="flex flex-col gap-5 order-1">
             {trialPlan && (
-              <Revelar
-                className="inline-flex w-fit items-center gap-2 rounded-lg px-3 py-1.5"
-                style={{ backgroundColor: 'var(--gold-soft)', border: '1px solid rgba(245,180,76,0.28)' }}
-              >
+              <Revelar className="inline-flex w-fit items-center gap-2">
                 <Clock size={13} style={{ color: 'var(--gold)', flexShrink: 0 }} />
-                <span className="text-2xs sm:text-xs font-body font-semibold" style={{ color: 'var(--gold)' }}>
+                <span className="text-2xs sm:text-xs font-body font-semibold uppercase tracking-wide" style={{ color: 'var(--gold)' }}>
                   {trialPlan.trialDays} dias grátis, sem cobrança agora
                 </span>
               </Revelar>
@@ -1144,43 +1141,24 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
           </div>
         </section>
 
-        {/* Dores */}
-        <section className="max-w-4xl mx-auto px-4 py-12 sm:py-16">
+        {/* Dores -- cada uma já com a resolução por baixo, numa lista só,
+            sempre equilibrada (uma coluna, nunca duas com números
+            diferentes de linhas). */}
+        <section className="max-w-3xl mx-auto px-4 py-12 sm:py-16">
           <Revelar><h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary text-center leading-snug">Isto soa-lhe familiar?</h2></Revelar>
-          <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {[PAIN_POINTS.slice(0, 4), PAIN_POINTS.slice(4)].map((col, ci) => (
-              <Revelar key={ci} atraso={ci * 90} className="border border-hair rounded-2xl bg-surface overflow-hidden">
-                {col.map((p, i) => (
-                  <div key={p.text} className={`flex items-center gap-3.5 px-5 py-4 ${i > 0 ? 'border-t border-hair' : ''}`}>
-                    <p.icon size={16} style={{ color: 'var(--rust)', flexShrink: 0 }} />
-                    <span className="text-sm font-body text-muted">{p.text}</span>
-                  </div>
-                ))}
-              </Revelar>
-            ))}
-          </div>
-
-          {/* Antes -> depois: a mesma lista, com a resolução ao lado -- a
-              prova de que cada dor lá em cima tem mesmo uma resposta. */}
-          <Revelar atraso={90} className="mt-6 border border-hair rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--gold-soft)' }}>
-            <div className="px-5 py-3 border-b border-hair" style={{ borderColor: 'rgba(245,180,76,0.24)' }}>
-              <span className="text-2xs uppercase tracking-widest font-mono" style={{ color: 'var(--gold)' }}>Com o PTMANAGER</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2">
-              {PAIN_POINTS.map((p, i) => (
-                <div
-                  key={p.text}
-                  className="flex items-center gap-2.5 px-5 py-3"
-                  style={{
-                    borderTop: i > 1 ? '1px solid rgba(245,180,76,0.18)' : 'none',
-                    borderLeft: i % 2 === 1 ? '1px solid rgba(245,180,76,0.18)' : 'none',
-                  }}
-                >
-                  <CheckCircle2 size={15} style={{ color: 'var(--gold)', flexShrink: 0 }} />
-                  <span className="text-sm font-body text-primary">{p.depois}</span>
+          <Revelar atraso={90} className="mt-8 border border-hair rounded-2xl bg-surface overflow-hidden">
+            {PAIN_POINTS.map((p, i) => (
+              <div key={p.text} className={`px-5 py-3.5 ${i > 0 ? 'border-t border-hair' : ''}`}>
+                <div className="flex items-center gap-2.5">
+                  <p.icon size={14} style={{ color: 'var(--rust)', flexShrink: 0 }} />
+                  <span className="text-sm font-body text-muted">{p.text}</span>
                 </div>
-              ))}
-            </div>
+                <div className="flex items-center gap-2.5 mt-1.5" style={{ paddingLeft: 22 }}>
+                  <CheckCircle2 size={14} style={{ color: 'var(--gold)', flexShrink: 0 }} />
+                  <span className="text-sm font-body text-primary" style={{ fontWeight: 500 }}>{p.depois}</span>
+                </div>
+              </div>
+            ))}
           </Revelar>
         </section>
 
@@ -1237,8 +1215,7 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
         {trialPlan && (
           <section className="max-w-4xl mx-auto px-4 pb-4">
             <Revelar
-              className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-2xl border px-6 py-5"
-              style={{ borderColor: 'rgba(245,180,76,0.28)', backgroundColor: 'var(--gold-soft)' }}
+              className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-2xl border border-hair bg-surface px-6 py-5"
             >
               <div className="flex items-center gap-3 text-center sm:text-left">
                 <Clock size={20} style={{ color: 'var(--gold)', flexShrink: 0 }} />
@@ -1254,9 +1231,9 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
         {/* Planos */}
         <section ref={plansRef} className="max-w-6xl mx-auto px-4 py-12 sm:py-16 flex flex-col gap-8 scroll-mt-16">
           <div className="flex flex-col gap-2 text-center items-center">
-            <div className="inline-flex w-fit items-center gap-2 rounded-lg px-3 py-1.5" style={{ backgroundColor: 'var(--gold-soft)', border: '1px solid rgba(245,180,76,0.28)' }}>
-              <Percent size={14} style={{ color: 'var(--gold)', flexShrink: 0 }} />
-              <span className="text-xs font-body font-semibold" style={{ color: 'var(--gold)' }}>Preços de lançamento — valor reservado para quem começar agora</span>
+            <div className="inline-flex w-fit items-center gap-2">
+              <Percent size={13} style={{ color: 'var(--gold)', flexShrink: 0 }} />
+              <span className="text-2xs font-body font-semibold uppercase tracking-wide" style={{ color: 'var(--gold)' }}>Preços de lançamento — valor reservado para quem começar agora</span>
             </div>
             <h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary">
               {trialPlan ? `${trialPlan.trialDays} dias grátis, depois o plano que escolher` : 'Quanto mais tempo, mais meses grátis'}
@@ -1298,29 +1275,21 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
                   <div className="text-xs text-faint font-body mt-1">{plan.trialDays ? `${plan.note} — a partir do 8º dia` : plan.note}</div>
                 </div>
 
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 rounded-lg px-3 py-2.5 border border-hair">
                   {plan.trialDays && (
-                    <div
-                      className="flex items-center gap-2 rounded-lg px-3 py-2.5"
-                      style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)', border: '1px solid rgba(245,180,76,0.28)' }}
-                    >
-                      <Clock size={15} className="flex-shrink-0" />
+                    <div className="flex items-center gap-2" style={{ color: 'var(--gold)' }}>
+                      <Clock size={14} className="flex-shrink-0" />
                       <span className="text-xs font-body font-semibold">{plan.trialDays} dias grátis, sem cobrança agora</span>
                     </div>
                   )}
                   {plan.bonusLabel && (
-                    <div
-                      className="flex items-center gap-2 rounded-lg px-3 py-2.5"
-                      style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--gold)', border: '1px solid rgba(245,180,76,0.28)' }}
-                    >
-                      <Gift size={15} className="flex-shrink-0" />
+                    <div className="flex items-center gap-2" style={{ color: 'var(--gold)' }}>
+                      <Gift size={14} className="flex-shrink-0" />
                       <span className="text-xs font-body font-semibold">{plan.trialDays ? `${plan.bonusLabel} na primeira cobrança` : plan.bonusLabel}</span>
                     </div>
                   )}
                   {!plan.trialDays && !plan.bonusLabel && (
-                    <div className="rounded-lg px-3 py-2.5 border border-hair">
-                      <span className="text-xs font-body text-faint">Sem compromisso, cancele a qualquer momento</span>
-                    </div>
+                    <span className="text-xs font-body text-faint">Sem compromisso, cancele a qualquer momento</span>
                   )}
                 </div>
 

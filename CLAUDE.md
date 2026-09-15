@@ -43,7 +43,7 @@ O que ele faz na aplicação, todos os dias:
 | Separador | O que lá está |
 |---|---|
 | **Painel** | Receita bruta e líquida, impostos, taxa do ginásio, comparência, faltas |
-| **Agenda** | Dia · Semana · Mês · Lista. Marcar, copiar, horários livres. **Sem arrastar-e-largar** — foi removido, ver secção 10 |
+| **Agenda** | Dia · Semana · Mês · Lista. Marcar, vários alunos no mesmo horário, horários livres. **Sem arrastar-e-largar nem copiar/colar** — os dois foram removidos, ver secção 10 |
 | **Faltas** | Faltas, direito a reposição, créditos ligados à aula de origem |
 | **Alunos** | Fichas, plano, preço, cor de identificação. **Os treinos vivem aqui dentro** |
 | **Avaliações** | Dobras (5 protocolos), bioimpedância, 14 perímetros, cintura-anca, metas, fotografias, evolução, PDF timbrado |
@@ -63,6 +63,9 @@ técnica — é uma decisão de produto, e condiciona metade do que se pode ofer
 |---|---|
 | `painel-pt.tsx` | **A aplicação quase toda** (~16 500 linhas): componentes, helpers, modelo de dados, `AppInner` |
 | `src/components/LandingPage.tsx` | Página pública de vendas · **telemóvel interativo** com os mockups reais em modo `chromeless`, sticky no rato (scroll storytelling via `IntersectionObserver`) e por abas no telemóvel |
+| `src/components/AgendaAtoms.tsx` | `SESSION_TYPES`/`EVENT_TYPES`/`STATUS_OPTIONS`, `SessionCard` e os pequenos ajudantes de cor (`acentoTexto`, `iconOf`, `sessionTypeFor`, `eventTypeFor`) |
+| `src/components/DashboardAtoms.tsx` | `StatCard`, `RevenueLoadBar`, `StudentCard` |
+| `src/components/TreinoAtoms.tsx` | `TIPOS_SERIE`, `CAMPOS_POR_METODO`, `ExercicioVista` e os ajudantes da linha de série |
 | `src/components/LegalDocs.tsx` | Termos e política de privacidade. **Contém declarações legais** |
 | `src/components/Turnstile.tsx` | CAPTCHA do registo |
 | `src/data/exercicios.ts` | **Gerado.** 2 076 exercícios, 18 grupos, 14 categorias. Não editar à mão |
@@ -70,10 +73,24 @@ técnica — é uma decisão de produto, e condiciona metade do que se pode ofer
 | `scripts/exercicios-legado.json` | Os 202 exercícios que a aplicação tinha antes do catálogo |
 | `supabase/functions/` | 5 Edge Functions: `admin-overview`, `create-checkout-session`, `create-mbway-checkout-session`, `create-portal-session`, `stripe-webhook` |
 | `supabase-schema.sql` | Schema completo e idempotente |
+| `public/` | Ficheiros estáticos que o Vite copia tal e qual para a raiz do build (ao contrário de `src/assets/`, que leva hash) — `og-image.png`, `favicon.png`, `apple-touch-icon.png`, `icon-512.png`, `robots.txt` |
 
 **Stack:** React 18 + Vite 6 · Supabase (Auth, Postgres com RLS, Edge Functions
 em Deno) · Stripe · Recharts · lucide-react · Tailwind + CSS-in-JS.
 Sem router — a navegação é estado (`view`). Sem gestor de estado externo.
+**SPA pura, sem SSR nem SSG** — o `index.html` é estático e é ele que os
+crawlers de redes sociais leem diretamente (não correm JavaScript), por isso
+qualquer meta tag de partilha tem de estar escrita ali, nunca só injetada
+por React.
+
+Os três ficheiros `*Atoms.tsx` existem para um motivo só: são componentes
+**reais** da aplicação (não reproduções) que a landing também usa, para as
+demonstrações mostrarem a interface a sério. `painel-pt.tsx` importa-os de
+lá, nunca o contrário — e a `LandingPage.tsx` também importa diretamente
+deles, nunca de `painel-pt.tsx`. Isto evita uma dependência circular
+(`painel-pt.tsx` já importa `LandingPage`) e evita que a landing pública
+arraste o `App` inteiro — com a base de exercícios de ~300 kB lá dentro —
+só para mostrar um cartão de estatística.
 
 ---
 
@@ -126,6 +143,15 @@ Consequências que decidem quase tudo:
 - **As exceções de horário vivem em `definicoes.excecoes`**, uma por data, e
   ganham ao dia da semana (`horarioDoDia`). Estiveram meses a ser lidas sem
   que houvesse por onde escrevê-las.
+- **Vários alunos no mesmo horário são várias sessões, não uma.** Cada aluno
+  mantém a sua própria sessão — com o seu próprio `status`, falta, reposição
+  e avaliação, sem tocar em mais nada do que já existia — e todas partilham
+  um `groupId` novo (mesmo padrão do `seriesId`, só que para "mesma hora",
+  não "mesma série"). A interface é que junta as sessões com o mesmo
+  `groupId` num cartão só (`GroupedSessionCard`, em `painel-pt.tsx`); a base
+  de dados nunca sabe que estão agrupadas. `sessoesChocam`/`conflitosDe`
+  ignoram de propósito o choque entre sessões do mesmo `groupId` — são a
+  mesma marcação, não um conflito real.
 - **O crédito de reposição é a falta.** Não há entidade "crédito": a sessão
   com `status: 'falta'` leva `faltaPrecisaReposicao`, `faltaCreditoValidade`,
   `faltaCreditoPor`, `faltaCreditoEm` e `faltaCreditoLog` (o registo de
@@ -341,6 +367,38 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   no Playwright em Chromium** — a mesma lição do arrasto, mais acima nesta
   lista: testar num browser de automação prova a lógica, não o desenho de
   um controlo nativo específico doutra plataforma.
+- **Um trial (Stripe) faz o "primeiro ciclo" começar tarde, não no dia
+  zero.** `isFirstCycle()` (em `stripe-webhook`, decide se o bónus de meses
+  grátis se aplica) comparava `current_period_start` contra `start_date` da
+  subscrição, com 1 dia de tolerância. Sem trial isso está certo — mas com
+  `trial_period_days`, o primeiro ciclo **a sério** só começa quando o trial
+  acaba, ~7 dias depois de `start_date`, fora da tolerância. O sintoma era
+  silencioso: `isFirstCycle()` devolvia falso na primeira cobrança pós-trial
+  e o bónus de trimestral/anual desaparecia sem erro nenhum a avisar (só não
+  se notava em mensal, que não tem bónus para perder — o mesmo bug ficaria
+  invisível lá). A comparação certa é contra `trial_end` quando existe, e só
+  cai para `start_date` quando não há trial.
+- **Uma tabela nova de eventos precisa de entrar em todos os sítios que
+  leem por tipo, não só onde é escrita.** `stripe-webhook` ganhou os tipos
+  `trial_started`/`trial_converted`/`trial_canceled` e o estado `trialing`,
+  mas o Admin (`EVENTO_LABELS`, `ESTADO_CONTA`, o filtro de contas, e o
+  `cancelamentos30` em `admin-overview`) continuou a só reconhecer os tipos
+  antigos — um cancelamento durante o trial gravava-se certo, mas ficava
+  invisível no filtro "Canceladas" (compara por igualdade exata) e por baixo
+  do churn real. O mesmo aconteceria com qualquer `event_type`/`plan_status`
+  novo: são strings livres, nada obriga as duas pontas a ficarem em sincronia.
+- **Preços na Stripe são imutáveis.** Não há como editar o valor de um
+  `price_...` já usado nalguma transação — a única alteração permitida
+  depois disso é descrição, `lookup_key` e comportamento de imposto. Mudar
+  de preço é sempre **criar um preço novo no mesmo produto** ("+ Add another
+  price" na página do produto) e trocar o `price_...` na configuração. Quem
+  já é assinante fica ligado ao preço antigo automaticamente — a subscrição
+  não muda de preço sozinha.
+- **Um ícone de aplicação transparente fica mal no iOS.** O
+  `apple-touch-icon` renderiza fundo transparente como preto sólido em
+  várias versões do iOS. O favicon normal (browser, separador) pode ficar
+  transparente sem problema; o `apple-touch-icon` precisa de fundo opaco
+  (aqui, `--bg-base` do tema escuro) com uma margem à volta do símbolo.
 
 ---
 
@@ -353,8 +411,29 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
 - **Stripe** — conta portuguesa. Cartão, Apple Pay, Google Pay e MB WAY.
   MB WAY e Multibanco **não fazem subscrição recorrente**: o MB WAY é pagamento
   único e o webhook concede os meses de acesso.
+- **Trial de 7 dias** — nos três planos (mensal, trimestral, anual), via
+  `trial_period_days` nativo da Stripe (`create-checkout-session`), nunca
+  calculado à mão. Cartão pedido no início (`payment_method_collection:
+  'always'`); se por algum motivo não houver cartão no fim do trial, a
+  subscrição cancela sozinha (`trial_settings.end_behavior.
+  missing_payment_method: 'cancel'`) em vez de ficar presa. Só para quem
+  nunca teve subscrição — `userHasPriorSubscription()` lê se já existe
+  linha em `personal_subscriptions` (não um registo de eventos à parte, que
+  criaria uma corrida entre dois webhooks quase simultâneos) e **falha
+  fechada**: qualquer erro na verificação nega o trial, nunca o concede às
+  cegas. `plan_status = 'trialing'` é o seu próprio estado, nunca colapsado
+  em `'active'` — é o que distingue "já é assinante" de "ainda não foi
+  cobrado", em todo o lado que lê o estado da conta.
 - **Meses grátis** — trimestral +1, anual +2. Concedidos pelo `stripe-webhook`,
-  não pela Stripe, e só no primeiro ciclo.
+  não pela Stripe, e só no primeiro ciclo — **soma-se ao trial, não o
+  substitui**: o mês/os meses extra entram na primeira cobrança a sério,
+  feita ao fim dos 7 dias gratuitos.
+- **Preços de lançamento** — mensal €9,95, trimestral €27,90, anual €109,90.
+  O preço anterior (€13,90 / €39,90 / €129,90) aparece riscado na landing e
+  na página de planos, com o selo "Preços de lançamento". Cada valor novo é
+  um `price_...` **novo** na Stripe, no mesmo produto do antigo — ver a
+  armadilha da imutabilidade, secção 6. Quem já era assinante antes desta
+  mudança continua no preço antigo.
 - **Vercel** — `ptmanagerapp.com`. Registos DNS no Cloudflare com o **proxy
   desligado** (nuvem cinzenta), senão o certificado falha.
 - **Turnstile** — cada domínio novo tem de ser acrescentado à lista de
@@ -386,6 +465,18 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   caminho ser o id do dono, e exigem `aal2` a quem tem dois fatores. A CSP do
   `index.html` tem de aceitar `img-src https://*.supabase.co`, senão nenhuma
   fotografia aparece.
+- **Prévia social (Open Graph / Twitter Card)** — tudo estático no
+  `<head>` do `index.html`: `og:title`/`description`/`image`/`url`/`type`/
+  `site_name`/`locale`, `twitter:card=summary_large_image` + trio
+  equivalente, `<link rel="canonical">` para `https://ptmanagerapp.com/`, e
+  favicon a sério (`favicon.png`, `apple-touch-icon.png`, `icon-512.png`).
+  Nada disto pode depender de JavaScript — ver a nota sobre SPA/SSR na
+  secção 3. A imagem `public/og-image.png` (1200×630) não é um screenshot:
+  é `StatCard` (componente real, de `DashboardAtoms.tsx`) com dados de
+  demonstração, no tema escuro, fotografada com Playwright a 1200×630 —
+  mesma técnica descrita na secção 9. Cache: WhatsApp, Discord, Facebook e
+  LinkedIn guardam a prévia em cache por conta deles; uma alteração à
+  imagem ou ao texto pode demorar a aparecer, mesmo depois do deploy.
 
 ### Sobre o plano do Supabase
 
@@ -432,6 +523,17 @@ Para lógica que só corre contra o Supabase (o carimbo de versão), extrai-se a
 função do ficheiro e corre-se contra um cliente falso. Já feito uma vez; o
 padrão funciona.
 
+**Reaproveitar um componente real para uma pré-visualização isolada** (a
+landing a mostrar `SessionCard`/`StatCard`/`ExercicioVista`, ou gerar
+`og-image.png`): exportar temporariamente `GlobalStyles` de `painel-pt.tsx`,
+criar um `main-*-preview.tsx` + `*.html` descartáveis que importam
+`GlobalStyles` e o componente real, apontar o Playwright para lá, e no fim
+**apagar os dois ficheiros e reverter o `export`** — confirmar com
+`git status --short` que só os ficheiros pretendidos ficaram por commitar.
+O `playwright` não é dependência do projeto: instala-se com
+`npm install --no-save playwright` antes e remove-se a seguir
+(`rm -rf node_modules/playwright`), nunca deve entrar no `package.json`.
+
 **Sempre:** `npm run build`, 1440 px e 390 px, **os dois temas**, zero erros de
 consola, zero transbordo horizontal.
 
@@ -462,7 +564,7 @@ existe de verdade.
 
 | Área | |
 |---|---|
-| **Agenda** | Dia, semana, mês, lista · procura e filtros · **botão de horários na própria agenda**, com horário por dia, **exceções por data** e pré-visualização da semana · horários livres em lote · **selecionar várias e mover, mudar a duração, bloquear ou apagar de uma vez** · copiar/colar · recorrência com "só esta / toda a série" · **replicar uma marcação por X semanas** · **três botões de confirmação com cor cheia: dada, falta, e falta com direito a reposição**, coloridos pelo **tipo da marcação** (`SESSION_TYPES`/`EVENT_TYPES`), não pelo aluno · **aviso de conflito**. **Sem arrastar o cartão para outro dia** — existiu, media todos os testes automatizados, mas não funcionava em telemóvel real e foi removido a pedido; mover uma sessão é pelo formulário (mudar a data) ou por "Selecionar várias" |
+| **Agenda** | Dia, semana, mês, lista · procura e filtros · **botão de horários na própria agenda**, com horário por dia, **exceções por data** e pré-visualização da semana · horários livres em lote · **selecionar várias e mover, mudar a duração, bloquear ou apagar de uma vez** · recorrência com "só esta / toda a série" · **replicar uma marcação por X semanas** · **três botões de confirmação com cor cheia: dada, falta, e falta com direito a reposição**, coloridos pelo **tipo da marcação** (`SESSION_TYPES`/`EVENT_TYPES`, agora em `AgendaAtoms.tsx`, sem cores repetidas dentro da mesma lista), não pelo aluno · **aviso de conflito** (nunca bloqueia — alguns treinadores atendem dois alunos ao mesmo tempo de propósito) · **o cartão ocupa o espaço proporcional à duração real** (uma sessão de 2h fica visivelmente mais alta que uma de 30 min) e mostra "09:00–11:00", não só a hora de início · **reservar por cima de um Horário Livre remove-o** (`semLivresCobertosPor`) — antes ficava por baixo, a dizer que aquele tempo continuava livre · **vários alunos no mesmo horário**, um cartão só (`GroupedSessionCard`) — ver `groupId` na secção 4. **Sem arrastar o cartão para outro dia, nem copiar/colar** — os dois existiram, mediam todos os testes automatizados, mas o arrastar não funcionava em telemóvel real e o copiar/colar foi removido por decisão de produto; mover uma sessão é pelo formulário (mudar a data) ou por "Selecionar várias" |
 | **Faltas** | Estados, direito a reposição, crédito ligado à aula de origem · **validade do crédito, estado "Expirada" e registo de auditoria** (quem concedeu, quando, o que aconteceu desde então) |
 | **Prescrição** | Treinos A/B/C, 2 076 exercícios, modelos, arquivo, PDF timbrado agrupado por bloco. Blocos, métodos como lista, 15 campos por exercício, duplicar, arrastar para reordenar · **11 combinações com nome e cor** (`METODOS_COMBINACAO`: bi-set, supersérie, superset antagonista, pré-exaustão, pós-exaustão, série composta, trissérie, giant set, circuito, contraste, complexo), cada membro num tom da cor do grupo |
 | **Vista de treino** | O programa como se lê, e não como se escreve: um treino de cada vez, por bloco, com o resumo em números (exercícios, séries, pausa somada, volume). **A carga de cada série e os números do método editam-se ali mesmo**; o resto é no construtor. **Dois modos**: completo (tudo de uma vez) e **passo a passo** — um exercício por vez, uma combinação inteira (bi-set, trissérie…) num só passo, com setas e barra de progresso (`TreinoSegmentado`, `passosDoTreino`). Exercícios soltos também têm cor própria, mais discreta que a de uma combinação, só para se distinguirem na lista. `TreinoVista`, ao lado de `PrescricaoBuilder` |
@@ -470,13 +572,13 @@ existe de verdade.
 | **Avaliações** | Dobras, % massa gorda, perímetros, fotografias, gráfico de evolução, PDF · **rascunho e final, autosave, revisões com motivo, comparar e repor** |
 | **Documentos** | Timbre com logótipo próprio, estúdio, nº profissional e contactos · aviso de confidencialidade em todas as folhas · escolher que secções saem · **pré-visualizar antes de imprimir** · abrir o e-mail para o aluno |
 | **Finanças** | Entradas e saídas, categorias, IVA, taxa do ginásio, pendências |
-| **Pagamentos** | Stripe: mensal/trimestral/anual, cartão, Apple Pay, Google Pay, MB WAY, webhook, portal de faturação, meses grátis |
+| **Pagamentos** | Stripe: mensal/trimestral/anual, cartão, Apple Pay, Google Pay, MB WAY, webhook, portal de faturação, meses grátis, **7 dias de trial nos três planos**, **preços de lançamento** com o valor anterior riscado |
 | **Relatórios** | Relatório do período (atividade, ocupação da agenda, receita dos planos, lançamentos, tabela por aluno) e relatório de progresso do aluno (primeira vs última avaliação, com gráfico) · ambos timbrados |
 | **Ficha 360º** | Aulas, faltas, avaliações, treinos e formulários numa linha só, por aluno · procura livre sobre tudo · filtros por tipo e período · resumo com comparência e créditos · os pontos a ter em conta em cima |
 | **Formulários** | PAR-Q, anamnese e consentimentos (treino, imagem, dados de saúde) · construtor próprio · assinatura desenhada · PDF timbrado · pontos a ter em conta, ditos como avisos |
 | **Segurança** | Auth, RLS por utilizador, Turnstile, termos e política em pt-PT, dados na UE, exportação e apagamento · **início de sessão** com olho para mostrar/esconder a palavra-passe e **recuperar palavra-passe** por e-mail (`LoginScreen`, modo `recover`) · `ResetPasswordScreen` dedicado, com aviso próprio se o link já não for válido em vez do erro em bruto do Supabase |
 | **Fiabilidade** | Gravação imediata, backup e restauro, **carimbo de versão contra perda silenciosa** |
-| **Admin** | Subscrições, receita, churn, alertas |
+| **Admin** | Subscrições, receita, churn, alertas · **contas em trial contam como "ativas" (usam a aplicação) mas ficam de fora do MRR** (`pagante`, só quem já paga), com a contagem visível na legenda de "Contas ativas" e um filtro próprio "Em trial" |
 | **Painel** | Navega para qualquer mês, para trás e para a frente (`monthCursor`) — a receita, a atividade e o gráfico por aluno seguem o mês visto; "hoje" e "esta semana" continuam presos ao presente, que não faz sentido navegar |
 | **Desenho de aplicação** | Escala de forma/toque/movimento em tokens CSS (`--r-*`, `--tap`, `--ease-folha`) · barra de topo contextual e barra de separadores em vidro translúcido (`backdrop-filter`, com salvaguarda para sem suporte e para transparência reduzida) · **modais viram folhas** que se puxam para fechar, com resistência progressiva no limite e projeção do lançamento (`useFolhaArrastavel`) · estados de premir, carregar (esqueleto) e vazio revistos · botões feitos à mão convergiram para `.btn`/`.btn-primary`/`.btn-ghost` |
 
@@ -555,8 +657,27 @@ Combinado por níveis, do mais barato ao mais caro:
 13. ~~Ficha 360º com linha temporal pesquisável~~ **feito**
     — sem os pagamentos: uma transação não tem `studentId`
 14. ~~Progresso e relatórios — só o que existe sem área do aluno~~ **feito**
-15. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
-16. Decisões de produto — ver secção 10
+15. ~~Auditoria de segurança completa~~ **feito**
+    — RLS testada ao vivo (IDOR entre contas), webhooks resistentes a
+    reenvio, segredos fora do repositório público, bónus de meses grátis
+    repetível fechado (subscrição e MB WAY)
+16. ~~Trial de 7 dias, nos três planos~~ **feito**
+    — mecanismo nativo da Stripe, nunca calculado à mão; falha fechada por
+    omissão; `plan_status = 'trialing'` como estado próprio em todo o lado
+17. ~~Agenda: duração real, início-fim, vários alunos, cores~~ **feito**
+    — cartão proporcional à duração, horário livre consumido ao reservar
+    por cima, `groupId` para vários alunos no mesmo horário, "Copiar"
+    removido, três colisões de cor corrigidas
+18. ~~Landing: componentes reais, gatilhos mentais, prévia social~~ **feito**
+    — `SessionCard`/`StatCard`/`ExercicioVista`/`StudentCard` reais em vez
+    de reproduções manuais, finanças pessoais corrigidas (mostravam o
+    Painel, não a aba a sério), trial reforçado ao longo da página,
+    Open Graph/Twitter Card/favicon configurados
+19. ~~Preços de lançamento~~ **feito**
+    — mensal €9,95, trimestral €27,90, anual €109,90, com o preço anterior
+    riscado; quem já era assinante fica no preço antigo
+20. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
+21. Decisões de produto — ver secção 10
 
 ---
 

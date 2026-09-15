@@ -305,27 +305,33 @@ const DEV_ACTIVE_PLAN_EMAILS = import.meta.env.DEV
 // paidMonths = meses efetivamente cobrados pela Stripe.
 // bonusMonths = meses oferecidos no primeiro período (ver stripe-webhook).
 // accessMonths = paidMonths + bonusMonths = tempo de acesso do primeiro pagamento.
+// precoLancamento: preço promocional do lançamento -- price/value ficam com
+// o valor cobrado a sério (o que a Stripe usa); precoLancamento.antes é só
+// para mostrar riscado, nunca entra em cálculo nenhum.
 const SALES_PLANS = [
   {
-    id: 'mensal', name: 'Mensal', price: '€13,90', value: 13.90, interval: 'Mensal',
+    id: 'mensal', name: 'Mensal', price: '€9,95', value: 9.95, interval: 'Mensal',
     note: 'Renovação a cada mês', paidMonths: 1, bonusMonths: 0, accessMonths: 1,
-    bonusLabel: '', perMonth: '€13,90/mês', highlight: false, trialDays: 7,
+    bonusLabel: '', perMonth: '€9,95/mês', highlight: false, trialDays: 7,
+    precoLancamento: { antes: '€13,90' },
   },
   {
-    id: 'trimestral', name: 'Trimestral', price: '€39,90', value: 39.90, interval: 'Trimestral',
+    id: 'trimestral', name: 'Trimestral', price: '€27,90', value: 27.90, interval: 'Trimestral',
     note: '3 meses pagos + 1 grátis', paidMonths: 3, bonusMonths: 1, accessMonths: 4,
-    bonusLabel: '+1 mês grátis', perMonth: '€9,98/mês', highlight: true, trialDays: 7,
+    bonusLabel: '+1 mês grátis', perMonth: '€6,98/mês', highlight: true, trialDays: 7,
+    precoLancamento: { antes: '€39,90' },
   },
   {
-    id: 'anual', name: 'Anual', price: '€129,90', value: 129.90, interval: 'Anual',
+    id: 'anual', name: 'Anual', price: '€109,90', value: 109.90, interval: 'Anual',
     note: '12 meses pagos + 2 grátis', paidMonths: 12, bonusMonths: 2, accessMonths: 14,
-    bonusLabel: '+2 meses grátis', perMonth: '€9,28/mês', highlight: false, trialDays: 7,
+    bonusLabel: '+2 meses grátis', perMonth: '€7,85/mês', highlight: false, trialDays: 7,
+    precoLancamento: { antes: '€129,90' },
   },
 ];
 
 // Só o mensal cobra por mês -- os outros dois cobram o período inteiro de
 // uma vez. Usado para descrever a cobrança que vem depois do trial sem
-// inventar um "€39,90/mês" que a Stripe nunca cobraria assim.
+// inventar um "€27,90/mês" que a Stripe nunca cobraria assim.
 const CADENCIA_POR_PLANO = { mensal: '/mês', trimestral: ' a cada 3 meses', anual: ' a cada 12 meses' };
 
 // Mesma lista da landing (src/components/LandingPage.tsx, PLAN_INCLUDES) --
@@ -4707,6 +4713,10 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn, subscription }) 
       <main className="flex-1 px-4 py-8 max-w-5xl mx-auto w-full flex flex-col gap-7">
         <section className="flex flex-col gap-3">
           <div className="text-2xs uppercase tracking-wide text-faint font-mono">Planos para personal trainers</div>
+          <div className="inline-flex w-fit items-center gap-2 rounded-lg px-3 py-1.5" style={{ backgroundColor: 'var(--gold-soft)', border: '1px solid rgba(245,180,76,0.28)' }}>
+            <Percent size={14} style={{ color: 'var(--gold)', flexShrink: 0 }} />
+            <span className="text-xs font-body font-semibold" style={{ color: 'var(--gold)' }}>Preços de lançamento — valor reservado para quem começar agora</span>
+          </div>
           <h1 className="font-display text-3xl sm:text-4xl font-semibold text-primary">Escolha o seu plano para desbloquear o painel</h1>
           <p className="text-sm sm:text-base text-muted font-body max-w-2xl">
             Faça a gestão de alunos, agenda, avaliações físicas, reposições e finanças num só sítio. O pagamento é processado em segurança pela Stripe.
@@ -4752,6 +4762,9 @@ function SalesPlansPage({ onSignOut, onRefresh, checkoutReturn, subscription }) 
               </div>
               <div>
                 <div className="flex items-baseline gap-2 flex-wrap">
+                  {plan.precoLancamento && (
+                    <span className="font-mono text-sm text-faint" style={{ textDecoration: 'line-through' }}>{plan.precoLancamento.antes}</span>
+                  )}
                   <span className="font-mono text-3xl font-semibold text-primary">{plan.price}</span>
                   {plan.bonusMonths > 0 && <span className="font-mono text-xs text-faint">≈ {plan.perMonth}</span>}
                 </div>

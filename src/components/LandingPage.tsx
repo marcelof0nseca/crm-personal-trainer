@@ -2,7 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import {
   MessageCircle, CalendarDays, RotateCcw, ClipboardCheck, Images, Wallet, TrendingDown,
   ShieldCheck, ChevronDown, CheckCircle2, TrendingUp, UserPlus, Gift, Mail,
-  MousePointerClick, CalendarX2, FileSignature, Stamp, BarChart3, UserSearch, Clock,
+  MousePointerClick, CalendarX2, FileSignature, Stamp, BarChart3, UserSearch, Clock, Percent,
 } from 'lucide-react';
 import LegalModal from './LegalDocs';
 import { SessionCard } from './AgendaAtoms';
@@ -91,7 +91,7 @@ const PHOTO_GRADIENTS = [
 ];
 
 // Só o mensal cobra por mês -- os outros dois cobram o período inteiro de
-// uma vez. Evita um "€39,90/mês" que a Stripe nunca cobraria assim.
+// uma vez. Evita um "€27,90/mês" que a Stripe nunca cobraria assim.
 const CADENCIA_POR_PLANO = { mensal: '/mês', trimestral: ' a cada 3 meses', anual: ' a cada 12 meses' };
 
 const PAIN_POINTS = [
@@ -1254,6 +1254,10 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
         {/* Planos */}
         <section ref={plansRef} className="max-w-6xl mx-auto px-4 py-12 sm:py-16 flex flex-col gap-8 scroll-mt-16">
           <div className="flex flex-col gap-2 text-center items-center">
+            <div className="inline-flex w-fit items-center gap-2 rounded-lg px-3 py-1.5" style={{ backgroundColor: 'var(--gold-soft)', border: '1px solid rgba(245,180,76,0.28)' }}>
+              <Percent size={14} style={{ color: 'var(--gold)', flexShrink: 0 }} />
+              <span className="text-xs font-body font-semibold" style={{ color: 'var(--gold)' }}>Preços de lançamento — valor reservado para quem começar agora</span>
+            </div>
             <h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary">
               {trialPlan ? `${trialPlan.trialDays} dias grátis, depois o plano que escolher` : 'Quanto mais tempo, mais meses grátis'}
             </h2>
@@ -1283,6 +1287,9 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
 
                 <div>
                   <div className="flex items-baseline gap-2 flex-wrap">
+                    {plan.precoLancamento && (
+                      <span className="font-mono text-sm text-faint" style={{ textDecoration: 'line-through' }}>{plan.precoLancamento.antes}</span>
+                    )}
                     <span className="font-mono text-2xl sm:text-3xl font-semibold text-primary">{plan.price}</span>
                     {plan.perMonth && plan.bonusMonths > 0 && (
                       <span className="font-mono text-xs text-faint">≈ {plan.perMonth}</span>

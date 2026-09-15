@@ -18,7 +18,7 @@ const planByPriceId = {
 const oneTimePlanDetails = {
   mensal: { tier: 'mensal', interval: 'Mensal', value: 9.95, months: 1, paidMonths: 1 },
   trimestral: { tier: 'trimestral', interval: 'Trimestral', value: 27.90, months: 4, paidMonths: 3 },
-  anual: { tier: 'anual', interval: 'Anual', value: 109.90, months: 14, paidMonths: 12 },
+  anual: { tier: 'anual', interval: 'Anual', value: 92.90, months: 14, paidMonths: 12 },
 };
 
 // Acesso total esperado no primeiro período de uma assinatura recorrente.

@@ -428,7 +428,7 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   não pela Stripe, e só no primeiro ciclo — **soma-se ao trial, não o
   substitui**: o mês/os meses extra entram na primeira cobrança a sério,
   feita ao fim dos 7 dias gratuitos.
-- **Preços de lançamento** — mensal €9,95, trimestral €27,90, anual €109,90.
+- **Preços de lançamento** — mensal €9,95, trimestral €27,90, anual €92,90.
   O preço anterior (€13,90 / €39,90 / €129,90) aparece riscado na landing e
   na página de planos, com o selo "Preços de lançamento". Cada valor novo é
   um `price_...` **novo** na Stripe, no mesmo produto do antigo — ver a
@@ -674,7 +674,7 @@ Combinado por níveis, do mais barato ao mais caro:
     Painel, não a aba a sério), trial reforçado ao longo da página,
     Open Graph/Twitter Card/favicon configurados
 19. ~~Preços de lançamento~~ **feito**
-    — mensal €9,95, trimestral €27,90, anual €109,90, com o preço anterior
+    — mensal €9,95, trimestral €27,90, anual €92,90, com o preço anterior
     riscado; quem já era assinante fica no preço antigo
 20. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
 21. Decisões de produto — ver secção 10

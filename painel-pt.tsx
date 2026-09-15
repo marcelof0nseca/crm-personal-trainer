@@ -322,9 +322,9 @@ const SALES_PLANS = [
     precoLancamento: { antes: '€39,90' },
   },
   {
-    id: 'anual', name: 'Anual', price: '€109,90', value: 109.90, interval: 'Anual',
+    id: 'anual', name: 'Anual', price: '€92,90', value: 92.90, interval: 'Anual',
     note: '12 meses pagos + 2 grátis', paidMonths: 12, bonusMonths: 2, accessMonths: 14,
-    bonusLabel: '+2 meses grátis', perMonth: '€7,85/mês', highlight: false, trialDays: 7,
+    bonusLabel: '+2 meses grátis', perMonth: '€6,64/mês', highlight: false, trialDays: 7,
     precoLancamento: { antes: '€129,90' },
   },
 ];

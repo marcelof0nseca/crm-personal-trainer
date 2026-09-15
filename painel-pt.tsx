@@ -4251,6 +4251,7 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
   const [mode, setMode] = useState(initialMode);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [contaCriada, setContaCriada] = useState(false);
   const [lockedUntil, setLockedUntil] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const [captchaToken, setCaptchaToken] = useState('');
@@ -4281,12 +4282,14 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
   function trocarModo(novoModo) {
     setMode(novoModo);
     setMessage('');
+    setContaCriada(false);
     setRecoverySent(false);
   }
 
   async function submit(e) {
     e.preventDefault();
     setMessage('');
+    setContaCriada(false);
     if (!supabase) {
       setMessage('Supabase não configurado.');
       return;
@@ -4352,6 +4355,7 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
       }
     } else if (mode === 'signup') {
       setMessage('Conta criada! Enviámos um e-mail de confirmação — verifique a sua caixa de entrada.');
+      setContaCriada(true);
     } else {
       clearLoginAttemptState(email);
       setLockedUntil(0);
@@ -4463,7 +4467,7 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
                 )}
                 {isLocked ? (
                   <div className="text-xs font-body text-rust">Muitas tentativas de login. Tente novamente em {secondsLeft}s.</div>
-                ) : message && <div className="text-xs font-body text-rust">{message}</div>}
+                ) : message && <div className={`text-xs font-body ${contaCriada ? 'text-brass' : 'text-rust'}`}>{message}</div>}
                 <button
                   type="submit"
                   disabled={busy || isLocked || (Boolean(TURNSTILE_SITE_KEY) && !captchaToken) || (mode === 'signup' && !acceptedTerms)}

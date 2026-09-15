@@ -21,6 +21,17 @@ const oneTimePlanDetails = {
   anual: { tier: 'anual', interval: 'Anual', value: 92.90, months: 14, paidMonths: 12 },
 };
 
+// E-mails transacionais: mesma conta e domínio já verificado do SMTP do
+// Supabase Auth, mas pela API HTTP do Resend -- é o único jeito de disparar
+// um e-mail a partir de uma Edge Function (o SMTP só serve os e-mails
+// nativos do Supabase). Sem a chave configurada, o envio fica silenciosamente
+// desligado -- nunca deve impedir o resto do webhook de correr.
+const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') || '';
+const EMAIL_FROM = 'PTMANAGER <suporte@ptmanagerapp.com>';
+const APP_URL = Deno.env.get('APP_ORIGIN') || 'https://ptmanagerapp.com';
+const NOME_DO_PLANO = { mensal: 'Mensal', trimestral: 'Trimestral', anual: 'Anual' };
+const CADENCIA_DO_PLANO = { mensal: 'mensal', trimestral: 'a cada 3 meses', anual: 'a cada 12 meses' };
+
 // Acesso total esperado no primeiro período de uma assinatura recorrente.
 // Se o preço na Stripe já cobrir esse tempo (ex: preço trimestral configurado
 // para 4 meses), o cálculo abaixo não acrescenta nada — evita duplicar o bónus.
@@ -177,9 +188,10 @@ async function activateOneTimePlan(session, supabaseUrl, serviceRoleKey, stripeE
 
   // Regista sempre -- é esta linha que faz a próxima compra, MB WAY ou
   // Stripe, reconhecer que esta conta já teve acesso antes.
-  await registarEvento({
+  const tipo = primeiraVez ? 'created' : 'renewed';
+  const registado = await registarEvento({
     user_id: userId,
-    event_type: primeiraVez ? 'created' : 'renewed',
+    event_type: tipo,
     from_tier: null,
     to_tier: plan.tier,
     amount: payload.plan_value,
@@ -187,6 +199,8 @@ async function activateOneTimePlan(session, supabaseUrl, serviceRoleKey, stripeE
     occurred_at: new Date().toISOString(),
     raw: { status: 'active', interval: payload.billing_interval },
   }, supabaseUrl, serviceRoleKey);
+
+  if (registado) await enviarEmailDeEvento(tipo, userId, payload, supabaseUrl, serviceRoleKey);
 }
 
 async function handleInvoice(invoice, eventType, stripeSecretKey, supabaseUrl, serviceRoleKey, stripeEventId) {
@@ -240,20 +254,180 @@ function derivarEvento(anterior, payload, overrides) {
 
 // O registo do evento é secundário: se falhar, o webhook tem de continuar a
 // devolver 200, senão a Stripe reenvia e a subscrição fica por sincronizar.
+//
+// Devolve true só quando a linha entrou mesmo. Um reenvio da Stripe com o
+// mesmo stripe_event_id bate no "ON CONFLICT DO NOTHING" (via
+// resolution=ignore-duplicates) e o RETURNING não traz nada -- é o sinal
+// certo para decidir se dispara um e-mail: só quando o evento é
+// genuinamente novo, nunca num reenvio.
 async function registarEvento(evento, supabaseUrl, serviceRoleKey) {
   try {
-    await fetch(`${supabaseUrl}/rest/v1/subscription_events`, {
+    const res = await fetch(`${supabaseUrl}/rest/v1/subscription_events`, {
       method: 'POST',
       headers: {
         apikey: serviceRoleKey,
         Authorization: `Bearer ${serviceRoleKey}`,
         'Content-Type': 'application/json',
-        // Reenvio da Stripe com o mesmo stripe_event_id é ignorado em silêncio.
-        Prefer: 'resolution=ignore-duplicates',
+        Prefer: 'return=representation,resolution=ignore-duplicates',
       },
       body: JSON.stringify(evento),
     });
-  } catch (_) { /* histórico é acessório: nunca derruba a sincronização */ }
+    if (!res.ok) return false;
+    const linhas = await res.json();
+    return Array.isArray(linhas) && linhas.length > 0;
+  } catch (_) {
+    return false; /* histórico é acessório: nunca derruba a sincronização */
+  }
+}
+
+// Só estes três tipos de transição têm e-mail. Uma renovação recorrente
+// (tipo 'renewed') não tem -- ninguém precisa de um e-mail a cada mês só
+// porque o cartão foi cobrado como esperado.
+function escolherModeloDeEmail(tipo, payload) {
+  if (tipo === 'trial_started') return modeloTrialComecou;
+  if (tipo === 'trial_converted') return modeloPagamentoConfirmado;
+  // 'created' cobre dois casos que não passam pelo trial: a compra MB WAY
+  // (nunca tem trial) e uma subscrição Stripe que nasce já ativa (quem já
+  // teve conta antes não recebe trial_period_days -- ver userHasPriorSubscription
+  // em create-checkout-session). Os dois são um pagamento já confirmado.
+  if (tipo === 'created' && payload.plan_status === 'active') return modeloPagamentoConfirmado;
+  if (tipo === 'payment_failed') return modeloPagamentoFalhou;
+  return null;
+}
+
+async function enviarEmailDeEvento(tipo, userId, payload, supabaseUrl, serviceRoleKey) {
+  if (!RESEND_API_KEY) return;
+  const modelo = escolherModeloDeEmail(tipo, payload);
+  if (!modelo) return;
+  try {
+    const utilizador = await emailDoUtilizador(userId, supabaseUrl, serviceRoleKey);
+    if (!utilizador) return;
+    const { subject, html } = modelo({ ...payload, nome: utilizador.nome });
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: EMAIL_FROM, to: utilizador.email, subject, html }),
+    });
+    if (!res.ok) console.error('[PTMANAGER] falha ao enviar e-mail', tipo, await res.text());
+  } catch (error) {
+    console.error('[PTMANAGER] falha ao enviar e-mail', tipo, error);
+  }
+}
+
+// A API de administração do Supabase devolve o utilizador diretamente nuns
+// SDKs e embrulhado em { user } noutros -- aceitar as duas formas em vez de
+// arriscar um "email indefinido" por causa da forma errada.
+async function emailDoUtilizador(userId, supabaseUrl, serviceRoleKey) {
+  const res = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
+    headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` },
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const user = data.user || data;
+  if (!user?.email) return null;
+  return { email: user.email, nome: user.user_metadata?.nome || '' };
+}
+
+function formatEuro(value) {
+  if (value == null) return '';
+  return `€${Number(value).toFixed(2).replace('.', ',')}`;
+}
+
+// Sem depender de dados de locale do Deno (ICU pode não estar completo no
+// runtime das Edge Functions) -- dd/mm/aaaa escrito à mão.
+function formatDataPT(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const dia = String(d.getUTCDate()).padStart(2, '0');
+  const mes = String(d.getUTCMonth() + 1).padStart(2, '0');
+  return `${dia}/${mes}/${d.getUTCFullYear()}`;
+}
+
+function layoutEmail(preheader, corpo) {
+  return `<!doctype html>
+<html lang="pt">
+  <body style="margin:0;padding:0;background-color:#f4f4f5;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+    <span style="display:none;font-size:1px;color:#f4f4f5;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">${preheader}</span>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px;">
+      <tr><td align="center">
+        <table role="presentation" width="100%" style="max-width:480px;background-color:#ffffff;border-radius:12px;overflow:hidden;">
+          <tr><td style="background-color:#111113;padding:24px 32px;">
+            <span style="color:#f5c542;font-size:18px;font-weight:700;letter-spacing:0.02em;">PTMANAGER</span>
+          </td></tr>
+          <tr><td style="padding:32px;color:#18181b;font-size:15px;line-height:1.6;">
+            ${corpo}
+          </td></tr>
+          <tr><td style="padding:20px 32px;background-color:#fafafa;color:#71717a;font-size:12px;">
+            PTMANAGER — gestão para personal trainers independentes.
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>`;
+}
+
+function botaoEmail(texto, href) {
+  return `<a href="${href}" style="display:inline-block;background-color:#f5c542;color:#111113;font-weight:600;text-decoration:none;padding:12px 24px;border-radius:8px;">${texto}</a>`;
+}
+
+function modeloTrialComecou(payload) {
+  const plano = NOME_DO_PLANO[payload.plan_tier] || payload.plan_tier;
+  const dataFim = formatDataPT(payload.current_period_end);
+  const valor = formatEuro(payload.plan_value);
+  const cadencia = CADENCIA_DO_PLANO[payload.plan_tier] || '';
+  const corpo = `
+    <p style="margin:0 0 16px;">Olá${payload.nome ? `, ${payload.nome}` : ''}!</p>
+    <p style="margin:0 0 16px;">A sua conta no PTMANAGER foi criada e o seu <strong>período de 7 dias grátis</strong> já começou, no plano <strong>${plano}</strong>.</p>
+    <p style="margin:0 0 16px;">Durante este período pode organizar os seus alunos, agenda, treinos, avaliações e finanças sem qualquer custo.</p>
+    <p style="margin:0 0 16px;">O período gratuito termina a <strong>${dataFim}</strong>. Depois dessa data, a assinatura segue para a cobrança de <strong>${valor}</strong> (${cadencia}), no cartão que já indicou — não precisa de fazer mais nada até lá.</p>
+    <p style="margin:24px 0;">${botaoEmail('Aceder ao PTMANAGER', APP_URL)}</p>
+    <p style="margin:0;color:#71717a;font-size:13px;">Se cancelar antes de ${dataFim}, não paga nada.</p>
+  `;
+  return {
+    subject: 'Bem-vindo ao PTMANAGER — os seus 7 dias grátis começaram',
+    html: layoutEmail('Os seus 7 dias grátis já começaram.', corpo),
+  };
+}
+
+function modeloPagamentoConfirmado(payload) {
+  const plano = NOME_DO_PLANO[payload.plan_tier] || payload.plan_tier;
+  const valor = formatEuro(payload.plan_value);
+  const data = formatDataPT(payload.current_period_end);
+  // MB WAY não é recorrente (ver CLAUDE.md) -- só uma subscrição Stripe a
+  // sério tem stripe_subscription_id. Dizer "próxima cobrança" a quem pagou
+  // por MB WAY prometeria uma cobrança automática que nunca vai acontecer.
+  const recorrente = Boolean(payload.stripe_subscription_id);
+  const rotuloData = recorrente ? 'Próxima cobrança' : 'Acesso até';
+  const corpo = `
+    <p style="margin:0 0 16px;">Olá${payload.nome ? `, ${payload.nome}` : ''}!</p>
+    <p style="margin:0 0 16px;">O seu pagamento foi confirmado e a sua assinatura do PTMANAGER está <strong>ativa</strong>.</p>
+    <table role="presentation" style="width:100%;margin:0 0 16px;border-collapse:collapse;">
+      <tr><td style="padding:6px 0;color:#71717a;">Plano</td><td style="padding:6px 0;text-align:right;font-weight:600;">${plano}</td></tr>
+      <tr><td style="padding:6px 0;color:#71717a;">Valor</td><td style="padding:6px 0;text-align:right;font-weight:600;">${valor}</td></tr>
+      ${data ? `<tr><td style="padding:6px 0;color:#71717a;">${rotuloData}</td><td style="padding:6px 0;text-align:right;font-weight:600;">${data}</td></tr>` : ''}
+    </table>
+    <p style="margin:24px 0;">${botaoEmail('Aceder ao PTMANAGER', APP_URL)}</p>
+    <p style="margin:0;color:#71717a;font-size:13px;">${recorrente ? 'Obrigado por usar o PTMANAGER.' : 'Este pagamento não é recorrente -- para continuar depois dessa data, basta renovar quando quiser.'}</p>
+  `;
+  return {
+    subject: 'Pagamento confirmado — a sua assinatura PTMANAGER está ativa',
+    html: layoutEmail('O seu pagamento foi confirmado.', corpo),
+  };
+}
+
+function modeloPagamentoFalhou(payload) {
+  const corpo = `
+    <p style="margin:0 0 16px;">Olá${payload.nome ? `, ${payload.nome}` : ''}!</p>
+    <p style="margin:0 0 16px;">Não conseguimos processar o pagamento da sua assinatura PTMANAGER.</p>
+    <p style="margin:0 0 16px;">Isto costuma acontecer por um cartão expirado, sem saldo, ou por um bloqueio do próprio banco. A sua conta continua acessível por agora, mas convém atualizar os dados de pagamento para evitar uma interrupção.</p>
+    <p style="margin:24px 0;">${botaoEmail('Atualizar pagamento', APP_URL)}</p>
+    <p style="margin:0;color:#71717a;font-size:13px;">Se já tratou disto entretanto, pode ignorar este e-mail.</p>
+  `;
+  return {
+    subject: 'Não conseguimos processar o seu pagamento PTMANAGER',
+    html: layoutEmail('Precisa de atualizar o método de pagamento.', corpo),
+  };
 }
 
 async function syncSubscription(subscription, stripeSecretKey, supabaseUrl, serviceRoleKey, overrides = {}) {
@@ -312,7 +486,7 @@ async function syncSubscription(subscription, stripeSecretKey, supabaseUrl, serv
 
   const tipo = derivarEvento(anterior, payload, overrides);
   if (tipo) {
-    await registarEvento({
+    const registado = await registarEvento({
       user_id: userId,
       event_type: tipo,
       from_tier: anterior?.plan_tier || null,
@@ -322,6 +496,8 @@ async function syncSubscription(subscription, stripeSecretKey, supabaseUrl, serv
       occurred_at: new Date().toISOString(),
       raw: { status: payload.plan_status, interval: payload.billing_interval },
     }, supabaseUrl, serviceRoleKey);
+
+    if (registado) await enviarEmailDeEvento(tipo, userId, payload, supabaseUrl, serviceRoleKey);
   }
 }
 

@@ -4351,7 +4351,7 @@ function LoginScreen({ onBack, initialMode = 'signin' }) {
         }
       }
     } else if (mode === 'signup') {
-      setMessage('Conta criada. Se o Supabase pedir confirmação, verifique seu e-mail.');
+      setMessage('Conta criada! Enviámos um e-mail de confirmação — verifique a sua caixa de entrada.');
     } else {
       clearLoginAttemptState(email);
       setLockedUntil(0);

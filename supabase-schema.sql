@@ -275,3 +275,18 @@ group by user_id;
 
 revoke all on public.admin_account_stats from anon, authenticated;
 grant select on public.admin_account_stats to service_role;
+
+/* ============================ E-MAIL DE BOAS-VINDAS =========================
+   Marca quem já recebeu o e-mail de "conta criada, falta escolher plano" --
+   disparado uma vez só por um Database Webhook em INSERT sobre auth.users
+   (ver supabase/functions/send-welcome-email). Primary key no user_id chega:
+   ao contrário de subscription_events, este e-mail não tem variações.
+   =========================================================================== */
+create table if not exists public.welcome_email_log (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  sent_at timestamptz not null default now()
+);
+
+alter table public.welcome_email_log enable row level security;
+revoke all on public.welcome_email_log from anon, authenticated;
+grant select, insert on public.welcome_email_log to service_role;

@@ -7525,7 +7525,7 @@ function TooltipReceitaAnual({ active, payload, label }) {
   );
 }
 
-function Dashboard({ students, sessions, finances, customCategories, setView, onAddSession, onOpenSession, onQuickStatus, onRelatorio }) {
+function Dashboard({ students, sessions, finances, customCategories, definicoes, setView, onAddSession, onOpenSession, onQuickStatus, onRelatorio }) {
   const activeStudents = useMemo(() => students.filter((s) => s.active), [students]);
 
   // O mes que se esta a ver -- pode ser qualquer um, para tras ou para a
@@ -7540,6 +7540,15 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
     return acc;
   }, { gross: 0, tax: 0, gymFee: 0, net: 0 }), [activeStudents, monthCursorKey]);
 
+  // Soma, por aluno, o que o valor pago no mês compra ao preço/hora do seu
+  // tipo de plano -- fica de fora quem tem um tipo sem preço definido, em
+  // vez de contar 0 e subestimar sem avisar.
+  const horasPagasMes = useMemo(() => activeStudents.reduce((soma, s) => {
+    const precoHora = definicoes.precosPorHora?.[s.planType];
+    if (!precoHora) return soma;
+    return soma + studentFinance(s, monthCursorKey).gross / precoHora;
+  }, 0), [activeStudents, monthCursorKey, definicoes.precosPorHora]);
+
   // Últimos 12 meses terminando no mês real de hoje -- de propósito, não no
   // monthCursor: é uma vista anual estável, não deve saltar de lugar sempre
   // que se navega o painel um mês para a frente ou para trás.
@@ -7553,7 +7562,12 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
         acc.gross += f.gross; acc.tax += f.tax; acc.gymFee += f.gymFee; acc.net += f.net;
         return acc;
       }, { gross: 0, tax: 0, gymFee: 0, net: 0 });
-      return { label: MONTH_NAMES[d.getMonth()].slice(0, 3), ...t };
+      // O ano vai no rótulo de propósito: sem ele, "Out Nov Dez" no início do
+      // eixo lê-se como os próximos meses de 2026 por vir, quando são meses
+      // de 2025 já passados -- os últimos 12 meses atravessam sempre a
+      // fronteira de um ano.
+      const ano = String(d.getFullYear()).slice(-2);
+      return { label: `${MONTH_NAMES[d.getMonth()].slice(0, 3)}/${ano}`, ...t };
     });
   }, [activeStudents]);
 
@@ -7695,11 +7709,18 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
         </button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
         <StatCard label="Receita Bruta" value={currency(totals.gross)} icon={Wallet} accent="sky" />
         <StatCard label="Receita Líquida" value={currency(totals.net)} icon={TrendingUp} accent="brass" />
         <StatCard label="Impostos" value={currency(totals.tax)} icon={Percent} accent="rust" />
         <StatCard label="Taxa Ginásio" value={currency(totals.gymFee)} icon={Building2} accent="slate" />
+        <StatCard
+          label="Horas Pagas"
+          value={`${horasPagasMes.toLocaleString('pt-PT', { maximumFractionDigits: 1 })} h`}
+          icon={Clock}
+          accent="brass"
+          sub="Só alunos com preço/hora definido"
+        />
         <StatCard label="Alunos Ativos" value={activeStudents.length} icon={Users} accent="sky" sub={`${students.length} no total`} />
         <StatCard label="Aulas / Semana" value={weekSessions.length} icon={CalendarDays} accent="sky" />
       </div>
@@ -16887,7 +16908,7 @@ function AppInner() {
           />
         ) : (
         <>
-        {view === 'dashboard' && <Dashboard students={students} sessions={sessions} finances={finances} customCategories={customCategories} setView={setView} onAddSession={openNewSession} onOpenSession={openEditSession} onQuickStatus={quickStatus} onRelatorio={() => setPedirPeriodo(true)} />}
+        {view === 'dashboard' && <Dashboard students={students} sessions={sessions} finances={finances} customCategories={customCategories} definicoes={definicoes} setView={setView} onAddSession={openNewSession} onOpenSession={openEditSession} onQuickStatus={quickStatus} onRelatorio={() => setPedirPeriodo(true)} />}
         {view === 'agenda' && (
           <div className="px-4 pt-4 max-w-6xl mx-auto flex flex-col gap-3">
             <div className="flex items-center gap-2 flex-wrap">

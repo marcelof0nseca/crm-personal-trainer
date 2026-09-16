@@ -166,6 +166,10 @@ const EMPTY_DEFINICOES = {
   // 0 dias de validade significa sem prazo.
   reposicao: { automatico: true, validadeDias: 30 },
   timbre: { ...EMPTY_TIMBRE },
+  // Preço/hora por tipo de plano (frequência semanal) -- chave é o próprio
+  // rótulo do plano ('1x por semana', etc.), valor é um número em euros.
+  // Sem entrada para um tipo, "horas pagas" não se calcula para ele.
+  precosPorHora: {},
 };
 
 // Aceita o formato antigo, de um par de horas por dia, e converte-o.
@@ -205,6 +209,7 @@ function normalizarDefinicoes(raw) {
       ...(d.reposicao && typeof d.reposicao === 'object' ? d.reposicao : {}),
     },
     timbre: normalizarTimbre(d.timbre),
+    precosPorHora: d.precosPorHora && typeof d.precosPorHora === 'object' ? d.precosPorHora : {},
   };
 }
 
@@ -5006,6 +5011,7 @@ const SETTINGS_SECTIONS = [
   { id: 'aparencia', label: 'Aparência', icon: Sun },
   { id: 'seguranca', label: 'Segurança', icon: KeyRound },
   { id: 'agenda', label: 'Agenda', icon: CalendarDays },
+  { id: 'planos', label: 'Planos e Preços', icon: Clock },
   { id: 'documentos', label: 'Documentos', icon: Printer },
   { id: 'subscricao', label: 'Subscrição', icon: CreditCard },
   { id: 'dados', label: 'Dados e privacidade', icon: ShieldCheck },
@@ -5223,7 +5229,7 @@ function SettingsModal({
   user, subscription, students, sessions, finances, photos, customCategories,
   onClose, onSignOut, onRefreshSubscription, onChangePassword, onReset, onRestore,
   trainerName, onSaveTrainerName, definicoes, onSaveHorario, onSaveLembretes, permissaoNotificacoes,
-  onCopiarHorario, onRestaurarHorario, onSaveDuracaoSlot, onSaveReposicao,
+  onCopiarHorario, onRestaurarHorario, onSaveDuracaoSlot, onSaveReposicao, onSavePrecoHora,
   onSaveTimbre, onSaveSeccao, onCarregarLogo, onPreverTimbre,
   tema, onMudarTema, temaResolvido, onToast, onSignOutGlobal,
   seccaoInicial, onSaveExcecao, onRemoverExcecao,
@@ -5810,6 +5816,35 @@ function SettingsModal({
                       As notificações estão bloqueadas para este site. Só continua a ver o aviso dentro da aplicação.
                     </div>
                   )}
+                </SettingsBlock>
+              </>
+            )}
+
+            {section === 'planos' && (
+              <>
+                <SettingsBlock
+                  title="Preço por hora, por tipo de plano"
+                  description="Serve só para calcular quantas horas cada aluno está a pagar por mês -- não muda o valor do plano dele, que continua a definir-se na própria ficha do aluno."
+                >
+                  <div className="flex flex-col">
+                    {[...PLAN_TYPES, ...customCategories.planTypes].map((tipo) => (
+                      <div key={tipo} className="flex items-center justify-between gap-3 py-2.5 border-b border-hair">
+                        <span className="text-sm font-body text-primary">{tipo}</span>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <span className="text-xs text-faint font-body">€</span>
+                          <input
+                            type="number" inputMode="decimal" min="0" step="0.01"
+                            value={definicoes.precosPorHora[tipo] ?? ''}
+                            onChange={(e) => onSavePrecoHora(tipo, e.target.value === '' ? undefined : parseFloat(e.target.value) || 0)}
+                            className="input-field" style={{ width: 84 }}
+                            placeholder="0,00"
+                            aria-label={`Preço por hora do plano ${tipo}`}
+                          />
+                          <span className="text-xs text-faint font-body">/h</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </SettingsBlock>
               </>
             )}
@@ -7472,6 +7507,24 @@ function NavTabs({ view, setView, isAdmin }) {
 
 /* ============================== DASHBOARD ============================== */
 
+// O bruto não é uma barra própria no gráfico (net+tax+gymFee já somam a
+// altura toda) -- mas continua a valer a pena mostrá-lo no tooltip. Lê-se do
+// ponto de dados inteiro, não das séries desenhadas, por isso aparece mesmo
+// sem um <Bar dataKey="gross">.
+function TooltipReceitaAnual({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0].payload;
+  return (
+    <div style={CHART.tooltip} className="p-2.5 flex flex-col gap-1">
+      <div style={CHART.tooltipLabel}>{label}</div>
+      <div style={CHART.tooltipItem}>Bruto: {currency(d.gross)}</div>
+      <div style={CHART.tooltipItem}>Líquido: {currency(d.net)}</div>
+      <div style={CHART.tooltipItem}>Impostos: {currency(d.tax)}</div>
+      <div style={CHART.tooltipItem}>Taxa Ginásio: {currency(d.gymFee)}</div>
+    </div>
+  );
+}
+
 function Dashboard({ students, sessions, finances, customCategories, setView, onAddSession, onOpenSession, onQuickStatus, onRelatorio }) {
   const activeStudents = useMemo(() => students.filter((s) => s.active), [students]);
 
@@ -7486,6 +7539,23 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
     acc.gross += f.gross; acc.tax += f.tax; acc.gymFee += f.gymFee; acc.net += f.net;
     return acc;
   }, { gross: 0, tax: 0, gymFee: 0, net: 0 }), [activeStudents, monthCursorKey]);
+
+  // Últimos 12 meses terminando no mês real de hoje -- de propósito, não no
+  // monthCursor: é uma vista anual estável, não deve saltar de lugar sempre
+  // que se navega o painel um mês para a frente ou para trás.
+  const dozeMesesData = useMemo(() => {
+    const hoje = new Date();
+    return Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(hoje.getFullYear(), hoje.getMonth() - (11 - i), 1);
+      const mk = monthKeyOf(d);
+      const t = activeStudents.reduce((acc, s) => {
+        const f = studentFinance(s, mk);
+        acc.gross += f.gross; acc.tax += f.tax; acc.gymFee += f.gymFee; acc.net += f.net;
+        return acc;
+      }, { gross: 0, tax: 0, gymFee: 0, net: 0 });
+      return { label: MONTH_NAMES[d.getMonth()].slice(0, 3), ...t };
+    });
+  }, [activeStudents]);
 
   const today = fmtDateISO(new Date());
   // "Esta semana" e "hoje" sao sempre o presente -- so a atividade do mes,
@@ -7637,6 +7707,24 @@ function Dashboard({ students, sessions, finances, customCategories, setView, on
       <div className="bg-surface border border-hair rounded-xl p-4">
         <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-3">Composição da Receita Mensal{sufixoMes}</div>
         <RevenueLoadBar gross={totals.gross} tax={totals.tax} gymFee={totals.gymFee} net={totals.net} height={36} />
+      </div>
+
+      <div className="bg-surface border border-hair rounded-xl p-4 min-w-0">
+        <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-3">Receita dos Últimos 12 Meses</div>
+        <ErrorBoundary compact>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={dozeMesesData} margin={{ left: 0, right: 8, top: 4, bottom: 4 }}>
+              <CartesianGrid stroke={CHART.grid} strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="label" tick={CHART.tick} axisLine={false} tickLine={false} />
+              <YAxis tick={CHART.tick} axisLine={false} tickLine={false} width={44} />
+              <Tooltip content={<TooltipReceitaAnual />} cursor={CHART.cursor} />
+              <Legend wrapperStyle={CHART.legend} formatter={(v) => ({ net: 'Líquido', tax: 'Impostos', gymFee: 'Taxa Ginásio' }[v] || v)} />
+              <Bar dataKey="net" stackId="receita" fill="var(--brass)" name="net" />
+              <Bar dataKey="tax" stackId="receita" fill="var(--rust)" name="tax" />
+              <Bar dataKey="gymFee" stackId="receita" fill="var(--slate-acc)" name="gymFee" radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ErrorBoundary>
       </div>
 
       <div>
@@ -8664,7 +8752,7 @@ function StudentsView({ students, sessions, onEdit, onNew }) {
   );
 }
 
-function StudentFormModal({ student, sessions, customCategories, treinoCount = 0, formularios, onAddCategory, onSave, onClose, onDelete, onGoToAssessments, onGoToTreinos, onGoToSession, onAgendarReposicao, onGoToFormularios, onGoToFicha }) {
+function StudentFormModal({ student, sessions, customCategories, definicoes, treinoCount = 0, formularios, onAddCategory, onSave, onClose, onDelete, onGoToAssessments, onGoToTreinos, onGoToSession, onAgendarReposicao, onGoToFormularios, onGoToFicha }) {
   const isEdit = !!student;
   const [form, setForm] = useState(() => (student ? { ...student, quinzenasPagas: student.quinzenasPagas || {} } : {
     id: uid(), name: '', color: STUDENT_COLORS[Math.floor(Math.random() * STUDENT_COLORS.length)],
@@ -8694,6 +8782,10 @@ function StudentFormModal({ student, sessions, customCategories, treinoCount = 0
     taxPercent: parseFloat(form.taxPercent) || 0,
     gymFeeValue: parseFloat(form.gymFeeValue) || 0,
   });
+  // Quantas horas o valor pago no mês compra, ao preço/hora definido para
+  // este tipo de plano em Definições -- não uma contagem de aulas reais.
+  const precoHora = definicoes?.precosPorHora?.[form.planType];
+  const horasPagas = precoHora ? finance.gross / precoHora : null;
 
   const pf = isEdit ? pendingFaltas(student.id, sessions) : 0;
   const assessmentCount = isEdit ? sessions.filter((s) => s.studentId === student.id && s.type === 'avaliacao' && (s.assessWeight || s.assessBodyFat)).length : 0;
@@ -8836,6 +8928,12 @@ function StudentFormModal({ student, sessions, customCategories, treinoCount = 0
         <div className="bg-elevated rounded-lg p-3 border border-hair">
           <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-2">Prévia do líquido (mês atual)</div>
           <RevenueLoadBar gross={finance.gross} tax={finance.tax} gymFee={finance.gymFee} net={finance.net} height={24} />
+          <div className="flex items-center gap-1.5 text-xs font-body text-muted mt-2.5">
+            <Clock size={13} className="text-faint flex-shrink-0" />
+            {horasPagas != null
+              ? <span>Paga o equivalente a <strong className="text-primary">{horasPagas.toLocaleString('pt-PT', { maximumFractionDigits: 1 })} h</strong> este mês, a {currency(precoHora)}/hora</span>
+              : <span>Defina o preço/hora do plano "{form.planType}" em Definições → Planos e Preços para ver as horas pagas</span>}
+          </div>
         </div>
 
         {isEdit && onGoToFicha && (
@@ -16317,6 +16415,15 @@ function AppInner() {
     persistDefinicoes({ ...definicoes, reposicao: { ...definicoes.reposicao, ...mudanca } });
   }
 
+  // undefined limpa a entrada (campo deixado em branco), em vez de gravar
+  // um preço de "0" que faria "horas pagas" dar um número absurdo por aluno.
+  function savePrecoHora(tipoPlano, valor) {
+    const precosPorHora = { ...definicoes.precosPorHora };
+    if (valor === undefined || Number.isNaN(valor)) delete precosPorHora[tipoPlano];
+    else precosPorHora[tipoPlano] = valor;
+    persistDefinicoes({ ...definicoes, precosPorHora });
+  }
+
   function saveTimbre(mudanca) {
     persistDefinicoes({ ...definicoes, timbre: { ...definicoes.timbre, ...mudanca } });
   }
@@ -16957,7 +17064,7 @@ function AppInner() {
         <RegistarFaltaModal students={students} sessions={sessions} definicoes={definicoes} onSave={registarFalta} onClose={() => setShowFaltaModal(false)} />
       )}
       {showStudentModal && (
-        <StudentFormModal student={studentModal} sessions={sessions} customCategories={customCategories} formularios={formularios} onAddCategory={addCategory} onSave={saveStudent} onClose={() => setShowStudentModal(false)} onDelete={deleteStudent} onGoToAssessments={goToAssessments} onGoToTreinos={goToTreinos} onGoToFormularios={goToFormularios} onGoToFicha={goToFicha} onGoToSession={openEditSession} onAgendarReposicao={openReposicaoFor}
+        <StudentFormModal student={studentModal} sessions={sessions} customCategories={customCategories} definicoes={definicoes} formularios={formularios} onAddCategory={addCategory} onSave={saveStudent} onClose={() => setShowStudentModal(false)} onDelete={deleteStudent} onGoToAssessments={goToAssessments} onGoToTreinos={goToTreinos} onGoToFormularios={goToFormularios} onGoToFicha={goToFicha} onGoToSession={openEditSession} onAgendarReposicao={openReposicaoFor}
           treinoCount={studentModal ? prescricoesDoAluno(treinos, studentModal.id).length : 0} />
       )}
       {showTransactionModal && (
@@ -16997,6 +17104,7 @@ function AppInner() {
           onRestaurarHorario={restaurarHorario}
           onSaveDuracaoSlot={saveDuracaoSlot}
           onSaveReposicao={saveReposicao}
+          onSavePrecoHora={savePrecoHora}
           onSaveTimbre={saveTimbre}
           onSaveSeccao={saveSeccao}
           onCarregarLogo={carregarLogo}

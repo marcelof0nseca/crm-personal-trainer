@@ -69,6 +69,10 @@ técnica — é uma decisão de produto, e condiciona metade do que se pode ofer
 | `src/components/LegalDocs.tsx` | Termos e política de privacidade. **Contém declarações legais** |
 | `src/components/Turnstile.tsx` | CAPTCHA do registo |
 | `src/data/exercicios.ts` | **Gerado.** 2 076 exercícios, 18 grupos, 14 categorias. Não editar à mão |
+| `src/data/modelos-treino.ts` | **Gerado.** As 860 fichas da biblioteca de modelos (~3,7 MB). **Só se carrega por `import()`**, ao abrir a biblioteca — com `import` estático entrava no primeiro carregamento de todos |
+| `src/data/exercicios-modelos.ts` | **Gerado.** Os 76 exercícios do dicionário dos modelos que a biblioteca de exercícios não tinha, mais as instruções e regressões dos 95. Pequeno; importado no arranque |
+| `src/data/modelos-treino-textos.ts` | À mão. Os textos fixos das fichas (critérios de entrada, progressão, o que registar…) e a taxonomia dos filtros. Estão aqui, uma vez, porque repetidos nas 860 fichas custavam ~2 MB |
+| `scripts/gerar-modelos-treino.mjs` | Gera `modelos-treino.ts` e `exercicios-modelos.ts`. Funções puras, sem aleatoriedade: duas corridas dão o mesmo resultado. Dados de origem e regras em `scripts/dados-modelos-treino/`; `validar.mjs` confere contagens, referências e a aritmética dos blocos temporizados |
 | `scripts/gerar-exercicios.mjs` | Gera o ficheiro acima a partir do catálogo MFIT (que não está no repositório) |
 | `scripts/exercicios-legado.json` | Os 202 exercícios que a aplicação tinha antes do catálogo |
 | `supabase/functions/` | 5 Edge Functions: `admin-overview`, `create-checkout-session`, `create-mbway-checkout-session`, `create-portal-session`, `stripe-webhook` |
@@ -185,6 +189,20 @@ Consequências que decidem quase tudo:
   ~300 kB de exercícios que já estão no *bundle*. O id de um exercício de origem
   é `'e:' + nome`, estável entre versões, para as prescrições não perderem a
   ligação.
+- **A biblioteca de modelos de treino também não é gravada.** As 860 fichas
+  (`CATALOGO_MODELOS`) vivem no código e vêm de `scripts/gerar-modelos-treino.mjs`.
+  Não são um `data_key`: gravá-las dentro de `treinos` reescrevia ~3,7 MB a
+  cada treino guardado. O que se grava é só o que o treinador faz com uma
+  ficha — «Usar este modelo» cria uma `prescricao` normal, por
+  `criarPrescricaoDeModelo`. `clonarTreinos` copia tudo (linhas, números do
+  método, combinações): o catálogo é uma constante, e uma escrita por engano
+  numa lista partilhada alterava-o para toda a gente. `treinos.modelos`
+  continua a ser só dos modelos que o treinador guardou.
+  Uma ficha tem a forma de um modelo (`nome`, `objetivo`, `treinos[]`), mais os
+  campos de filtro. **As flags** `requerValidacaoClinica`,
+  `requerSupervisaoTecnica` e `precisaAvisoPliometriaContraste` só existem
+  quando verdadeiras (ausente = falso); os textos que delas dependem
+  resolvem-se em `modelos-treino-textos.ts`.
 
 ### O carimbo de versão
 
@@ -347,6 +365,18 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
 - **Funções escritas e nunca chamadas.** Já aconteceu com `sessoesChocam`, que
   esteve meses no ficheiro sem ninguém a invocar. Antes de escrever uma
   utilidade, `grep` para ver se já existe.
+- **Um `const` do módulo que usa outro `const` do módulo no arranque.**
+  Caso concreto do «`const` não é içado»: `BIBLIOTECA_BASE` ordena-se com um
+  colador próprio (`ORDEM_BIBLIOTECA`) e não com `byNamePt`, porque este usa
+  `PT_COLLATOR`, declarado bem mais abaixo — chamá-lo no arranque rebenta a
+  aplicação inteira com um `ReferenceError`, e o `build` passa na mesma.
+- **`0` é um valor, e `x || ''` apaga-o.** O gerador de modelos escrevia
+  `rir: campos.rir || ''` e a série «até à falha» (RIR 0, por definição)
+  ficava sem RIR nenhum, sem erro a avisar. Nos campos numéricos que admitem
+  zero, `!= null`.
+- **Um ficheiro de dados grande não se importa de forma estática.** As 860
+  fichas são ~3,7 MB. `import()` dentro de um `useEffect` deixa o Vite parti-las
+  para um *chunk* à parte, que só descarrega quem abre a biblioteca.
 - **Um scanner de segurança do e-mail pode gastar um link de uso único antes
   da pessoa clicar.** O "Safe Links" do Outlook/Microsoft 365 abre sozinho os
   links de um e-mail para os verificar — e o link de recuperação de
@@ -566,7 +596,8 @@ existe de verdade.
 |---|---|
 | **Agenda** | Dia, semana, mês, lista · procura e filtros · **botão de horários na própria agenda**, com horário por dia, **exceções por data** e pré-visualização da semana · horários livres em lote · **selecionar várias e mover, mudar a duração, bloquear ou apagar de uma vez** · recorrência com "só esta / toda a série" · **replicar uma marcação por X semanas** · **três botões de confirmação com cor cheia: dada, falta, e falta com direito a reposição**, coloridos pelo **tipo da marcação** (`SESSION_TYPES`/`EVENT_TYPES`, agora em `AgendaAtoms.tsx`, sem cores repetidas dentro da mesma lista), não pelo aluno · **aviso de conflito** (nunca bloqueia — alguns treinadores atendem dois alunos ao mesmo tempo de propósito) · **o cartão ocupa o espaço proporcional à duração real** (uma sessão de 2h fica visivelmente mais alta que uma de 30 min) e mostra "09:00–11:00", não só a hora de início · **reservar por cima de um Horário Livre remove-o** (`semLivresCobertosPor`) — antes ficava por baixo, a dizer que aquele tempo continuava livre · **vários alunos no mesmo horário**, um cartão só (`GroupedSessionCard`) — ver `groupId` na secção 4. **Sem arrastar o cartão para outro dia, nem copiar/colar** — os dois existiram, mediam todos os testes automatizados, mas o arrastar não funcionava em telemóvel real e o copiar/colar foi removido por decisão de produto; mover uma sessão é pelo formulário (mudar a data) ou por "Selecionar várias" |
 | **Faltas** | Estados, direito a reposição, crédito ligado à aula de origem · **validade do crédito, estado "Expirada" e registo de auditoria** (quem concedeu, quando, o que aconteceu desde então) |
-| **Prescrição** | Treinos A/B/C, 2 076 exercícios, modelos, arquivo, PDF timbrado agrupado por bloco. Blocos, métodos como lista, 15 campos por exercício, duplicar, arrastar para reordenar · **11 combinações com nome e cor** (`METODOS_COMBINACAO`: bi-set, supersérie, superset antagonista, pré-exaustão, pós-exaustão, série composta, trissérie, giant set, circuito, contraste, complexo), cada membro num tom da cor do grupo |
+| **Prescrição** | Treinos A/B/C, 2 076 exercícios, modelos, arquivo, PDF timbrado agrupado por bloco. Blocos, métodos como lista, 15 campos por exercício, duplicar, arrastar para reordenar · **14 combinações com nome e cor** (`METODOS_COMBINACAO`: bi-set, supersérie, superset antagonista, pré-exaustão, pós-exaustão, série composta, trissérie, giant set, circuito, contraste, complexo, EMOM, AMRAP, For time), cada membro num tom da cor do grupo |
+| **Biblioteca de modelos** | 860 fichas pré-construídas (representação A do documento de consolidação: 14 categorias, 8 objetivos, 4 níveis de experiência, 4 de condicionamento, 26 métodos), em **Alunos → aluno → Treinos → «Biblioteca de modelos»**. Procura (traduz pt-BR e inglês, e aceita o código, `PTM-0312`) e 11 filtros combináveis · ficha com aquecimento, principal, volta à calma, critérios de entrada, progressão, regressão e o que registar · **«Usar este modelo»** cria o programa do aluno, editável como qualquer outro. **«Validação clínica» e «supervisão técnica» são avisos**, com a ressalva ao lado — a aplicação não tem papéis nem forma de bloquear, e assinala, nunca diagnostica (10b). Estendeu `METODOS_COMBINACAO` com **EMOM, AMRAP e For time**, e deu **«pausa entre rondas»** ao bi-set, supersérie, trissérie… **Preservado do documento, nunca corrigido em silêncio** (26 fichas levam um aviso em `avisosEditoriais`): o RPE do complemento do «Personalizado» (4 na dose base, 5 no cronómetro), a regra de dose que deixa `pliometria técnica` e `unilateral` de fora das repetições de pliometria, e a preparação específica de uma família temporal. **A representação B não está construída** — o documento não reproduz as suas 860 prescrições. **Não há registo do realizado** (o que o aluno fez a sério): é o mesmo buraco de sempre, ver a área do aluno |
 | **Vista de treino** | O programa como se lê, e não como se escreve: um treino de cada vez, por bloco, com o resumo em números (exercícios, séries, pausa somada, volume). **A carga de cada série e os números do método editam-se ali mesmo**; o resto é no construtor. **Dois modos**: completo (tudo de uma vez) e **passo a passo** — um exercício por vez, uma combinação inteira (bi-set, trissérie…) num só passo, com setas e barra de progresso (`TreinoSegmentado`, `passosDoTreino`). Exercícios soltos também têm cor própria, mais discreta que a de uma combinação, só para se distinguirem na lista. `TreinoVista`, ao lado de `PrescricaoBuilder` |
 | **Biblioteca** | Procura que traduz o termo escrito (pt-BR e inglês de ginásio) · sinónimos por exercício · favoritos · pastas · progressões, regressões e substituições, com **troca de exercício num clique dentro do treino** |
 | **Avaliações** | Dobras, % massa gorda, perímetros, fotografias, gráfico de evolução, PDF · **rascunho e final, autosave, revisões com motivo, comparar e repor** |
@@ -676,8 +707,12 @@ Combinado por níveis, do mais barato ao mais caro:
 19. ~~Preços de lançamento~~ **feito**
     — mensal €9,95, trimestral €27,90, anual €92,90, com o preço anterior
     riscado; quem já era assinante fica no preço antigo
-20. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
-21. Decisões de produto — ver secção 10
+20. ~~Biblioteca de modelos de treino~~ **feito**
+    — 860 fichas geradas por regras, pesquisáveis e filtráveis, num *chunk*
+    à parte; «Usar este modelo» cria o programa do aluno. Ficou de fora a
+    representação B e o registo do realizado
+21. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
+22. Decisões de produto — ver secção 10
 
 ---
 

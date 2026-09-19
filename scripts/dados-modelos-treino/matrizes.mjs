@@ -1,0 +1,195 @@
+/*
+ * As matrizes de sessao da representacao A (secao 11 do documento de
+ * consolidacao). Uma categoria tem sempre 10 matrizes, indices 0-9; a ordem
+ * dos exercicios em cada matriz e prescritiva (secao 13 usa essa ordem para
+ * escolher pares/trissieries/etc.). Transcrito a mao -- nao e gerado.
+ *
+ * Os codigos referem-se a scripts/dados-modelos-treino/dicionario.mjs.
+ */
+
+export const MATRIZES = {
+  'Musculação': [
+    { foco: 'Corpo inteiro — base', exercicios: ['sq', 'rdl', 'mpress', 'row', 'deadbug'] },
+    { foco: 'Corpo inteiro — estabilidade', exercicios: ['leg', 'thrust', 'floor', 'lat', 'pallof'] },
+    { foco: 'Superiores — horizontal', exercicios: ['press', 'chrow', 'fly', 'face', 'tri'] },
+    { foco: 'Inferiores — joelho', exercicios: ['leg', 'split', 'ext', 'curlleg', 'calf'] },
+    { foco: 'Inferiores — anca', exercicios: ['rdl', 'thrust', 'curlleg', 'step', 'side'] },
+    { foco: 'Costas e braços', exercicios: ['lat', 'row', 'pullover', 'bic', 'hammer'] },
+    { foco: 'Peito e tríceps', exercicios: ['mpress', 'press', 'fly', 'tri', 'plank'] },
+    { foco: 'Ombros e cintura escapular', exercicios: ['ohp', 'chrow', 'raise', 'face', 'deadbug'] },
+    { foco: 'Corpo inteiro — unilateral', exercicios: ['split', 'dbrow', 'floor', 'suit', 'bird'] },
+    { foco: 'Corpo inteiro — máquinas', exercicios: ['leg', 'curlleg', 'mpress', 'row', 'lat'] },
+  ],
+  'Aeróbico': [
+    { foco: 'Caminhada — contínuo', exercicios: ['walk'] },
+    { foco: 'Caminhada — alternado', exercicios: ['walk'] },
+    { foco: 'Bicicleta — contínuo', exercicios: ['bike'] },
+    { foco: 'Bicicleta — alternado', exercicios: ['bike'] },
+    { foco: 'Elíptica — contínuo', exercicios: ['ellip'] },
+    { foco: 'Elíptica — alternado', exercicios: ['ellip'] },
+    { foco: 'Remo — contínuo', exercicios: ['rower'] },
+    { foco: 'Remo — alternado', exercicios: ['rower'] },
+    { foco: 'Marcha — contínuo', exercicios: ['march'] },
+    { foco: 'Marcha — alternado', exercicios: ['march'] },
+  ],
+  'Funcional': [
+    { foco: 'Autonomia diária', exercicios: ['box', 'step', 'wall', 'bandrow', 'carry'] },
+    { foco: 'Locomoção e tronco', exercicios: ['sq', 'rdl', 'row', 'suit', 'pallof'] },
+    { foco: 'Estabilidade unilateral', exercicios: ['step', 'split', 'dbrow', 'bird', 'balance'] },
+    { foco: 'Empurrar e transportar', exercicios: ['floor', 'sled', 'carry', 'deadbug', 'calf'] },
+    { foco: 'Puxar e levantar', exercicios: ['rdl', 'bandrow', 'lat', 'suit', 'bridge'] },
+    { foco: 'Multiplanar controlado', exercicios: ['step', 'bandab', 'pallof', 'face', 'jack'] },
+    { foco: 'Corpo inteiro acessível', exercicios: ['box', 'bandpress', 'bandrow', 'bridge', 'march'] },
+    { foco: 'Força útil', exercicios: ['trap', 'incline', 'chrow', 'carry', 'side'] },
+    { foco: 'Coordenação e equilíbrio', exercicios: ['step', 'balance', 'bird', 'bandrow', 'calf'] },
+    { foco: 'Densidade moderada', exercicios: ['sq', 'floor', 'row', 'suit', 'bike'] },
+  ],
+  'Alongamento': [
+    { foco: 'Membros inferiores', exercicios: ['hamstretch', 'hipstretch', 'calfstretch', 'glutestretch'] },
+    { foco: 'Tronco e ombros', exercicios: ['pecstretch', 'latstretch', 'open', 'breath'] },
+    { foco: 'Corpo inteiro', exercicios: ['hamstretch', 'hipstretch', 'pecstretch', 'calfstretch'] },
+    { foco: 'Anca', exercicios: ['hipstretch', 'glutestretch', 'hamstretch', 'breath'] },
+    { foco: 'Após caminhada', exercicios: ['calfstretch', 'quadstretch', 'hipstretch', 'breath'] },
+    { foco: 'Após superiores', exercicios: ['pecstretch', 'latstretch', 'open', 'breath'] },
+    { foco: 'Após inferiores', exercicios: ['quadstretch', 'hamstretch', 'glutestretch', 'calfstretch'] },
+    { foco: 'Pausa prolongada', exercicios: ['pecstretch', 'hipstretch', 'calfstretch', 'breath'] },
+    { foco: 'Posterior suave', exercicios: ['hamstretch', 'glutestretch', 'latstretch', 'breath'] },
+    { foco: 'Amplitude confortável', exercicios: ['quadstretch', 'hipstretch', 'pecstretch', 'latstretch'] },
+  ],
+  'Em casa': [
+    { foco: 'Base em casa', exercicios: ['box', 'bridge', 'wall', 'bird', 'march'] },
+    { foco: 'Pernas e controlo', exercicios: ['sq', 'step', 'rdl', 'calf', 'deadbug'] },
+    { foco: 'Superiores com halteres', exercicios: ['floor', 'dbrow', 'ohp', 'bic', 'side'] },
+    { foco: 'Corpo inteiro com halteres', exercicios: ['sq', 'rdl', 'floor', 'dbrow', 'carry'] },
+    { foco: 'Sem impacto', exercicios: ['box', 'bridge', 'incline', 'deadbug', 'jack'] },
+    { foco: 'Glúteos e anca', exercicios: ['bridge', 'split', 'rdl', 'clam', 'bird'] },
+    { foco: 'Core e apoio', exercicios: ['deadbug', 'bird', 'side', 'bridge', 'incline'] },
+    { foco: 'Circuito doméstico', exercicios: ['box', 'floor', 'dbrow', 'march', 'calf'] },
+    { foco: 'Unilateral em casa', exercicios: ['split', 'dbrow', 'suit', 'step', 'side'] },
+    { foco: 'Controlo corporal', exercicios: ['incline', 'sq', 'bridge', 'bird', 'jack'] },
+  ],
+  'Mobilidade': [
+    { foco: 'Anca e tornozelo', exercicios: ['ankle', 'hip90', 'hinge', 'hipstretch'] },
+    { foco: 'Tórax e ombro', exercicios: ['open', 'wallslide', 'cat', 'pecstretch'] },
+    { foco: 'Cadeia posterior', exercicios: ['hinge', 'ankle', 'hamstretch', 'calfstretch'] },
+    { foco: 'Rotação controlada', exercicios: ['hip90', 'open', 'cat', 'bird'] },
+    { foco: 'Corpo inteiro', exercicios: ['ankle', 'hip90', 'open', 'wallslide'] },
+    { foco: 'Preparação para agachar', exercicios: ['ankle', 'hip90', 'hinge', 'box'] },
+    { foco: 'Trabalho sentado', exercicios: ['neck', 'retract', 'open', 'hipstretch'] },
+    { foco: 'Membros superiores', exercicios: ['wrist', 'wallslide', 'open', 'latstretch'] },
+    { foco: 'Anca e coluna', exercicios: ['cat', 'hip90', 'glutestretch', 'hinge'] },
+    { foco: 'Recuperação suave', exercicios: ['cat', 'open', 'hamstretch', 'breath'] },
+  ],
+  'Elástico': [
+    { foco: 'Corpo inteiro com elástico', exercicios: ['bandsq', 'bandrdl', 'bandpress', 'bandrow', 'pallof'] },
+    { foco: 'Superiores com elástico', exercicios: ['bandpress', 'bandrow', 'bandlat', 'bandbic', 'bandtri'] },
+    { foco: 'Inferiores com elástico', exercicios: ['bandsq', 'bandrdl', 'bandab', 'bridge', 'calf'] },
+    { foco: 'Postura e tronco', exercicios: ['bandrow', 'bandlat', 'pallof', 'bird', 'wallslide'] },
+    { foco: 'Empurrar e puxar', exercicios: ['bandpress', 'bandrow', 'bandbic', 'bandtri', 'deadbug'] },
+    { foco: 'Anca e estabilidade', exercicios: ['bandrdl', 'bandab', 'split', 'pallof', 'balance'] },
+    { foco: 'Base suave', exercicios: ['box', 'bandrow', 'bandpress', 'bridge', 'bird'] },
+    { foco: 'Pernas e braços', exercicios: ['bandsq', 'bandrdl', 'bandbic', 'bandtri', 'calf'] },
+    { foco: 'Tronco estável', exercicios: ['bandlat', 'bandrow', 'pallof', 'side', 'deadbug'] },
+    { foco: 'Corpo inteiro alternado', exercicios: ['bandsq', 'bandpress', 'bandrdl', 'bandrow', 'bandab'] },
+  ],
+  'Pilates': [
+    { foco: 'Controlo inicial', exercicios: ['breath', 'heel', 'pilbridge', 'quadruped', 'clam'] },
+    { foco: 'Tronco e bacia', exercicios: ['toetap', 'pilbridge', 'legside', 'bird', 'side'] },
+    { foco: 'Dissociação dos membros', exercicios: ['heel', 'deadbug', 'quadruped', 'legside', 'breath'] },
+    { foco: 'Cadeia lateral', exercicios: ['clam', 'legside', 'side', 'pilbridge', 'open'] },
+    { foco: 'Extensão e apoio', exercicios: ['pilbridge', 'bird', 'quadruped', 'wallslide', 'breath'] },
+    { foco: 'Coordenação respiratória', exercicios: ['breath', 'heel', 'toetap', 'pilbridge', 'cat'] },
+    { foco: 'Controlo de anca', exercicios: ['clam', 'legside', 'pilbridge', 'hip90', 'bird'] },
+    { foco: 'Estabilidade global', exercicios: ['deadbug', 'side', 'bird', 'pilbridge', 'open'] },
+    { foco: 'Solo acessível', exercicios: ['heel', 'clam', 'quadruped', 'cat', 'breath'] },
+    { foco: 'Fluidez controlada', exercicios: ['cat', 'open', 'pilbridge', 'toetap', 'legside'] },
+  ],
+  'Laboral': [
+    { foco: 'Pausa de secretária', exercicios: ['neck', 'retract', 'wrist', 'box'] },
+    { foco: 'Pausa em pé', exercicios: ['march', 'calf', 'wallslide', 'pecstretch'] },
+    { foco: 'Mobilidade no escritório', exercicios: ['neck', 'wrist', 'wallslide', 'box'] },
+    { foco: 'Pernas ativas', exercicios: ['march', 'box', 'calf', 'calfstretch'] },
+    { foco: 'Ombros e mãos', exercicios: ['retract', 'wrist', 'wallslide', 'pecstretch'] },
+    { foco: 'Alternar posturas', exercicios: ['box', 'march', 'retract', 'neck'] },
+    { foco: 'Após condução', exercicios: ['march', 'calf', 'pecstretch', 'wallslide'] },
+    { foco: 'Pausa curta sentada', exercicios: ['neck', 'retract', 'wrist', 'breath'] },
+    { foco: 'Retomar movimento', exercicios: ['box', 'wall', 'calf', 'march'] },
+    { foco: 'Fim do turno', exercicios: ['pecstretch', 'calfstretch', 'neck', 'retract'] },
+  ],
+  'Pliometria': [
+    { foco: 'Aterragem vertical', exercicios: ['landing', 'jump', 'calf', 'balance'] },
+    { foco: 'Elasticidade baixa', exercicios: ['landing', 'pogo', 'calf', 'bird'] },
+    { foco: 'Propulsão horizontal', exercicios: ['landing', 'broad', 'bridge', 'balance'] },
+    { foco: 'Lateral controlado', exercicios: ['landing', 'lateral', 'bandab', 'balance'] },
+    { foco: 'Potência de superiores', exercicios: ['throw', 'incline', 'row', 'deadbug'] },
+    { foco: 'Vertical e tronco', exercicios: ['jump', 'throw', 'calf', 'pallof'] },
+    { foco: 'Horizontal e tronco', exercicios: ['broad', 'throw', 'bridge', 'side'] },
+    { foco: 'Reatividade baixa', exercicios: ['pogo', 'jump', 'calf', 'bird'] },
+    { foco: 'Multidirecional', exercicios: ['jump', 'lateral', 'bandab', 'side'] },
+    { foco: 'Potência global', exercicios: ['broad', 'throw', 'sq', 'deadbug'] },
+  ],
+  'Levantamento olímpico': [
+    { foco: 'Base do clean', exercicios: ['fronttech', 'cleanpull', 'fsq', 'bird'] },
+    { foco: 'Trajetória do arranco', exercicios: ['musclesnatch', 'snatchpull', 'hinge', 'wallslide'] },
+    { foco: 'Receção do clean', exercicios: ['hangclean', 'fsq', 'cleanpull', 'deadbug'] },
+    { foco: 'Pés do jerk', exercicios: ['jerk', 'fronttech', 'ohp', 'pallof'] },
+    { foco: 'Puxada vertical', exercicios: ['cleanpull', 'snatchpull', 'rdl', 'bird'] },
+    { foco: 'Coordenação leve', exercicios: ['musclesnatch', 'jerk', 'fronttech', 'open'] },
+    { foco: 'Clean suspenso', exercicios: ['hangclean', 'cleanpull', 'fsq', 'side'] },
+    { foco: 'Técnica do arranco', exercicios: ['musclesnatch', 'snatchpull', 'sq', 'wallslide'] },
+    { foco: 'Transição e receção', exercicios: ['fronttech', 'hangclean', 'jerk', 'deadbug'] },
+    { foco: 'Integração técnica', exercicios: ['cleanpull', 'hangclean', 'fsq', 'pallof'] },
+  ],
+  'Powerlifting': [
+    { foco: 'Agachamento técnico', exercicios: ['bsq', 'rdl', 'row', 'deadbug'] },
+    { foco: 'Supino técnico', exercicios: ['bpress', 'chrow', 'tri', 'side'] },
+    { foco: 'Peso morto técnico', exercicios: ['dead', 'leg', 'lat', 'bird'] },
+    { foco: 'Agachamento e supino', exercicios: ['bsq', 'bpress', 'curlleg', 'pallof'] },
+    { foco: 'Supino e puxada', exercicios: ['bpress', 'row', 'lat', 'tri'] },
+    { foco: 'Peso morto e pernas', exercicios: ['dead', 'split', 'curlleg', 'deadbug'] },
+    { foco: 'Agachamento e posterior', exercicios: ['bsq', 'thrust', 'curlleg', 'row'] },
+    { foco: 'Supino e estabilidade', exercicios: ['bpress', 'chrow', 'face', 'side'] },
+    { foco: 'Peso morto e transporte', exercicios: ['dead', 'lat', 'carry', 'bird'] },
+    { foco: 'Três movimentos submáximos', exercicios: ['bsq', 'bpress', 'dead', 'pallof'] },
+  ],
+  'Strongman': [
+    { foco: 'Transporte bilateral', exercicios: ['carry', 'trap', 'row', 'deadbug'] },
+    { foco: 'Trenó e pernas', exercicios: ['sled', 'sq', 'curlleg', 'side'] },
+    { foco: 'Saco e estabilidade', exercicios: ['sand', 'rdl', 'row', 'pallof'] },
+    { foco: 'Transporte unilateral', exercicios: ['suit', 'step', 'chrow', 'bird'] },
+    { foco: 'Empurrar e transportar', exercicios: ['sled', 'carry', 'floor', 'deadbug'] },
+    { foco: 'Levantar e caminhar', exercicios: ['trap', 'sand', 'lat', 'side'] },
+    { foco: 'Resistência de preensão', exercicios: ['carry', 'suit', 'row', 'bridge'] },
+    { foco: 'Força global', exercicios: ['trap', 'sled', 'ohp', 'pallof'] },
+    { foco: 'Saco e pernas', exercicios: ['sand', 'sq', 'step', 'bird'] },
+    { foco: 'Percursos controlados', exercicios: ['sled', 'sand', 'carry', 'deadbug'] },
+  ],
+  'Reabilitação': [
+    { foco: 'Retorno geral — marcha', exercicios: ['walk', 'box', 'calf', 'balance'] },
+    { foco: 'Retorno geral — anca', exercicios: ['bridge', 'clam', 'heel', 'bird'] },
+    { foco: 'Retorno geral — ombro', exercicios: ['wallslide', 'retract', 'wall', 'bandrow'] },
+    { foco: 'Retorno geral — controlo', exercicios: ['heel', 'deadbug', 'quadruped', 'breath'] },
+    { foco: 'Retorno geral — degrau', exercicios: ['step', 'box', 'calf', 'balance'] },
+    { foco: 'Retorno geral — tronco', exercicios: ['bird', 'bridge', 'pallof', 'open'] },
+    { foco: 'Retorno geral — mobilidade', exercicios: ['ankle', 'hip90', 'cat', 'wallslide'] },
+    { foco: 'Retorno geral — membros superiores', exercicios: ['wall', 'bandrow', 'bandbic', 'retract'] },
+    { foco: 'Retorno geral — resistência leve', exercicios: ['bike', 'box', 'bridge', 'calf'] },
+    { foco: 'Retorno geral — autonomia', exercicios: ['box', 'step', 'bandrow', 'walk'] },
+  ],
+};
+
+export const CATEGORIAS_ORDEM = [
+  'Musculação', 'Aeróbico', 'Funcional', 'Alongamento', 'Em casa', 'Mobilidade',
+  'Elástico', 'Pilates', 'Laboral', 'Pliometria', 'Levantamento olímpico',
+  'Powerlifting', 'Strongman', 'Reabilitação',
+];
+
+if (CATEGORIAS_ORDEM.length !== 14) {
+  throw new Error(`CATEGORIAS_ORDEM devia ter 14 categorias, tem ${CATEGORIAS_ORDEM.length}.`);
+}
+for (const cat of CATEGORIAS_ORDEM) {
+  const lista = MATRIZES[cat];
+  if (!lista || lista.length !== 10) {
+    throw new Error(`A categoria "${cat}" devia ter 10 matrizes, tem ${lista ? lista.length : 0}.`);
+  }
+}

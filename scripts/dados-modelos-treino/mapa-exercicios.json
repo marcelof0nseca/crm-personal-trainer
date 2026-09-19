@@ -1,0 +1,477 @@
+{
+  "sq": {
+    "id": "e:Agachamento cálice",
+    "nome": "Agachamento cálice",
+    "novo": true
+  },
+  "box": {
+    "id": "e:Sentar e levantar da cadeira",
+    "nome": "Sentar e levantar da cadeira",
+    "novo": true
+  },
+  "leg": {
+    "id": "e:Prensa de pernas",
+    "nome": "Prensa de pernas",
+    "novo": true
+  },
+  "split": {
+    "id": "e:Agachamento dividido",
+    "nome": "Agachamento dividido",
+    "novo": true
+  },
+  "step": {
+    "id": "e:Subida para degrau baixo",
+    "nome": "Subida para degrau baixo",
+    "novo": true
+  },
+  "bsq": {
+    "id": "e:Agachamento com barra",
+    "nome": "Agachamento com barra",
+    "novo": false
+  },
+  "fsq": {
+    "id": "e:Agachamento frontal",
+    "nome": "Agachamento frontal",
+    "novo": false
+  },
+  "rdl": {
+    "id": "e:Peso morto romeno",
+    "nome": "Peso morto romeno",
+    "novo": true
+  },
+  "dead": {
+    "id": "e:Peso morto com barra",
+    "nome": "Peso morto com barra",
+    "novo": true
+  },
+  "trap": {
+    "id": "e:Peso morto com barra hexagonal",
+    "nome": "Peso morto com barra hexagonal",
+    "novo": true
+  },
+  "bridge": {
+    "id": "e:Ponte de glúteos",
+    "nome": "Ponte de glúteos",
+    "novo": false
+  },
+  "thrust": {
+    "id": "e:Elevação pélvica com carga",
+    "nome": "Elevação pélvica com carga",
+    "novo": true
+  },
+  "curlleg": {
+    "id": "e:Flexão de joelhos na máquina",
+    "nome": "Flexão de joelhos na máquina",
+    "novo": true
+  },
+  "ext": {
+    "id": "e:Extensão de joelhos na máquina",
+    "nome": "Extensão de joelhos na máquina",
+    "novo": true
+  },
+  "calf": {
+    "id": "e:Elevação de gémeos",
+    "nome": "Elevação de gémeos",
+    "novo": true
+  },
+  "press": {
+    "id": "e:Supino com halteres",
+    "nome": "Supino com halteres",
+    "novo": false
+  },
+  "floor": {
+    "id": "e:Supino no chão com halteres",
+    "nome": "Supino no chão com halteres",
+    "novo": false
+  },
+  "bpress": {
+    "id": "e:Supino com barra",
+    "nome": "Supino com barra",
+    "novo": true
+  },
+  "mpress": {
+    "id": "e:Press de peito na máquina",
+    "nome": "Press de peito na máquina",
+    "novo": true
+  },
+  "wall": {
+    "id": "e:Flexão na parede",
+    "nome": "Flexão na parede",
+    "novo": true
+  },
+  "incline": {
+    "id": "e:Flexão com mãos elevadas",
+    "nome": "Flexão com mãos elevadas",
+    "novo": true
+  },
+  "push": {
+    "id": "e:Flexão de braços",
+    "nome": "Flexão de braços",
+    "novo": false
+  },
+  "fly": {
+    "id": "e:Aberturas na máquina",
+    "nome": "Aberturas na máquina",
+    "novo": true
+  },
+  "row": {
+    "id": "e:Remada sentada na polia",
+    "nome": "Remada sentada na polia",
+    "novo": true
+  },
+  "dbrow": {
+    "id": "e:Remada unilateral apoiada",
+    "nome": "Remada unilateral apoiada",
+    "novo": true
+  },
+  "chrow": {
+    "id": "e:Remada com peito apoiado",
+    "nome": "Remada com peito apoiado",
+    "novo": true
+  },
+  "lat": {
+    "id": "e:Puxada à frente",
+    "nome": "Puxada à frente",
+    "novo": true
+  },
+  "pull": {
+    "id": "e:Elevação na barra assistida",
+    "nome": "Elevação na barra assistida",
+    "novo": true
+  },
+  "pullover": {
+    "id": "e:Pullover na polia",
+    "nome": "Pullover na polia",
+    "novo": false
+  },
+  "ohp": {
+    "id": "e:Press de ombros sentado",
+    "nome": "Press de ombros sentado",
+    "novo": true
+  },
+  "raise": {
+    "id": "e:Elevação lateral",
+    "nome": "Elevação lateral",
+    "novo": false
+  },
+  "face": {
+    "id": "e:Puxada à face",
+    "nome": "Puxada à face",
+    "novo": true
+  },
+  "bic": {
+    "id": "e:Flexão de cotovelos com halteres",
+    "nome": "Flexão de cotovelos com halteres",
+    "novo": true
+  },
+  "hammer": {
+    "id": "e:Flexão martelo",
+    "nome": "Flexão martelo",
+    "novo": true
+  },
+  "tri": {
+    "id": "e:Extensão de cotovelos na polia",
+    "nome": "Extensão de cotovelos na polia",
+    "novo": true
+  },
+  "deadbug": {
+    "id": "e:Inseto morto alternado",
+    "nome": "Inseto morto alternado",
+    "novo": true
+  },
+  "bird": {
+    "id": "e:Extensão contralateral em quatro apoios",
+    "nome": "Extensão contralateral em quatro apoios",
+    "novo": true
+  },
+  "plank": {
+    "id": "e:Prancha frontal",
+    "nome": "Prancha frontal",
+    "novo": false
+  },
+  "side": {
+    "id": "e:Prancha lateral com joelhos apoiados",
+    "nome": "Prancha lateral com joelhos apoiados",
+    "novo": true
+  },
+  "pallof": {
+    "id": "e:Press anti-rotação",
+    "nome": "Press anti-rotação",
+    "novo": true
+  },
+  "carry": {
+    "id": "e:Caminhada do fazendeiro",
+    "nome": "Caminhada do fazendeiro",
+    "novo": false
+  },
+  "suit": {
+    "id": "e:Transporte unilateral",
+    "nome": "Transporte unilateral",
+    "novo": true
+  },
+  "sled": {
+    "id": "e:Empurrar trenó",
+    "nome": "Empurrar trenó",
+    "novo": true
+  },
+  "sand": {
+    "id": "e:Abraço e transporte de saco",
+    "nome": "Abraço e transporte de saco",
+    "novo": true
+  },
+  "walk": {
+    "id": "e:Caminhada",
+    "nome": "Caminhada",
+    "novo": true
+  },
+  "bike": {
+    "id": "e:Bicicleta estática",
+    "nome": "Bicicleta estática",
+    "novo": false
+  },
+  "ellip": {
+    "id": "e:Elíptica",
+    "nome": "Elíptica",
+    "novo": false
+  },
+  "rower": {
+    "id": "e:Remo ergómetro",
+    "nome": "Remo ergómetro",
+    "novo": false
+  },
+  "march": {
+    "id": "e:Marcha no lugar",
+    "nome": "Marcha no lugar",
+    "novo": true
+  },
+  "jack": {
+    "id": "e:Polichinelo sem salto",
+    "nome": "Polichinelo sem salto",
+    "novo": true
+  },
+  "run": {
+    "id": "e:Corrida leve",
+    "nome": "Corrida leve",
+    "novo": true
+  },
+  "bandsq": {
+    "id": "e:Agachamento com elástico",
+    "nome": "Agachamento com elástico",
+    "novo": false
+  },
+  "bandrow": {
+    "id": "e:Remada com elástico",
+    "nome": "Remada com elástico",
+    "novo": false
+  },
+  "bandpress": {
+    "id": "e:Press de peito com elástico",
+    "nome": "Press de peito com elástico",
+    "novo": false
+  },
+  "bandrdl": {
+    "id": "e:Dobradiça de anca com elástico",
+    "nome": "Dobradiça de anca com elástico",
+    "novo": true
+  },
+  "bandlat": {
+    "id": "e:Puxada alta com elástico",
+    "nome": "Puxada alta com elástico",
+    "novo": true
+  },
+  "bandbic": {
+    "id": "e:Flexão de cotovelos com elástico",
+    "nome": "Flexão de cotovelos com elástico",
+    "novo": true
+  },
+  "bandtri": {
+    "id": "e:Extensão de cotovelos com elástico",
+    "nome": "Extensão de cotovelos com elástico",
+    "novo": true
+  },
+  "bandab": {
+    "id": "e:Abdução da anca com minibanda",
+    "nome": "Abdução da anca com minibanda",
+    "novo": true
+  },
+  "ankle": {
+    "id": "e:Mobilização do tornozelo à parede",
+    "nome": "Mobilização do tornozelo à parede",
+    "novo": true
+  },
+  "hip90": {
+    "id": "e:Transições de anca 90/90",
+    "nome": "Transições de anca 90/90",
+    "novo": true
+  },
+  "cat": {
+    "id": "e:Mobilização da coluna em quatro apoios",
+    "nome": "Mobilização da coluna em quatro apoios",
+    "novo": true
+  },
+  "open": {
+    "id": "e:Rotação torácica deitado",
+    "nome": "Rotação torácica deitado",
+    "novo": false
+  },
+  "wallslide": {
+    "id": "e:Deslizamento dos braços na parede",
+    "nome": "Deslizamento dos braços na parede",
+    "novo": true
+  },
+  "hinge": {
+    "id": "e:Dobradiça de anca com bastão",
+    "nome": "Dobradiça de anca com bastão",
+    "novo": true
+  },
+  "neck": {
+    "id": "e:Rotação cervical ativa suave",
+    "nome": "Rotação cervical ativa suave",
+    "novo": true
+  },
+  "wrist": {
+    "id": "e:Mobilização dos punhos",
+    "nome": "Mobilização dos punhos",
+    "novo": true
+  },
+  "hamstretch": {
+    "id": "e:Alongamento posterior da coxa deitado",
+    "nome": "Alongamento posterior da coxa deitado",
+    "novo": true
+  },
+  "hipstretch": {
+    "id": "e:Alongamento do flexor da anca",
+    "nome": "Alongamento do flexor da anca",
+    "novo": true
+  },
+  "pecstretch": {
+    "id": "e:Alongamento peitoral na parede",
+    "nome": "Alongamento peitoral na parede",
+    "novo": true
+  },
+  "calfstretch": {
+    "id": "e:Alongamento de gémeos na parede",
+    "nome": "Alongamento de gémeos na parede",
+    "novo": true
+  },
+  "glutestretch": {
+    "id": "e:Alongamento de glúteo deitado",
+    "nome": "Alongamento de glúteo deitado",
+    "novo": false
+  },
+  "latstretch": {
+    "id": "e:Alongamento dorsal apoiado",
+    "nome": "Alongamento dorsal apoiado",
+    "novo": true
+  },
+  "quadstretch": {
+    "id": "e:Alongamento da coxa em pé com apoio",
+    "nome": "Alongamento da coxa em pé com apoio",
+    "novo": true
+  },
+  "breath": {
+    "id": "e:Respiração costal deitado",
+    "nome": "Respiração costal deitado",
+    "novo": true
+  },
+  "heel": {
+    "id": "e:Deslizamento alternado do calcanhar",
+    "nome": "Deslizamento alternado do calcanhar",
+    "novo": true
+  },
+  "clam": {
+    "id": "e:Abertura lateral da anca deitado",
+    "nome": "Abertura lateral da anca deitado",
+    "novo": true
+  },
+  "toetap": {
+    "id": "e:Toque alternado do pé no chão",
+    "nome": "Toque alternado do pé no chão",
+    "novo": true
+  },
+  "pilbridge": {
+    "id": "e:Ponte articulada",
+    "nome": "Ponte articulada",
+    "novo": true
+  },
+  "legside": {
+    "id": "e:Elevação lateral da perna deitado",
+    "nome": "Elevação lateral da perna deitado",
+    "novo": true
+  },
+  "quadruped": {
+    "id": "e:Deslizamento de perna em quatro apoios",
+    "nome": "Deslizamento de perna em quatro apoios",
+    "novo": true
+  },
+  "landing": {
+    "id": "e:Queda para posição atlética sem salto",
+    "nome": "Queda para posição atlética sem salto",
+    "novo": true
+  },
+  "pogo": {
+    "id": "e:Saltos baixos de tornozelo",
+    "nome": "Saltos baixos de tornozelo",
+    "novo": true
+  },
+  "jump": {
+    "id": "e:Salto vertical com estabilização",
+    "nome": "Salto vertical com estabilização",
+    "novo": true
+  },
+  "broad": {
+    "id": "e:Salto horizontal com estabilização",
+    "nome": "Salto horizontal com estabilização",
+    "novo": true
+  },
+  "lateral": {
+    "id": "e:Salto lateral curto com estabilização",
+    "nome": "Salto lateral curto com estabilização",
+    "novo": true
+  },
+  "throw": {
+    "id": "e:Lançamento de bola medicinal ao peito",
+    "nome": "Lançamento de bola medicinal ao peito",
+    "novo": true
+  },
+  "cleanpull": {
+    "id": "e:Puxada de clean com barra leve",
+    "nome": "Puxada de clean com barra leve",
+    "novo": true
+  },
+  "hangclean": {
+    "id": "e:Clean de potência suspenso",
+    "nome": "Clean de potência suspenso",
+    "novo": true
+  },
+  "snatchpull": {
+    "id": "e:Puxada de arranco",
+    "nome": "Puxada de arranco",
+    "novo": false
+  },
+  "musclesnatch": {
+    "id": "e:Arranco de força com bastão",
+    "nome": "Arranco de força com bastão",
+    "novo": true
+  },
+  "jerk": {
+    "id": "e:Técnica de pés do jerk com bastão",
+    "nome": "Técnica de pés do jerk com bastão",
+    "novo": true
+  },
+  "fronttech": {
+    "id": "e:Agachamento frontal com bastão",
+    "nome": "Agachamento frontal com bastão",
+    "novo": true
+  },
+  "balance": {
+    "id": "e:Equilíbrio unipodal com apoio próximo",
+    "nome": "Equilíbrio unipodal com apoio próximo",
+    "novo": true
+  },
+  "retract": {
+    "id": "e:Retração escapular sem carga",
+    "nome": "Retração escapular sem carga",
+    "novo": true
+  }
+}

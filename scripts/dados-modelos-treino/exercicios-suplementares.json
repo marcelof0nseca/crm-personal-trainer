@@ -1,0 +1,534 @@
+[
+  {
+    "id": "e:Agachamento cálice",
+    "nome": "Agachamento cálice",
+    "familiaDocumento": "joelho",
+    "equipamento": "haltere",
+    "instrucao": "pé inteiro apoiado; joelhos acompanham os pés."
+  },
+  {
+    "id": "e:Sentar e levantar da cadeira",
+    "nome": "Sentar e levantar da cadeira",
+    "familiaDocumento": "joelho",
+    "equipamento": "cadeira estável",
+    "instrucao": "controlar a descida e levantar sem impulso."
+  },
+  {
+    "id": "e:Prensa de pernas",
+    "nome": "Prensa de pernas",
+    "familiaDocumento": "joelho",
+    "equipamento": "máquina",
+    "instrucao": "manter a bacia apoiada; não bloquear os joelhos."
+  },
+  {
+    "id": "e:Agachamento dividido",
+    "nome": "Agachamento dividido",
+    "familiaDocumento": "joelho unilateral",
+    "equipamento": "halteres",
+    "instrucao": "base estável; descer verticalmente."
+  },
+  {
+    "id": "e:Subida para degrau baixo",
+    "nome": "Subida para degrau baixo",
+    "familiaDocumento": "joelho unilateral",
+    "equipamento": "degrau estável",
+    "instrucao": "usar apoio e controlar a descida."
+  },
+  {
+    "id": "e:Peso morto romeno",
+    "nome": "Peso morto romeno",
+    "familiaDocumento": "anca",
+    "equipamento": "halteres",
+    "instrucao": "levar a anca atrás sem perder posição da coluna."
+  },
+  {
+    "id": "e:Peso morto com barra",
+    "nome": "Peso morto com barra",
+    "familiaDocumento": "anca",
+    "equipamento": "barra e discos",
+    "instrucao": "barra próxima; reiniciar cada repetição."
+  },
+  {
+    "id": "e:Peso morto com barra hexagonal",
+    "nome": "Peso morto com barra hexagonal",
+    "familiaDocumento": "anca",
+    "equipamento": "barra hexagonal",
+    "instrucao": "empurrar o chão; evitar arranque brusco."
+  },
+  {
+    "id": "e:Elevação pélvica com carga",
+    "nome": "Elevação pélvica com carga",
+    "familiaDocumento": "anca",
+    "equipamento": "banco estável e haltere",
+    "instrucao": "terminar com bacia neutra."
+  },
+  {
+    "id": "e:Flexão de joelhos na máquina",
+    "nome": "Flexão de joelhos na máquina",
+    "familiaDocumento": "posterior",
+    "equipamento": "máquina",
+    "instrucao": "controlar o retorno."
+  },
+  {
+    "id": "e:Extensão de joelhos na máquina",
+    "nome": "Extensão de joelhos na máquina",
+    "familiaDocumento": "quadricípite",
+    "equipamento": "máquina",
+    "instrucao": "alinhar o eixo da máquina com o joelho."
+  },
+  {
+    "id": "e:Elevação de gémeos",
+    "nome": "Elevação de gémeos",
+    "familiaDocumento": "gémeos",
+    "equipamento": "apoio fixo",
+    "instrucao": "subir e descer sem ressalto."
+  },
+  {
+    "id": "e:Supino com barra",
+    "nome": "Supino com barra",
+    "familiaDocumento": "peito",
+    "equipamento": "banco, barra e seguranças",
+    "instrucao": "utilizar seguranças e observador competente."
+  },
+  {
+    "id": "e:Press de peito na máquina",
+    "nome": "Press de peito na máquina",
+    "familiaDocumento": "peito",
+    "equipamento": "máquina",
+    "instrucao": "ajustar banco; ombros confortáveis."
+  },
+  {
+    "id": "e:Flexão na parede",
+    "nome": "Flexão na parede",
+    "familiaDocumento": "peito",
+    "equipamento": "parede",
+    "instrucao": "corpo alinhado; aproximar o peito."
+  },
+  {
+    "id": "e:Flexão com mãos elevadas",
+    "nome": "Flexão com mãos elevadas",
+    "familiaDocumento": "peito",
+    "equipamento": "banco fixo",
+    "instrucao": "tronco firme e apoio estável."
+  },
+  {
+    "id": "e:Aberturas na máquina",
+    "nome": "Aberturas na máquina",
+    "familiaDocumento": "peito",
+    "equipamento": "máquina",
+    "instrucao": "amplitude confortável, sem forçar o ombro."
+  },
+  {
+    "id": "e:Remada sentada na polia",
+    "nome": "Remada sentada na polia",
+    "familiaDocumento": "costas",
+    "equipamento": "polia",
+    "instrucao": "puxar sem balanço."
+  },
+  {
+    "id": "e:Remada unilateral apoiada",
+    "nome": "Remada unilateral apoiada",
+    "familiaDocumento": "costas unilateral",
+    "equipamento": "banco e haltere",
+    "instrucao": "manter a bacia estável."
+  },
+  {
+    "id": "e:Remada com peito apoiado",
+    "nome": "Remada com peito apoiado",
+    "familiaDocumento": "costas",
+    "equipamento": "banco e halteres",
+    "instrucao": "peito apoiado; evitar elevar ombros."
+  },
+  {
+    "id": "e:Puxada à frente",
+    "nome": "Puxada à frente",
+    "familiaDocumento": "costas",
+    "equipamento": "polia",
+    "instrucao": "puxar à frente sem inclinação excessiva."
+  },
+  {
+    "id": "e:Elevação na barra assistida",
+    "nome": "Elevação na barra assistida",
+    "familiaDocumento": "costas",
+    "equipamento": "máquina assistida",
+    "instrucao": "controlar descida e assistência."
+  },
+  {
+    "id": "e:Press de ombros sentado",
+    "nome": "Press de ombros sentado",
+    "familiaDocumento": "ombro",
+    "equipamento": "banco e halteres",
+    "instrucao": "evitar compensação lombar."
+  },
+  {
+    "id": "e:Puxada à face",
+    "nome": "Puxada à face",
+    "familiaDocumento": "ombro",
+    "equipamento": "polia com corda",
+    "instrucao": "não projetar a cabeça."
+  },
+  {
+    "id": "e:Flexão de cotovelos com halteres",
+    "nome": "Flexão de cotovelos com halteres",
+    "familiaDocumento": "bíceps",
+    "equipamento": "halteres",
+    "instrucao": "cotovelos estáveis; sem balanço."
+  },
+  {
+    "id": "e:Flexão martelo",
+    "nome": "Flexão martelo",
+    "familiaDocumento": "bíceps",
+    "equipamento": "halteres",
+    "instrucao": "punhos neutros."
+  },
+  {
+    "id": "e:Extensão de cotovelos na polia",
+    "nome": "Extensão de cotovelos na polia",
+    "familiaDocumento": "tríceps",
+    "equipamento": "polia",
+    "instrucao": "braços junto ao tronco."
+  },
+  {
+    "id": "e:Inseto morto alternado",
+    "nome": "Inseto morto alternado",
+    "familiaDocumento": "core unilateral",
+    "equipamento": "colchão",
+    "instrucao": "expirar; estender apenas mantendo controlo lombar."
+  },
+  {
+    "id": "e:Extensão contralateral em quatro apoios",
+    "nome": "Extensão contralateral em quatro apoios",
+    "familiaDocumento": "core unilateral",
+    "equipamento": "colchão",
+    "instrucao": "bacia estável; amplitude curta."
+  },
+  {
+    "id": "e:Prancha lateral com joelhos apoiados",
+    "nome": "Prancha lateral com joelhos apoiados",
+    "familiaDocumento": "core tempo unilateral",
+    "equipamento": "colchão",
+    "instrucao": "alinhar ombro e bacia."
+  },
+  {
+    "id": "e:Press anti-rotação",
+    "nome": "Press anti-rotação",
+    "familiaDocumento": "core unilateral",
+    "equipamento": "elástico e ancoragem segura",
+    "instrucao": "resistir à rotação e respirar."
+  },
+  {
+    "id": "e:Transporte unilateral",
+    "nome": "Transporte unilateral",
+    "familiaDocumento": "transporte unilateral",
+    "equipamento": "haltere e corredor livre",
+    "instrucao": "não inclinar o tronco."
+  },
+  {
+    "id": "e:Empurrar trenó",
+    "nome": "Empurrar trenó",
+    "familiaDocumento": "transporte",
+    "equipamento": "trenó e pista",
+    "instrucao": "passos curtos; superfície livre."
+  },
+  {
+    "id": "e:Abraço e transporte de saco",
+    "nome": "Abraço e transporte de saco",
+    "familiaDocumento": "transporte",
+    "equipamento": "saco de areia e pista",
+    "instrucao": "saco leve junto ao corpo; respirar."
+  },
+  {
+    "id": "e:Caminhada",
+    "nome": "Caminhada",
+    "familiaDocumento": "aeróbico",
+    "equipamento": "espaço livre",
+    "instrucao": "ritmo compatível com a intensidade."
+  },
+  {
+    "id": "e:Marcha no lugar",
+    "nome": "Marcha no lugar",
+    "familiaDocumento": "aeróbico",
+    "equipamento": "nenhum",
+    "instrucao": "pousar os pés suavemente."
+  },
+  {
+    "id": "e:Polichinelo sem salto",
+    "nome": "Polichinelo sem salto",
+    "familiaDocumento": "aeróbico",
+    "equipamento": "nenhum",
+    "instrucao": "alternar passos laterais sem impacto."
+  },
+  {
+    "id": "e:Corrida leve",
+    "nome": "Corrida leve",
+    "familiaDocumento": "aeróbico",
+    "equipamento": "pista ou passadeira",
+    "instrucao": "passada confortável; exigir tolerância ao impacto."
+  },
+  {
+    "id": "e:Dobradiça de anca com elástico",
+    "nome": "Dobradiça de anca com elástico",
+    "familiaDocumento": "anca",
+    "equipamento": "elástico",
+    "instrucao": "controlar retorno."
+  },
+  {
+    "id": "e:Puxada alta com elástico",
+    "nome": "Puxada alta com elástico",
+    "familiaDocumento": "costas",
+    "equipamento": "elástico e ancoragem alta segura",
+    "instrucao": "não puxar atrás da nuca."
+  },
+  {
+    "id": "e:Flexão de cotovelos com elástico",
+    "nome": "Flexão de cotovelos com elástico",
+    "familiaDocumento": "bíceps",
+    "equipamento": "elástico",
+    "instrucao": "cotovelos junto ao corpo."
+  },
+  {
+    "id": "e:Extensão de cotovelos com elástico",
+    "nome": "Extensão de cotovelos com elástico",
+    "familiaDocumento": "tríceps",
+    "equipamento": "elástico e ancoragem segura",
+    "instrucao": "evitar movimento do ombro."
+  },
+  {
+    "id": "e:Abdução da anca com minibanda",
+    "nome": "Abdução da anca com minibanda",
+    "familiaDocumento": "anca unilateral",
+    "equipamento": "minibanda",
+    "instrucao": "bacia estável; amplitude controlada."
+  },
+  {
+    "id": "e:Mobilização do tornozelo à parede",
+    "nome": "Mobilização do tornozelo à parede",
+    "familiaDocumento": "mobilidade unilateral",
+    "equipamento": "parede",
+    "instrucao": "calcanhar apoiado; joelho alinhado."
+  },
+  {
+    "id": "e:Transições de anca 90/90",
+    "nome": "Transições de anca 90/90",
+    "familiaDocumento": "mobilidade",
+    "equipamento": "colchão",
+    "instrucao": "usar mãos se necessário; não forçar."
+  },
+  {
+    "id": "e:Mobilização da coluna em quatro apoios",
+    "nome": "Mobilização da coluna em quatro apoios",
+    "familiaDocumento": "mobilidade",
+    "equipamento": "colchão",
+    "instrucao": "movimento lento e confortável."
+  },
+  {
+    "id": "e:Deslizamento dos braços na parede",
+    "nome": "Deslizamento dos braços na parede",
+    "familiaDocumento": "mobilidade",
+    "equipamento": "parede",
+    "instrucao": "não arquear lombar."
+  },
+  {
+    "id": "e:Dobradiça de anca com bastão",
+    "nome": "Dobradiça de anca com bastão",
+    "familiaDocumento": "mobilidade",
+    "equipamento": "bastão",
+    "instrucao": "contacto com cabeça, dorso e sacro."
+  },
+  {
+    "id": "e:Rotação cervical ativa suave",
+    "nome": "Rotação cervical ativa suave",
+    "familiaDocumento": "mobilidade unilateral",
+    "equipamento": "cadeira",
+    "instrucao": "amplitude confortável; parar perante tontura."
+  },
+  {
+    "id": "e:Mobilização dos punhos",
+    "nome": "Mobilização dos punhos",
+    "familiaDocumento": "mobilidade",
+    "equipamento": "mesa",
+    "instrucao": "apoio leve sem dor."
+  },
+  {
+    "id": "e:Alongamento posterior da coxa deitado",
+    "nome": "Alongamento posterior da coxa deitado",
+    "familiaDocumento": "alongamento unilateral",
+    "equipamento": "colchão e toalha",
+    "instrucao": "joelho ligeiramente fletido; não puxar com força."
+  },
+  {
+    "id": "e:Alongamento do flexor da anca",
+    "nome": "Alongamento do flexor da anca",
+    "familiaDocumento": "alongamento unilateral",
+    "equipamento": "colchão",
+    "instrucao": "bacia neutra; não arquear lombar."
+  },
+  {
+    "id": "e:Alongamento peitoral na parede",
+    "nome": "Alongamento peitoral na parede",
+    "familiaDocumento": "alongamento unilateral",
+    "equipamento": "parede",
+    "instrucao": "rodar suavemente; sem dor anterior no ombro."
+  },
+  {
+    "id": "e:Alongamento de gémeos na parede",
+    "nome": "Alongamento de gémeos na parede",
+    "familiaDocumento": "alongamento unilateral",
+    "equipamento": "parede",
+    "instrucao": "calcanhar no chão; pé em frente."
+  },
+  {
+    "id": "e:Alongamento dorsal apoiado",
+    "nome": "Alongamento dorsal apoiado",
+    "familiaDocumento": "alongamento",
+    "equipamento": "mesa fixa",
+    "instrucao": "expiração suave."
+  },
+  {
+    "id": "e:Alongamento da coxa em pé com apoio",
+    "nome": "Alongamento da coxa em pé com apoio",
+    "familiaDocumento": "alongamento unilateral",
+    "equipamento": "apoio fixo",
+    "instrucao": "joelhos próximos; não forçar flexão."
+  },
+  {
+    "id": "e:Respiração costal deitado",
+    "nome": "Respiração costal deitado",
+    "familiaDocumento": "respiração",
+    "equipamento": "colchão",
+    "instrucao": "respirar naturalmente, sem pausas forçadas."
+  },
+  {
+    "id": "e:Deslizamento alternado do calcanhar",
+    "nome": "Deslizamento alternado do calcanhar",
+    "familiaDocumento": "pilates unilateral",
+    "equipamento": "colchão",
+    "instrucao": "bacia estável."
+  },
+  {
+    "id": "e:Abertura lateral da anca deitado",
+    "nome": "Abertura lateral da anca deitado",
+    "familiaDocumento": "pilates unilateral",
+    "equipamento": "colchão",
+    "instrucao": "não rodar a bacia."
+  },
+  {
+    "id": "e:Toque alternado do pé no chão",
+    "nome": "Toque alternado do pé no chão",
+    "familiaDocumento": "pilates unilateral",
+    "equipamento": "colchão",
+    "instrucao": "reduzir amplitude perante perda de controlo lombar."
+  },
+  {
+    "id": "e:Ponte articulada",
+    "nome": "Ponte articulada",
+    "familiaDocumento": "pilates",
+    "equipamento": "colchão",
+    "instrucao": "articular suavemente, sem desconforto."
+  },
+  {
+    "id": "e:Elevação lateral da perna deitado",
+    "nome": "Elevação lateral da perna deitado",
+    "familiaDocumento": "pilates unilateral",
+    "equipamento": "colchão",
+    "instrucao": "alinhar bacia e tronco."
+  },
+  {
+    "id": "e:Deslizamento de perna em quatro apoios",
+    "nome": "Deslizamento de perna em quatro apoios",
+    "familiaDocumento": "pilates unilateral",
+    "equipamento": "colchão",
+    "instrucao": "apoio das mãos e tronco estável."
+  },
+  {
+    "id": "e:Queda para posição atlética sem salto",
+    "nome": "Queda para posição atlética sem salto",
+    "familiaDocumento": "pliometria técnica",
+    "equipamento": "piso antiderrapante",
+    "instrucao": "estabilizar e absorver com anca e joelhos."
+  },
+  {
+    "id": "e:Saltos baixos de tornozelo",
+    "nome": "Saltos baixos de tornozelo",
+    "familiaDocumento": "pliometria",
+    "equipamento": "piso adequado",
+    "instrucao": "contactos baixos e controlados."
+  },
+  {
+    "id": "e:Salto vertical com estabilização",
+    "nome": "Salto vertical com estabilização",
+    "familiaDocumento": "pliometria",
+    "equipamento": "piso adequado",
+    "instrucao": "aterrar silenciosamente e estabilizar."
+  },
+  {
+    "id": "e:Salto horizontal com estabilização",
+    "nome": "Salto horizontal com estabilização",
+    "familiaDocumento": "pliometria",
+    "equipamento": "piso adequado",
+    "instrucao": "distância submáxima; aterragem estável."
+  },
+  {
+    "id": "e:Salto lateral curto com estabilização",
+    "nome": "Salto lateral curto com estabilização",
+    "familiaDocumento": "pliometria unilateral",
+    "equipamento": "piso adequado",
+    "instrucao": "amplitude curta; alinhar joelho e pé."
+  },
+  {
+    "id": "e:Lançamento de bola medicinal ao peito",
+    "nome": "Lançamento de bola medicinal ao peito",
+    "familiaDocumento": "potência",
+    "equipamento": "bola medicinal, parede autorizada e área livre",
+    "instrucao": "lançar leve e rápido; recuperar sem pressa."
+  },
+  {
+    "id": "e:Puxada de clean com barra leve",
+    "nome": "Puxada de clean com barra leve",
+    "familiaDocumento": "olímpico",
+    "equipamento": "barra e plataforma",
+    "instrucao": "extensão coordenada; não puxar precocemente com braços."
+  },
+  {
+    "id": "e:Clean de potência suspenso",
+    "nome": "Clean de potência suspenso",
+    "familiaDocumento": "olímpico",
+    "equipamento": "barra e plataforma",
+    "instrucao": "carga técnica; receção estável; supervisão."
+  },
+  {
+    "id": "e:Arranco de força com bastão",
+    "nome": "Arranco de força com bastão",
+    "familiaDocumento": "olímpico",
+    "equipamento": "bastão",
+    "instrucao": "aprender trajetória e receção sem carga."
+  },
+  {
+    "id": "e:Técnica de pés do jerk com bastão",
+    "nome": "Técnica de pés do jerk com bastão",
+    "familiaDocumento": "olímpico",
+    "equipamento": "bastão e espaço livre",
+    "instrucao": "fixar receção antes de recuperar pés."
+  },
+  {
+    "id": "e:Agachamento frontal com bastão",
+    "nome": "Agachamento frontal com bastão",
+    "familiaDocumento": "olímpico",
+    "equipamento": "bastão",
+    "instrucao": "receção estável na amplitude disponível."
+  },
+  {
+    "id": "e:Equilíbrio unipodal com apoio próximo",
+    "nome": "Equilíbrio unipodal com apoio próximo",
+    "familiaDocumento": "equilíbrio tempo unilateral",
+    "equipamento": "apoio fixo",
+    "instrucao": "apoio acessível; não fechar olhos."
+  },
+  {
+    "id": "e:Retração escapular sem carga",
+    "nome": "Retração escapular sem carga",
+    "familiaDocumento": "mobilidade",
+    "equipamento": "cadeira",
+    "instrucao": "mover escápulas sem elevar ombros."
+  }
+]

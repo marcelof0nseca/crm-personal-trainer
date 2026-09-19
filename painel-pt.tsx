@@ -3329,6 +3329,14 @@ function regrasDaFolha(p) {
         }
         ${p}.print-table td { padding: 5px 6px; border-bottom: 1px solid #e2e2e2; vertical-align: top; }
         ${p}.print-table .num { text-align: right; white-space: nowrap; }
+        /* O treino: colunas de largura fixa. Com largura automatica, uma nota
+           comprida no exercicio espremia a prescricao em tres linhas, e cada
+           bloco desenhava as colunas num sitio diferente. */
+        ${p}.print-table-treino { table-layout: fixed; }
+        ${p}.print-table-treino th:nth-child(1) { width: 44%; }
+        ${p}.print-table-treino th:nth-child(2) { width: 8%; }
+        ${p}.print-table-treino th:nth-child(3) { width: 36%; }
+        ${p}.print-table-treino th:nth-child(4) { width: 12%; }
         ${p}.print-ex-nota { font-size: 8.5pt; color: #555 !important; margin-top: 2px; line-height: 1.4; }
         /* Cabeçalho de bloco dentro de um treino. Menor que o título da secção
            e sem fundo: é uma divisão interna, não uma secção nova. */
@@ -13514,7 +13522,7 @@ function TreinoPrintDoc({ student, prescricao, biblioteca, trainerName, userEmai
             (() => { const infos = infoDeGrupos(t.exercicios); const etiquetas = etiquetasDeGrupo(t.exercicios); return agruparPorBloco(t.exercicios).map(([bloco, doBloco], bi, todos) => (
               <div key={bloco} style={{ marginTop: bi === 0 ? 0 : 8 }}>
                 {todos.length > 1 && <div className="print-bloco">{bloco}</div>}
-                <table className="print-table">
+                <table className="print-table print-table-treino">
                   <thead>
                     <tr>
                       <th>Exercício</th>

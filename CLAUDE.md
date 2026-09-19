@@ -414,10 +414,10 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   ignorado neste controlo. Agora, só no iOS (`@supports (-webkit-touch-callout:
   none)`, para o desktop não mudar), o campo perde o aspeto nativo e usa
   `width: -webkit-fill-available`, que enche o espaço qualquer que seja o
-  `box-sizing`; e o `FormField` ganhou `min-w-0`. **Por confirmar num
-  iPhone:** nem o Chromium nem o WebKit do Playwright reproduzem o problema
-  (o WebKit de secretária não tem o CSS de iOS), por isso só se testou que o
-  desktop fica igual e que as regras, forçadas, desenham bem.
+  `box-sizing`; e o `FormField` ganhou `min-w-0`. **Confirmado num iPhone
+  pelo dono do produto.** Nem o Chromium nem o WebKit do Playwright reproduzem
+  o problema (o WebKit de secretária não tem o CSS de iOS): só um aparelho
+  real o mostrou e só ele o pôde confirmar.
 - **Um trial (Stripe) faz o "primeiro ciclo" começar tarde, não no dia
   zero.** `isFirstCycle()` (em `stripe-webhook`, decide se o bónus de meses
   grátis se aplica) comparava `current_period_start` contra `start_date` da

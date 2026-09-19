@@ -7,10 +7,15 @@
  *
  * Exercicios do dicionario da biblioteca de modelos. Pequeno, importado
  * estaticamente (as fichas em modelos-treino.ts referem-se a estes ids).
+ *   CATALOGO_MODELOS_VERSAO e TOTAL_MODELOS_CATALOGO (para a interface nao ter de carregar as fichas)
  *   EXERCICIOS_MODELOS   os que a biblioteca de exercicios ainda nao tinha (id = 'e:' + nome)
  *   INSTRUCOES_MODELOS   instrucao de execucao, por id (todos os do dicionario)
  *   REGRESSOES_MODELOS   regressao, por id (todos os do dicionario)
  */
+
+// Sobe quando o conteudo das fichas muda. Um programa criado a partir de uma
+// ficha guarda-a (origem.catalogo), para se saber de que versao veio.
+export const CATALOGO_MODELOS_VERSAO = 'ptm_catalogo_a_v1';
 
 export const TOTAL_MODELOS_CATALOGO = 860;
 

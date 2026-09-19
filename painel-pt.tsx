@@ -34,7 +34,7 @@ import {
 // (poucos, ~28 kB) entram já no arranque. As 860 fichas, essas, não: são
 // ~3,6 MB e só se carregam, por import(), quando se abre a biblioteca de modelos.
 import {
-  TOTAL_MODELOS_CATALOGO, EXERCICIOS_MODELOS, INSTRUCOES_MODELOS, REGRESSOES_MODELOS,
+  TOTAL_MODELOS_CATALOGO, CATALOGO_MODELOS_VERSAO, EXERCICIOS_MODELOS, INSTRUCOES_MODELOS, REGRESSOES_MODELOS,
 } from './src/data/exercicios-modelos';
 import {
   criteriosEntradaDeFicha, frequenciaSugeridaDeFicha, progressaoDeFicha,
@@ -10654,6 +10654,11 @@ function TreinoVista({ prescricao, biblioteca, onMudar, onEditar, onImprimir }) 
               {[prescricao.objetivo, periodo].filter(Boolean).join(' · ')}
             </p>
           )}
+          {prescricao.origem && (
+            <p className="text-2xs font-mono text-faint min-w-0">
+              {prescricao.origem.ficha ? `Modelo ${prescricao.origem.ficha}` : 'A partir de um dos seus modelos'}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
           <button type="button" onClick={onImprimir} className="btn btn-ghost" style={{ fontSize: 12 }}>
@@ -11210,7 +11215,7 @@ function resumirLinhas(linhas) {
 function CartaoModelo({ ficha, onAbrir }) {
   const essencial = ficha.equipamentoPrincipal || [];
   return (
-    <button type="button" onClick={onAbrir} className="card card-hover flex flex-col gap-2 text-left p-4 min-w-0 w-full">
+    <button type="button" onClick={onAbrir} data-ficha-id={ficha.id} className="card card-hover flex flex-col gap-2 text-left p-4 min-w-0 w-full">
       <span className="flex items-start justify-between gap-3 min-w-0">
         <span className="min-w-0">
           <span className="block text-sm font-body text-primary" style={{ fontWeight: 500 }}>{ficha.nome}</span>
@@ -11299,8 +11304,13 @@ function AvisoFicha({ titulo, children }) {
   );
 }
 
-function FichaModelo({ ficha, biblioteca, student, onUsar, onVoltar }) {
+function FichaModelo({ ficha, biblioteca, student, onUsar, onGuardar, onVoltar }) {
   const treino = ficha.treinos[0];
+  const titulo = useRef(null);
+  const [guardada, setGuardada] = useState(false);
+  // A vista trocou por baixo de quem navega: sem isto o foco do teclado ficava
+  // no cartão que deixou de existir, e um leitor de ecrã não anunciava nada.
+  useEffect(() => { if (titulo.current) titulo.current.focus({ preventScroll: true }); }, []);
   const infos = useMemo(() => infoDeGrupos(treino.exercicios), [treino]);
   const blocos = useMemo(() => agruparPorBloco(treino.exercicios), [treino]);
   const flags = {
@@ -11311,10 +11321,22 @@ function FichaModelo({ ficha, biblioteca, student, onUsar, onVoltar }) {
   };
   const dur = ficha.duracaoEstimadaMinutos;
   const rotuloColecao = (COLECOES_MODELOS.find((c) => c.id === ficha.colecao) || {}).label || '';
-  const botaoUsar = (
-    <button type="button" onClick={() => onUsar(ficha)} className="btn btn-primary">
-      <Plus size={15} /> Usar este modelo para {student.name}
-    </button>
+  // Guardar não pede aluno: fica em «Começar a partir de um modelo», para
+  // qualquer aluno, e pode ser ajustado sem tocar no catálogo.
+  const acoes = (
+    <div className="flex flex-col sm:flex-row gap-2">
+      <button type="button" onClick={() => onUsar(ficha)} className="btn btn-primary">
+        <Plus size={15} /> Usar este modelo para {student.name}
+      </button>
+      <button
+        type="button"
+        onClick={() => { onGuardar(ficha); setGuardada(true); }}
+        disabled={guardada}
+        className="btn btn-ghost"
+      >
+        <BookMarked size={15} /> {guardada ? 'Guardado nos seus modelos' : 'Guardar nos meus modelos'}
+      </button>
+    </div>
   );
 
   return (
@@ -11324,12 +11346,12 @@ function FichaModelo({ ficha, biblioteca, student, onUsar, onVoltar }) {
           <ArrowLeft size={16} className="text-muted" />
         </button>
         <div className="min-w-0">
-          <h1 className="font-display font-semibold text-lg text-primary tracking-wide" style={{ margin: 0 }}>{ficha.nome}</h1>
+          <h1 ref={titulo} tabIndex={-1} className="font-display font-semibold text-lg text-primary tracking-wide" style={{ margin: 0, outline: 'none' }}>{ficha.nome}</h1>
           <div className="text-2xs font-mono text-faint">{ficha.id} · {rotuloColecao}: {ficha.chaveColecao}</div>
         </div>
       </div>
 
-      {botaoUsar}
+      {acoes}
 
       <div className="flex flex-wrap gap-1.5">
         <span className="badge" style={ESTILO_BADGE_METODO}>{ficha.metodoPrincipal}</span>
@@ -11408,7 +11430,7 @@ function FichaModelo({ ficha, biblioteca, student, onUsar, onVoltar }) {
         <p className="text-2xs font-body text-faint" style={{ margin: 0 }}>{NOTA_RIR}</p>
       </SecaoFicha>
 
-      {botaoUsar}
+      {acoes}
     </div>
   );
 }
@@ -11424,9 +11446,14 @@ function SeletorFiltro({ rotulo, valor, onMudar, opcoes, todos, desativado }) {
   );
 }
 
-function BibliotecaModelosView({ student, biblioteca, onUsar, onFechar }) {
+function BibliotecaModelosView({ student, biblioteca, onUsar, onGuardar, onFechar }) {
   // null = a carregar; o ficheiro é grande e só se pede quando esta vista abre.
   const [catalogo, setCatalogo] = useState(null);
+  const tituloDaLista = useRef(null);
+  const ultimaFicha = useRef(null);
+  // Quem abre a biblioteca pelo teclado aterra no título dela, não no botão que
+  // entretanto deixou de existir.
+  useEffect(() => { if (tituloDaLista.current) tituloDaLista.current.focus({ preventScroll: true }); }, []);
   const [erro, setErro] = useState(false);
   const [tentativa, setTentativa] = useState(0);
   const [procura, setProcura] = useState('');
@@ -11492,18 +11519,37 @@ function BibliotecaModelosView({ student, biblioteca, onUsar, onFechar }) {
 
   function abrirFicha(f) {
     posicaoDaLista.current = window.scrollY;
+    ultimaFicha.current = f.id;
     setFichaId(f.id);
     window.scrollTo(0, 0);
   }
   function voltarDaFicha() {
     setFichaId(null);
-    // Os filtros e a procura são estado desta vista e ficam; falta só a posição.
-    requestAnimationFrame(() => window.scrollTo(0, posicaoDaLista.current));
+    // Os filtros e a procura são estado desta vista e ficam; faltam a posição e
+    // o foco, que volta ao cartão de onde se saiu.
+    requestAnimationFrame(() => {
+      window.scrollTo(0, posicaoDaLista.current);
+      const cartao = document.querySelector(`[data-ficha-id="${ultimaFicha.current}"]`);
+      if (cartao) cartao.focus({ preventScroll: true });
+    });
   }
+
+  // O programa que nasce de uma ficha diz de que ficha e de que versão do
+  // catálogo veio; o catálogo pode mudar, o programa já criado não.
+  const comOrigem = (f) => ({ ...f, origem: { ficha: f.id, catalogo: CATALOGO_MODELOS_VERSAO } });
 
   const ficha = fichaId && catalogo ? catalogo.find((f) => f.id === fichaId) : null;
   if (ficha) {
-    return <FichaModelo ficha={ficha} biblioteca={bibliotecaPorId} student={student} onUsar={onUsar} onVoltar={voltarDaFicha} />;
+    return (
+      <FichaModelo
+        ficha={ficha}
+        biblioteca={bibliotecaPorId}
+        student={student}
+        onUsar={(f) => onUsar(comOrigem(f))}
+        onGuardar={(f) => onGuardar(comOrigem(f))}
+        onVoltar={voltarDaFicha}
+      />
+    );
   }
 
   return (
@@ -11513,7 +11559,7 @@ function BibliotecaModelosView({ student, biblioteca, onUsar, onFechar }) {
           <ArrowLeft size={16} className="text-muted" />
         </button>
         <div className="min-w-0">
-          <h1 className="font-display font-semibold text-xl text-primary tracking-wide truncate" style={{ margin: 0 }}>Biblioteca de modelos</h1>
+          <h1 ref={tituloDaLista} tabIndex={-1} className="font-display font-semibold text-xl text-primary tracking-wide truncate" style={{ margin: 0, outline: 'none' }}>Biblioteca de modelos</h1>
           <div className="text-2xs font-body text-faint truncate">Para {student.name}</div>
         </div>
       </div>
@@ -11625,6 +11671,7 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
         student={student}
         biblioteca={treinos.biblioteca}
         onFechar={() => setVerBiblioteca(false)}
+        onGuardar={onGuardarModelo}
         onUsar={(ficha) => {
           const nova = onCriarDeModelo(student.id, ficha);
           setVerBiblioteca(false);
@@ -16765,6 +16812,8 @@ function AppInner() {
       objetivo: prescricao.objetivo || '',
       treinos: clonarTreinos(prescricao.treinos),
       criadoEm: new Date().toISOString(),
+      // Uma variante guardada continua a dizer de que ficha do catálogo veio.
+      ...(prescricao.origem ? { origem: prescricao.origem } : {}),
     };
     persistTreinos((t) => ({ ...t, modelos: [...(t.modelos || []), modelo] }));
     showToast('Guardado na biblioteca de treinos.');
@@ -16776,6 +16825,10 @@ function AppInner() {
       nome: modelo.nome,
       objetivo: modelo.objetivo || '',
       treinos: clonarTreinos(modelo.treinos),
+      // De onde veio: a ficha do catálogo (com a versão dele) ou um modelo do
+      // treinador. Só regista -- mudar depois o modelo, ou o catálogo, não
+      // mexe neste programa.
+      origem: modelo.origem || { modelo: modelo.id },
     };
     persistTreinos((t) => ({ ...t, prescricoes: [...t.prescricoes, nova] }));
     showToast('Programa criado a partir do modelo.');

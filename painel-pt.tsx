@@ -3608,6 +3608,36 @@ function GlobalStyles() {
       input[type="date"], input[type="time"], input[type="datetime-local"] {
         min-width: 0;
       }
+      /* No iPhone o min-width sozinho nao chegou: o campo continuava cerca de
+         26 px mais largo do que a caixa (o padding mais a borda, como se o
+         box-sizing fosse ignorado) e passava da margem do cartao -- visto no
+         construtor de treino e no relatorio do periodo. Sem o aspeto nativo
+         o WebKit trata-o como uma caixa de texto qualquer e respeita a
+         largura; o seletor de data continua a abrir ao toque. O
+         fill-available enche o espaco livre por o padding e a borda dentro,
+         qualquer que seja o box-sizing que o iOS aplique ao controlo. So no
+         iOS (e no que usa o motor dele): no desktop isto nunca aconteceu. */
+      @supports (-webkit-touch-callout: none) {
+        input[type="date"], input[type="time"], input[type="datetime-local"], input[type="month"] {
+          -webkit-appearance: none;
+          appearance: none;
+          display: block;
+          box-sizing: border-box;
+          width: 100%;
+          width: -webkit-fill-available;
+          max-width: 100%;
+          max-width: -webkit-fill-available;
+          min-width: 0;
+          text-align: left;
+        }
+        input[type="date"]::-webkit-date-and-time-value,
+        input[type="time"]::-webkit-date-and-time-value,
+        input[type="datetime-local"]::-webkit-date-and-time-value,
+        input[type="month"]::-webkit-date-and-time-value {
+          text-align: left;
+          min-height: 1.2em;
+        }
+      }
       .input-compacto { min-height: 30px; padding: 4px 8px; }
       .input-field:hover:not(:focus) { border-color: var(--border-strong); }
       .input-field:focus { border-color: var(--brass); box-shadow: 0 0 0 3px var(--brass-soft); }
@@ -3912,7 +3942,7 @@ class ErrorBoundary extends React.Component {
 
 function FormField({ label, children }) {
   return (
-    <label className="flex flex-col gap-1.5">
+    <label className="flex flex-col gap-1.5 min-w-0">
       <span className="text-xs font-body text-muted">{label}</span>
       {children}
     </label>

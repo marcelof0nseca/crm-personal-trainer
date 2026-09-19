@@ -30,6 +30,18 @@ import LegalModal from './src/components/LegalDocs';
 import {
   GRUPOS_BASE, CATEGORIAS_BASE, EXERCICIOS_BASE, NOMES_LEGADO,
 } from './src/data/exercicios';
+// Os exercícios da biblioteca de modelos que a biblioteca de origem não tinha
+// (poucos, ~28 kB) entram já no arranque. As 860 fichas, essas, não: são
+// ~3,6 MB e só se carregam, por import(), quando se abre a biblioteca de modelos.
+import {
+  TOTAL_MODELOS_CATALOGO, EXERCICIOS_MODELOS, INSTRUCOES_MODELOS, REGRESSOES_MODELOS,
+} from './src/data/exercicios-modelos';
+import {
+  criteriosEntradaDeFicha, frequenciaSugeridaDeFicha, progressaoDeFicha,
+  REGRESSAO_SESSAO, INTERROMPER, REGISTO_SUGERIDO, NOTA_DURACAO, NOTA_RIR,
+  COLECOES_MODELOS, CATEGORIAS_MODELOS, OBJETIVOS_MODELOS, EXPERIENCIAS_MODELOS,
+  CONDICIONAMENTOS_MODELOS, METODOS_MODELOS,
+} from './src/data/modelos-treino-textos';
 
 /* ============================== LOGO ============================== */
 
@@ -1783,16 +1795,36 @@ function correspondeABusca(ex, termos) {
   return termos.some((t) => alvo.includes(t));
 }
 
-const BIBLIOTECA_BASE = EXERCICIOS_BASE.map(([nome, g, c, equipamento]) => ({
-  id: idBase(nome),
-  nome,
-  grupo: GRUPOS_BASE[g],
-  categoria: CATEGORIAS_BASE[c],
-  equipamento,
-  instrucoes: '',
-  base: true,
-  busca: chaveBusca(nome),
-}));
+// O mesmo colador do gerador de exercícios, declarado aqui: `PT_COLLATOR` (mais
+// abaixo) é uma const e ainda não existe quando este módulo arranca.
+const ORDEM_BIBLIOTECA = new Intl.Collator('pt-PT', { sensitivity: 'base' });
+
+// Os de origem, mais os da biblioteca de modelos que não estavam lá (trazem a
+// instrução de execução). Onde o nome coincide, o exercício de origem ganha a
+// instrução -- estava vazia; uma edição do treinador continua a ter prioridade
+// (derivarBiblioteca aplica-a por cima).
+const BIBLIOTECA_BASE = [
+  ...EXERCICIOS_BASE.map(([nome, g, c, equipamento]) => ({
+    id: idBase(nome),
+    nome,
+    grupo: GRUPOS_BASE[g],
+    categoria: CATEGORIAS_BASE[c],
+    equipamento,
+    instrucoes: INSTRUCOES_MODELOS[idBase(nome)] || '',
+    base: true,
+    busca: chaveBusca(nome),
+  })),
+  ...EXERCICIOS_MODELOS.map((e) => ({
+    id: idBase(e.nome),
+    nome: e.nome,
+    grupo: e.grupo,
+    categoria: e.categoria,
+    equipamento: e.equipamento,
+    instrucoes: e.instrucoes,
+    base: true,
+    busca: chaveBusca(e.nome),
+  })),
+].sort((a, b) => ORDEM_BIBLIOTECA.compare(a.nome, b.nome));
 
 // O indice de procura de um exercicio: o nome mais os sinonimos que lhe deram.
 function indiceDeBusca(ex) {
@@ -2009,14 +2041,34 @@ const METODOS_COMBINACAO = [
   { id: 'circuito', nome: 'Circuito', minimo: 2, maximo: null, ajuda: 'Volta completa por todos, e repete.' },
   { id: 'contraste', nome: 'Contraste', minimo: 2, maximo: 2, ajuda: 'Carga pesada seguida de movimento rápido.' },
   { id: 'complexo', nome: 'Complexo', minimo: 2, maximo: null, ajuda: 'Vários movimentos sem largar a barra.' },
+  // Blocos temporizados de vários exercícios (a biblioteca de modelos usa-os).
+  // EMOM, AMRAP e For time também existem como método de UM exercício, em
+  // CAMPOS_POR_METODO; aqui são o bloco inteiro.
+  { id: 'emom', nome: 'EMOM', minimo: 2, maximo: null, ajuda: 'Um exercício por minuto, a cada minuto. O que sobra do minuto é descanso.' },
+  { id: 'amrap', nome: 'AMRAP', minimo: 2, maximo: null, ajuda: 'Tantas voltas quanto possível no tempo dado, com boa técnica.' },
+  { id: 'for_time', nome: 'For time', minimo: 2, maximo: null, ajuda: 'Um volume fixo, com tempo limite. O limite é um teto, não uma obrigação de acelerar.' },
 ];
 
+// A pausa entre rondas de um par ou trio vive na combinação, não em nenhum dos
+// exercícios: é o descanso depois de percorrer todos, antes de recomeçar.
+const PAUSA_ENTRE_RONDAS = [['pausaRonda', 'Pausa entre rondas (s)', '120']];
+
 const CAMPOS_POR_COMBINACAO = {
+  bi_set: PAUSA_ENTRE_RONDAS,
+  superserie: [['pausaRonda', 'Pausa entre rondas (s)', '90']],
+  superset_antagonista: PAUSA_ENTRE_RONDAS,
+  pre_exaustao: PAUSA_ENTRE_RONDAS,
+  pos_exaustao: PAUSA_ENTRE_RONDAS,
+  serie_composta: PAUSA_ENTRE_RONDAS,
+  trisserie: PAUSA_ENTRE_RONDAS,
   circuito: [['voltas', 'Voltas', '3'], ['pausaVolta', 'Pausa entre voltas (s)', '90']],
   giant_set: [['pausaRonda', 'Pausa entre rondas (s)', '120']],
-  contraste: [['pausaEntre', 'Pausa entre os dois (s)', '15']],
+  contraste: [['pausaEntre', 'Pausa entre os dois (s)', '15'], ['pausaRonda', 'Pausa entre rondas (s)', '180']],
   complexo: [['voltas', 'Voltas', '3']],
   cluster: [['repsPorMini', 'Reps por mini-série', '3'], ['pausaMini', 'Pausa entre mini-séries (s)', '20']],
+  emom: [['minutos', 'Minutos', '12'], ['trabalho', 'Teto de trabalho (s)', '40']],
+  amrap: [['minutos', 'Minutos', '10']],
+  for_time: [['limite', 'Tempo limite', '15 min'], ['voltas', 'Voltas', '3'], ['pausaRonda', 'Pausa entre voltas (s)', '60']],
 };
 
 function metodoDeCombinacao(id) {
@@ -2230,12 +2282,21 @@ function prescricoesDoAluno(treinos, studentId, arquivadas = false) {
 }
 
 // Copia profunda com ids novos: um modelo aplicado a dois alunos tem de dar
-// duas prescrições independentes, senão editar uma mexia na outra.
+// duas prescrições independentes, senão editar uma mexia na outra. As linhas,
+// os números do método e as combinações também se copiam -- o catálogo de
+// modelos é uma constante do código, e uma escrita por engano numa dessas
+// listas partilhadas alterava o modelo para toda a gente.
 function clonarTreinos(lista) {
   return (lista || []).map((t) => ({
     ...t,
     id: uid(),
-    exercicios: (t.exercicios || []).map((ex) => ({ ...ex, id: uid() })),
+    grupos: t.grupos ? JSON.parse(JSON.stringify(t.grupos)) : t.grupos,
+    exercicios: (t.exercicios || []).map((ex) => ({
+      ...ex,
+      id: uid(),
+      metodoParams: ex.metodoParams ? { ...ex.metodoParams } : ex.metodoParams,
+      linhas: Array.isArray(ex.linhas) ? ex.linhas.map((l) => ({ ...l })) : ex.linhas,
+    })),
   }));
 }
 
@@ -11091,6 +11152,458 @@ function LinhaPrograma({ p, onAbrir }) {
 }
 
 // Lista de programas de um aluno, e a porta de entrada para o construtor.
+/* ============================== BIBLIOTECA DE MODELOS ==============================
+   As 860 fichas do catálogo. Vivem no código (src/data/modelos-treino.ts) e não
+   na base de dados: gravá-las reescrevia ~3,7 MB a cada treino guardado. O
+   ficheiro só se carrega, por import(), quando se abre esta vista -- quem
+   nunca a abre não paga nada no arranque. O que fica gravado é só a cópia que
+   o treinador atribui a um aluno, e passa pelo mesmo `criarPrescricaoDeModelo`
+   dos modelos que ele próprio guarda.
+
+   Uma ficha assinala, não diagnostica: "validação clínica" e "supervisão
+   técnica" são avisos, com a ressalva ao lado -- nunca um impedimento nem uma
+   autorização. */
+const LIMITE_LISTA_MODELOS = 60;
+
+const FAIXAS_DURACAO = [
+  { id: 'ate15', label: 'Até 15 min', min: 0, max: 15 },
+  { id: '16a30', label: '16 a 30 min', min: 16, max: 30 },
+  { id: '31a45', label: '31 a 45 min', min: 31, max: 45 },
+  { id: 'mais45', label: 'Mais de 45 min', min: 46, max: Infinity },
+];
+
+const FILTROS_MODELOS_VAZIOS = {
+  colecao: 'todos', grupo: 'todos', categoria: 'todos', objetivo: 'todos', experiencia: 'todos',
+  condicionamento: 'todos', metodo: 'todos', equipamento: 'todos', duracao: 'todos',
+  supervisao: 'todos', clinica: 'todos',
+};
+
+const ESTILO_BADGE_NEUTRO = { color: 'var(--text-muted)', backgroundColor: 'var(--wash-strong)' };
+const ESTILO_BADGE_METODO = { color: 'var(--brass)', backgroundColor: 'var(--brass-soft)' };
+// Dourado, nunca vermelho: um aviso de supervisão não é o erro de ninguém.
+const ESTILO_BADGE_AVISO = { color: 'var(--gold)', backgroundColor: 'var(--gold-soft)' };
+
+function formatarDuracaoSegundos(s) {
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return r ? `${m} min ${r} s` : `${m} min`;
+}
+
+function formatarPausa(valor) {
+  const t = String(valor || '').trim();
+  return /^\d+$/.test(t) ? `${t} s` : t;
+}
+
+// Séries iguais seguidas contam-se: "3 séries · 10 · Cadência 2-0-1-0 · RIR 2".
+function resumirLinhas(linhas) {
+  const grupos = [];
+  (linhas || []).forEach((l) => {
+    const texto = descreverLinha(l);
+    const pausa = l.descanso ? formatarPausa(l.descanso) : '';
+    const ultimo = grupos[grupos.length - 1];
+    if (ultimo && ultimo.texto === texto && ultimo.pausa === pausa) ultimo.vezes += 1;
+    else grupos.push({ texto, pausa, vezes: 1 });
+  });
+  return grupos;
+}
+
+function CartaoModelo({ ficha, onAbrir }) {
+  const essencial = ficha.equipamentoPrincipal || [];
+  return (
+    <button type="button" onClick={onAbrir} className="card card-hover flex flex-col gap-2 text-left p-4 min-w-0 w-full">
+      <span className="flex items-start justify-between gap-3 min-w-0">
+        <span className="min-w-0">
+          <span className="block text-sm font-body text-primary" style={{ fontWeight: 500 }}>{ficha.nome}</span>
+          <span className="block text-2xs font-body text-faint" style={{ marginTop: 2 }}>
+            {[ficha.categoria, ficha.experiencia, ficha.condicionamento].join(' · ')}
+          </span>
+        </span>
+        <ChevronRight size={16} className="text-faint flex-shrink-0" style={{ marginTop: 2 }} />
+      </span>
+      <span className="flex flex-wrap gap-1.5">
+        <span className="badge" style={ESTILO_BADGE_METODO}>{ficha.metodoPrincipal}</span>
+        <span className="badge" style={ESTILO_BADGE_NEUTRO}><Clock size={10} /> ~{ficha.duracaoEstimadaMinutos.minutos} min</span>
+        {ficha.requerValidacaoClinica && <span className="badge" style={ESTILO_BADGE_AVISO}>Validação clínica</span>}
+        {ficha.requerSupervisaoTecnica && <span className="badge" style={ESTILO_BADGE_AVISO}>Supervisão técnica</span>}
+      </span>
+      {essencial.length > 0 && (
+        <span className="block text-2xs font-body text-faint truncate">
+          {essencial.slice(0, 3).join(', ')}{essencial.length > 3 ? ` +${essencial.length - 3}` : ''}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function ExercicioFicha({ ex, info, biblioteca }) {
+  const daBiblioteca = biblioteca.get(ex.exercicioId);
+  const instrucao = INSTRUCOES_MODELOS[ex.exercicioId] || (daBiblioteca && daBiblioteca.instrucoes) || '';
+  const regressao = REGRESSOES_MODELOS[ex.exercicioId] || '';
+  const subtitulo = [daBiblioteca && daBiblioteca.grupo, daBiblioteca && daBiblioteca.equipamento].filter(Boolean).join(' · ');
+  const linhas = resumirLinhas(ex.linhas);
+  const metodo = descreverMetodo(ex);
+  return (
+    <div
+      className="rounded-lg px-3 py-2.5 flex flex-col gap-1.5 min-w-0"
+      style={{
+        backgroundColor: info ? `color-mix(in srgb, ${info.cor} ${info.tinta}%, var(--bg-elevated))` : 'var(--bg-elevated)',
+        borderLeft: info ? `3px solid ${info.cor}` : '3px solid transparent',
+      }}
+    >
+      <div className="flex items-baseline gap-2 flex-wrap min-w-0">
+        {info && info.etiqueta && (
+          <span className="font-mono text-2xs flex-shrink-0" style={{ color: acentoTexto(info.cor), fontWeight: 700 }}>{info.etiqueta}</span>
+        )}
+        <span className="font-body text-sm text-primary min-w-0" style={{ fontWeight: 600 }}>{ex.nome}</span>
+        {subtitulo && <span className="text-2xs font-body text-faint">{subtitulo}</span>}
+        {metodo && <span className="badge flex-shrink-0" style={{ ...ESTILO_BADGE_METODO, marginLeft: 'auto' }}>{metodo}</span>}
+      </div>
+      <ul className="flex flex-col gap-0.5" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+        {linhas.map((g, i) => (
+          <li key={i} className="text-xs font-body text-primary">
+            {g.vezes > 1 ? <span className="font-mono text-faint">{g.vezes} séries · </span> : null}
+            {g.texto || '—'}
+            {g.pausa ? <span className="text-faint"> · pausa {g.pausa}</span> : null}
+          </li>
+        ))}
+      </ul>
+      {ex.notas ? <p className="text-2xs font-body text-faint" style={{ margin: 0 }}>{ex.notas}</p> : null}
+      {(instrucao || regressao) && (
+        <details className="text-2xs font-body text-faint">
+          <summary style={{ cursor: 'pointer' }}>Como fazer e regressão</summary>
+          {instrucao ? <p style={{ margin: '4px 0 0' }}>{instrucao}</p> : null}
+          {regressao ? <p style={{ margin: '4px 0 0' }}>Regressão: {regressao}</p> : null}
+        </details>
+      )}
+    </div>
+  );
+}
+
+function SecaoFicha({ titulo, children }) {
+  return (
+    <section className="flex flex-col gap-1.5">
+      <h3 className="text-2xs uppercase tracking-wide text-faint font-mono" style={{ margin: 0 }}>{titulo}</h3>
+      {children}
+    </section>
+  );
+}
+
+function AvisoFicha({ titulo, children }) {
+  return (
+    <div role="note" className="rounded-lg px-3 py-2.5 flex items-start gap-2.5" style={{ backgroundColor: 'var(--gold-soft)' }}>
+      <Info size={15} className="flex-shrink-0" style={{ color: 'var(--gold)', marginTop: 1 }} />
+      <div className="text-xs font-body text-muted min-w-0">
+        <strong className="text-primary" style={{ fontWeight: 600 }}>{titulo}</strong> {children}
+      </div>
+    </div>
+  );
+}
+
+function FichaModelo({ ficha, biblioteca, student, onUsar, onVoltar }) {
+  const treino = ficha.treinos[0];
+  const infos = useMemo(() => infoDeGrupos(treino.exercicios), [treino]);
+  const blocos = useMemo(() => agruparPorBloco(treino.exercicios), [treino]);
+  const flags = {
+    categoria: ficha.categoria,
+    requerValidacaoClinica: Boolean(ficha.requerValidacaoClinica),
+    requerSupervisaoTecnica: Boolean(ficha.requerSupervisaoTecnica),
+    precisaAvisoPliometriaContraste: Boolean(ficha.precisaAvisoPliometriaContraste),
+  };
+  const dur = ficha.duracaoEstimadaMinutos;
+  const rotuloColecao = (COLECOES_MODELOS.find((c) => c.id === ficha.colecao) || {}).label || '';
+  const botaoUsar = (
+    <button type="button" onClick={() => onUsar(ficha)} className="btn btn-primary">
+      <Plus size={15} /> Usar este modelo para {student.name}
+    </button>
+  );
+
+  return (
+    <div className="px-4 py-4 max-w-3xl mx-auto flex flex-col gap-4">
+      <div className="flex items-center gap-2">
+        <button onClick={onVoltar} type="button" className="p-2 rounded-lg bg-surface border border-hair btn-surface flex-shrink-0" aria-label="Voltar à biblioteca de modelos">
+          <ArrowLeft size={16} className="text-muted" />
+        </button>
+        <div className="min-w-0">
+          <h1 className="font-display font-semibold text-lg text-primary tracking-wide" style={{ margin: 0 }}>{ficha.nome}</h1>
+          <div className="text-2xs font-mono text-faint">{ficha.id} · {rotuloColecao}: {ficha.chaveColecao}</div>
+        </div>
+      </div>
+
+      {botaoUsar}
+
+      <div className="flex flex-wrap gap-1.5">
+        <span className="badge" style={ESTILO_BADGE_METODO}>{ficha.metodoPrincipal}</span>
+        <span className="badge" style={ESTILO_BADGE_NEUTRO}>{ficha.categoria}</span>
+        <span className="badge" style={ESTILO_BADGE_NEUTRO}>{ficha.objetivo}</span>
+        <span className="badge" style={ESTILO_BADGE_NEUTRO}>Experiência: {ficha.experiencia}</span>
+        <span className="badge" style={ESTILO_BADGE_NEUTRO}>Condicionamento: {ficha.condicionamento}</span>
+      </div>
+
+      <p className="text-sm font-body text-muted" style={{ margin: 0 }}>
+        Cerca de {dur.minutos} min ({dur.min}–{dur.max} min)
+        {ficha.cronometroSegundos ? ` · cronómetro do bloco: ${formatarDuracaoSegundos(ficha.cronometroSegundos)}` : ''}.
+        <span className="block text-2xs text-faint" style={{ marginTop: 2 }}>{NOTA_DURACAO}</span>
+      </p>
+
+      {ficha.requerValidacaoClinica && (
+        <AvisoFicha titulo="Validação clínica.">
+          É um modelo geral de retorno ao exercício, não um tratamento. Antes de o atribuir, confirme o diagnóstico, a fase e as restrições com o profissional de saúde responsável.
+        </AvisoFicha>
+      )}
+      {ficha.requerSupervisaoTecnica && (
+        <AvisoFicha titulo="Supervisão técnica.">
+          Aprovação do treinador para esta habilidade e acompanhamento nas primeiras aplicações.
+        </AvisoFicha>
+      )}
+      {(ficha.avisosEditoriais || []).length > 0 && (
+        <AvisoFicha titulo="Para rever antes de usar.">
+          {ficha.avisosEditoriais.join(' ')}
+        </AvisoFicha>
+      )}
+
+      <SecaoFicha titulo="Equipamento">
+        <p className="text-sm font-body text-muted" style={{ margin: 0 }}>{ficha.equipamento.join(' · ')}</p>
+      </SecaoFicha>
+
+      <SecaoFicha titulo="Critérios de entrada">
+        <p className="text-sm font-body text-muted" style={{ margin: 0 }}>{criteriosEntradaDeFicha(flags)}</p>
+      </SecaoFicha>
+
+      {blocos.map(([bloco, exercicios]) => (
+        <SecaoFicha key={bloco} titulo={bloco}>
+          <div className="flex flex-col gap-1.5">
+            {exercicios.map((ex) => {
+              const info = infos[ex.id];
+              return (
+                <React.Fragment key={ex.id}>
+                  {info && info.primeiro && (
+                    <div className="flex items-center gap-2 text-2xs font-body px-1" style={{ color: acentoTexto(info.cor), paddingTop: 4 }}>
+                      <span className="font-mono" style={{ fontWeight: 700 }}>{info.letra}</span>
+                      <span style={{ fontWeight: 500 }}>{descreverCombinacao(grupoDoTreino(treino, info.grupo)) || 'Em conjunto'}</span>
+                      <span className="text-faint">· {plural(info.total, 'exercício seguido', 'exercícios seguidos')}</span>
+                    </div>
+                  )}
+                  <ExercicioFicha ex={ex} info={info} biblioteca={biblioteca} />
+                </React.Fragment>
+              );
+            })}
+          </div>
+        </SecaoFicha>
+      ))}
+
+      <SecaoFicha titulo="Frequência sugerida">
+        <p className="text-sm font-body text-muted" style={{ margin: 0 }}>{frequenciaSugeridaDeFicha(flags)}</p>
+      </SecaoFicha>
+      <SecaoFicha titulo="Progressão">
+        <p className="text-sm font-body text-muted" style={{ margin: 0 }}>{progressaoDeFicha(flags)}</p>
+      </SecaoFicha>
+      <SecaoFicha titulo="Regressão da sessão">
+        <p className="text-sm font-body text-muted" style={{ margin: 0 }}>{REGRESSAO_SESSAO}</p>
+      </SecaoFicha>
+      <SecaoFicha titulo="Quando parar">
+        <p className="text-sm font-body text-muted" style={{ margin: 0 }}>{INTERROMPER}</p>
+      </SecaoFicha>
+      <SecaoFicha titulo="O que registar">
+        <p className="text-sm font-body text-muted" style={{ margin: 0 }}>{REGISTO_SUGERIDO}</p>
+        <p className="text-2xs font-body text-faint" style={{ margin: 0 }}>{NOTA_RIR}</p>
+      </SecaoFicha>
+
+      {botaoUsar}
+    </div>
+  );
+}
+
+function SeletorFiltro({ rotulo, valor, onMudar, opcoes, todos, desativado }) {
+  return (
+    <select value={valor} onChange={(e) => onMudar(e.target.value)} aria-label={rotulo} disabled={desativado} className="input-field">
+      <option value="todos">{todos}</option>
+      {opcoes.map((o) => (typeof o === 'string'
+        ? <option key={o} value={o}>{o}</option>
+        : <option key={o.id} value={o.id}>{o.label}</option>))}
+    </select>
+  );
+}
+
+function BibliotecaModelosView({ student, biblioteca, onUsar, onFechar }) {
+  // null = a carregar; o ficheiro é grande e só se pede quando esta vista abre.
+  const [catalogo, setCatalogo] = useState(null);
+  const [erro, setErro] = useState(false);
+  const [tentativa, setTentativa] = useState(0);
+  const [procura, setProcura] = useState('');
+  const [filtros, setFiltros] = useState(FILTROS_MODELOS_VAZIOS);
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
+  const [fichaId, setFichaId] = useState(null);
+  const posicaoDaLista = useRef(0);
+  const bibliotecaPorId = useMemo(() => new Map(biblioteca.map((e) => [e.id, e])), [biblioteca]);
+
+  useEffect(() => {
+    let vivo = true;
+    setErro(false);
+    import('./src/data/modelos-treino')
+      .then((m) => { if (vivo) setCatalogo(m.CATALOGO_MODELOS); })
+      .catch(() => { if (vivo) setErro(true); });
+    return () => { vivo = false; };
+  }, [tentativa]);
+
+  // Um índice de procura por ficha, calculado uma vez: nome, id e os nomes dos
+  // exercícios, sem acentos -- "agachamento" ou "ptm-0312" encontram a ficha.
+  const indice = useMemo(() => (catalogo || []).map((f) => ({
+    ficha: f,
+    busca: chaveBusca([f.nome, f.id, f.categoria, f.objetivo, f.experiencia, f.condicionamento, f.metodoPrincipal,
+      ...f.treinos[0].exercicios.map((e) => e.nome)].join(' ')),
+  })), [catalogo]);
+
+  const equipamentos = useMemo(
+    () => Array.from(new Set((catalogo || []).flatMap((f) => f.equipamento))).sort(byNamePt),
+    [catalogo],
+  );
+  const gruposDaColecao = useMemo(() => (filtros.colecao === 'todos' ? [] : Array.from(new Set(
+    (catalogo || []).filter((f) => f.colecao === filtros.colecao).map((f) => f.chaveColecao),
+  ))), [catalogo, filtros.colecao]);
+
+  const filtrados = useMemo(() => {
+    const termos = termosDeBusca(procura);
+    const faixa = FAIXAS_DURACAO.find((x) => x.id === filtros.duracao);
+    return indice.filter(({ ficha: f, busca }) => (
+      (filtros.colecao === 'todos' || f.colecao === filtros.colecao)
+      && (filtros.grupo === 'todos' || f.chaveColecao === filtros.grupo)
+      && (filtros.categoria === 'todos' || f.categoria === filtros.categoria)
+      && (filtros.objetivo === 'todos' || f.objetivo === filtros.objetivo)
+      && (filtros.experiencia === 'todos' || f.experiencia === filtros.experiencia)
+      && (filtros.condicionamento === 'todos' || f.condicionamento === filtros.condicionamento)
+      && (filtros.metodo === 'todos' || f.metodoPrincipal === filtros.metodo)
+      && (filtros.equipamento === 'todos' || f.equipamento.includes(filtros.equipamento))
+      && (!faixa || (f.duracaoEstimadaMinutos.minutos >= faixa.min && f.duracaoEstimadaMinutos.minutos <= faixa.max))
+      && (filtros.supervisao === 'todos' || Boolean(f.requerSupervisaoTecnica) === (filtros.supervisao === 'sim'))
+      && (filtros.clinica === 'todos' || Boolean(f.requerValidacaoClinica) === (filtros.clinica === 'sim'))
+      && (!termos.length || termos.some((t) => busca.includes(t)))
+    )).map((x) => x.ficha);
+  }, [indice, procura, filtros]);
+
+  const visiveis = filtrados.slice(0, LIMITE_LISTA_MODELOS);
+  const escondidos = filtrados.length - visiveis.length;
+  const nFiltros = Object.values(filtros).filter((v) => v !== 'todos').length;
+
+  function mudarFiltro(chave, valor) {
+    // Mudar de coleção invalida o grupo escolhido: eram os grupos da anterior.
+    setFiltros((f) => ({ ...f, [chave]: valor, ...(chave === 'colecao' ? { grupo: 'todos' } : {}) }));
+  }
+  function limparFiltros() { setProcura(''); setFiltros(FILTROS_MODELOS_VAZIOS); }
+
+  function abrirFicha(f) {
+    posicaoDaLista.current = window.scrollY;
+    setFichaId(f.id);
+    window.scrollTo(0, 0);
+  }
+  function voltarDaFicha() {
+    setFichaId(null);
+    // Os filtros e a procura são estado desta vista e ficam; falta só a posição.
+    requestAnimationFrame(() => window.scrollTo(0, posicaoDaLista.current));
+  }
+
+  const ficha = fichaId && catalogo ? catalogo.find((f) => f.id === fichaId) : null;
+  if (ficha) {
+    return <FichaModelo ficha={ficha} biblioteca={bibliotecaPorId} student={student} onUsar={onUsar} onVoltar={voltarDaFicha} />;
+  }
+
+  return (
+    <div className="px-4 py-4 max-w-3xl mx-auto flex flex-col gap-4">
+      <div className="flex items-center gap-2">
+        <button onClick={onFechar} type="button" className="p-2 rounded-lg bg-surface border border-hair btn-surface flex-shrink-0" aria-label="Voltar aos programas">
+          <ArrowLeft size={16} className="text-muted" />
+        </button>
+        <div className="min-w-0">
+          <h1 className="font-display font-semibold text-xl text-primary tracking-wide truncate" style={{ margin: 0 }}>Biblioteca de modelos</h1>
+          <div className="text-2xs font-body text-faint truncate">Para {student.name}</div>
+        </div>
+      </div>
+
+      {erro ? (
+        <EmptyState
+          icon={Info}
+          message="Não foi possível carregar a biblioteca."
+          hint="Verifique a ligação e tente outra vez."
+          cta="Tentar de novo"
+          onCta={() => setTentativa((t) => t + 1)}
+        />
+      ) : !catalogo ? (
+        <div className="flex flex-col gap-2" aria-busy="true" aria-label="A carregar a biblioteca">
+          {[0, 1, 2, 3, 4].map((i) => <span key={i} className="skeleton" style={{ height: 86, borderRadius: 'var(--r-md)' }} />)}
+        </div>
+      ) : (
+        <>
+          <div className="relative min-w-0">
+            <Search size={15} className="absolute text-faint" style={{ left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+            <input
+              value={procura}
+              onChange={(e) => setProcura(e.target.value)}
+              placeholder="Procurar por título, exercício ou código..."
+              aria-label="Procurar modelo"
+              className="input-field"
+              style={{ paddingLeft: 34 }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setFiltrosAbertos((a) => !a)}
+              aria-expanded={filtrosAbertos}
+              className="flex items-center gap-1.5 text-2xs uppercase tracking-wide text-faint font-mono btn-surface rounded px-1.5 py-1"
+            >
+              Filtros{nFiltros > 0 ? ` (${nFiltros})` : ''}
+              <ChevronRight size={12} style={{ transform: filtrosAbertos ? 'rotate(90deg)' : 'none' }} />
+            </button>
+            {(nFiltros > 0 || procura.trim()) && (
+              <button type="button" onClick={limparFiltros} className="text-2xs font-body link-sky">Limpar filtros</button>
+            )}
+          </div>
+
+          {filtrosAbertos && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <SeletorFiltro rotulo="Filtrar por coleção" valor={filtros.colecao} onMudar={(v) => mudarFiltro('colecao', v)} opcoes={COLECOES_MODELOS} todos="Todas as coleções" />
+              <SeletorFiltro rotulo="Filtrar por grupo" valor={filtros.grupo} onMudar={(v) => mudarFiltro('grupo', v)} opcoes={gruposDaColecao} todos={filtros.colecao === 'todos' ? 'Escolha primeiro a coleção' : 'Todos os grupos'} desativado={filtros.colecao === 'todos'} />
+              <SeletorFiltro rotulo="Filtrar por categoria" valor={filtros.categoria} onMudar={(v) => mudarFiltro('categoria', v)} opcoes={CATEGORIAS_MODELOS} todos="Todas as categorias" />
+              <SeletorFiltro rotulo="Filtrar por objetivo" valor={filtros.objetivo} onMudar={(v) => mudarFiltro('objetivo', v)} opcoes={OBJETIVOS_MODELOS} todos="Todos os objetivos" />
+              <SeletorFiltro rotulo="Filtrar por experiência" valor={filtros.experiencia} onMudar={(v) => mudarFiltro('experiencia', v)} opcoes={EXPERIENCIAS_MODELOS} todos="Toda a experiência" />
+              <SeletorFiltro rotulo="Filtrar por condicionamento" valor={filtros.condicionamento} onMudar={(v) => mudarFiltro('condicionamento', v)} opcoes={CONDICIONAMENTOS_MODELOS} todos="Todo o condicionamento" />
+              <SeletorFiltro rotulo="Filtrar por método" valor={filtros.metodo} onMudar={(v) => mudarFiltro('metodo', v)} opcoes={METODOS_MODELOS} todos="Todos os métodos" />
+              <SeletorFiltro rotulo="Filtrar por equipamento" valor={filtros.equipamento} onMudar={(v) => mudarFiltro('equipamento', v)} opcoes={equipamentos} todos="Todo o equipamento" />
+              <SeletorFiltro rotulo="Filtrar por duração" valor={filtros.duracao} onMudar={(v) => mudarFiltro('duracao', v)} opcoes={FAIXAS_DURACAO} todos="Qualquer duração" />
+              <SeletorFiltro rotulo="Filtrar por supervisão técnica" valor={filtros.supervisao} onMudar={(v) => mudarFiltro('supervisao', v)} opcoes={[{ id: 'sim', label: 'Com supervisão técnica' }, { id: 'nao', label: 'Sem supervisão técnica' }]} todos="Com ou sem supervisão técnica" />
+              <SeletorFiltro rotulo="Filtrar por validação clínica" valor={filtros.clinica} onMudar={(v) => mudarFiltro('clinica', v)} opcoes={[{ id: 'sim', label: 'Com validação clínica' }, { id: 'nao', label: 'Sem validação clínica' }]} todos="Com ou sem validação clínica" />
+            </div>
+          )}
+
+          <div className="text-2xs font-body text-faint" aria-live="polite">
+            {plural(filtrados.length, 'modelo', 'modelos')} de {TOTAL_MODELOS_CATALOGO}
+            {escondidos > 0 ? ` · a mostrar os primeiros ${visiveis.length}` : ''}
+          </div>
+
+          {filtrados.length === 0 ? (
+            <EmptyState
+              icon={Dumbbell}
+              message="Nenhum modelo encontrado."
+              hint="Experimente outro termo ou tire alguns filtros."
+              cta={nFiltros > 0 || procura.trim() ? 'Limpar filtros' : undefined}
+              onCta={limparFiltros}
+            />
+          ) : (
+            <div className="flex flex-col gap-2">
+              {visiveis.map((f) => <CartaoModelo key={f.id} ficha={f} onAbrir={() => abrirFicha(f)} />)}
+              {escondidos > 0 ? (
+                <p className="text-2xs font-body text-faint text-center py-2" style={{ margin: 0 }}>
+                  Mais {escondidos.toLocaleString('pt-PT')} correspondem. Escreva mais, ou use os filtros.
+                </p>
+              ) : null}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, onEliminarPrescricao, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivarPrescricao, onGuardarModelo, onCriarDeModelo, onApagarModelo, usosDoExercicio, onImprimir, onVoltar }) {
   const [abertoId, setAbertoId] = useState(null);
   // Um programa que já tem trabalho escrito abre para ser visto; um acabado de
@@ -11098,10 +11611,29 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
   const [modo, setModo] = useState('ver');
   const [verArquivados, setVerArquivados] = useState(false);
   const [modeloAApagar, setModeloAApagar] = useState(null);
+  const [verBiblioteca, setVerBiblioteca] = useState(false);
   const ativos = useMemo(() => prescricoesDoAluno(treinos, student.id, false), [treinos, student.id]);
   const arquivados = useMemo(() => prescricoesDoAluno(treinos, student.id, true), [treinos, student.id]);
   const modelos = treinos.modelos || [];
   const aberta = [...ativos, ...arquivados].find((p) => p.id === abertoId);
+
+  // A biblioteca de modelos ocupa o ecrã e traz o seu próprio cabeçalho. Usar
+  // uma ficha cria o programa do aluno e abre-o, como os modelos guardados.
+  if (verBiblioteca) {
+    return (
+      <BibliotecaModelosView
+        student={student}
+        biblioteca={treinos.biblioteca}
+        onFechar={() => setVerBiblioteca(false)}
+        onUsar={(ficha) => {
+          const nova = onCriarDeModelo(student.id, ficha);
+          setVerBiblioteca(false);
+          setAbertoId(nova.id);
+          setModo('ver');
+        }}
+      />
+    );
+  }
 
   return (
     <div className="px-4 py-4 max-w-3xl mx-auto flex flex-col gap-4">
@@ -11155,6 +11687,10 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
             className="btn btn-primary"
           >
             <Plus size={15} /> Novo programa de treino
+          </button>
+
+          <button type="button" onClick={() => setVerBiblioteca(true)} className="btn btn-ghost">
+            <BookMarked size={15} /> Biblioteca de modelos ({TOTAL_MODELOS_CATALOGO})
           </button>
 
           {modelos.length > 0 && (

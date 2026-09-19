@@ -70,7 +70,7 @@ técnica — é uma decisão de produto, e condiciona metade do que se pode ofer
 | `src/components/Turnstile.tsx` | CAPTCHA do registo |
 | `src/data/exercicios.ts` | **Gerado.** 2 076 exercícios, 18 grupos, 14 categorias. Não editar à mão |
 | `src/data/modelos-treino.ts` | **Gerado.** As 860 fichas da biblioteca de modelos (~3,7 MB). **Só se carrega por `import()`**, ao abrir a biblioteca — com `import` estático entrava no primeiro carregamento de todos |
-| `src/data/exercicios-modelos.ts` | **Gerado.** Os 76 exercícios do dicionário dos modelos que a biblioteca de exercícios não tinha, mais as instruções e regressões dos 95. Pequeno; importado no arranque |
+| `src/data/exercicios-modelos.ts` | **Gerado.** Os 76 exercícios do dicionário dos modelos que a biblioteca de exercícios não tinha, mais as instruções e regressões dos 95, o total de fichas e a versão do catálogo. Pequeno; importado no arranque |
 | `src/data/modelos-treino-textos.ts` | À mão. Os textos fixos das fichas (critérios de entrada, progressão, o que registar…) e a taxonomia dos filtros. Estão aqui, uma vez, porque repetidos nas 860 fichas custavam ~2 MB |
 | `scripts/gerar-modelos-treino.mjs` | Gera `modelos-treino.ts` e `exercicios-modelos.ts`. Funções puras, sem aleatoriedade: duas corridas dão o mesmo resultado. Dados de origem e regras em `scripts/dados-modelos-treino/`; `validar.mjs` confere contagens, referências e a aritmética dos blocos temporizados |
 | `scripts/gerar-exercicios.mjs` | Gera o ficheiro acima a partir do catálogo MFIT (que não está no repositório) |
@@ -198,6 +198,14 @@ Consequências que decidem quase tudo:
   método, combinações): o catálogo é uma constante, e uma escrita por engano
   numa lista partilhada alterava-o para toda a gente. `treinos.modelos`
   continua a ser só dos modelos que o treinador guardou.
+  **Proveniência:** um programa (ou modelo guardado) feito a partir de uma
+  ficha leva `origem: { ficha: 'PTM-0671', catalogo: 'ptm_catalogo_a_v1' }`; a
+  partir de um modelo do treinador leva `origem: { modelo: <id> }`, e uma
+  variante guardada mantém a origem do catálogo. A versão
+  (`CATALOGO_MODELOS_VERSAO`) vive no ficheiro pequeno, para a interface não
+  ter de carregar as fichas para a saber; sobe quando o conteúdo das fichas
+  muda. A origem só regista: mudar o catálogo depois não mexe no programa já
+  criado, e não sai no PDF do aluno.
   Uma ficha tem a forma de um modelo (`nome`, `objetivo`, `treinos[]`), mais os
   campos de filtro. **As flags** `requerValidacaoClinica`,
   `requerSupervisaoTecnica` e `precisaAvisoPliometriaContraste` só existem
@@ -323,6 +331,9 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   impressão esconder a aplicação com um seletor de filho direto. Gráficos de
   impressão usam dimensões fixas — o `ResponsiveContainer` mede zero fora do
   ecrã. **Os PDF saem sempre a preto sobre branco, seja qual for o tema.**
+  A tabela do treino tem colunas de largura fixa (`print-table-treino`):
+  com largura automática, uma nota comprida no exercício espremia a
+  prescrição em três linhas, e cada bloco desenhava as colunas noutro sítio.
 - **`fmtDateBR` devolve `dd/mm` sem ano.** Serve na agenda, não em documentos.
 - **Não há como numerar páginas em CSS de impressão.** `counter(page)` só vive
   nas *page margin boxes*, que o Chrome não suporta. Quem numera é a opção
@@ -563,6 +574,8 @@ criar um `main-*-preview.tsx` + `*.html` descartáveis que importam
 O `playwright` não é dependência do projeto: instala-se com
 `npm install --no-save playwright` antes e remove-se a seguir
 (`rm -rf node_modules/playwright`), nunca deve entrar no `package.json`.
+Para o motor do Safari, `npx playwright install webkit` e `pw.webkit.launch()`:
+apanha diferenças de desenho que o Chromium esconde. Não substitui um iPhone.
 
 **Sempre:** `npm run build`, 1440 px e 390 px, **os dois temas**, zero erros de
 consola, zero transbordo horizontal.
@@ -597,7 +610,7 @@ existe de verdade.
 | **Agenda** | Dia, semana, mês, lista · procura e filtros · **botão de horários na própria agenda**, com horário por dia, **exceções por data** e pré-visualização da semana · horários livres em lote · **selecionar várias e mover, mudar a duração, bloquear ou apagar de uma vez** · recorrência com "só esta / toda a série" · **replicar uma marcação por X semanas** · **três botões de confirmação com cor cheia: dada, falta, e falta com direito a reposição**, coloridos pelo **tipo da marcação** (`SESSION_TYPES`/`EVENT_TYPES`, agora em `AgendaAtoms.tsx`, sem cores repetidas dentro da mesma lista), não pelo aluno · **aviso de conflito** (nunca bloqueia — alguns treinadores atendem dois alunos ao mesmo tempo de propósito) · **o cartão ocupa o espaço proporcional à duração real** (uma sessão de 2h fica visivelmente mais alta que uma de 30 min) e mostra "09:00–11:00", não só a hora de início · **reservar por cima de um Horário Livre remove-o** (`semLivresCobertosPor`) — antes ficava por baixo, a dizer que aquele tempo continuava livre · **vários alunos no mesmo horário**, um cartão só (`GroupedSessionCard`) — ver `groupId` na secção 4. **Sem arrastar o cartão para outro dia, nem copiar/colar** — os dois existiram, mediam todos os testes automatizados, mas o arrastar não funcionava em telemóvel real e o copiar/colar foi removido por decisão de produto; mover uma sessão é pelo formulário (mudar a data) ou por "Selecionar várias" |
 | **Faltas** | Estados, direito a reposição, crédito ligado à aula de origem · **validade do crédito, estado "Expirada" e registo de auditoria** (quem concedeu, quando, o que aconteceu desde então) |
 | **Prescrição** | Treinos A/B/C, 2 076 exercícios, modelos, arquivo, PDF timbrado agrupado por bloco. Blocos, métodos como lista, 15 campos por exercício, duplicar, arrastar para reordenar · **14 combinações com nome e cor** (`METODOS_COMBINACAO`: bi-set, supersérie, superset antagonista, pré-exaustão, pós-exaustão, série composta, trissérie, giant set, circuito, contraste, complexo, EMOM, AMRAP, For time), cada membro num tom da cor do grupo |
-| **Biblioteca de modelos** | 860 fichas pré-construídas (representação A do documento de consolidação: 14 categorias, 8 objetivos, 4 níveis de experiência, 4 de condicionamento, 26 métodos), em **Alunos → aluno → Treinos → «Biblioteca de modelos»**. Procura (traduz pt-BR e inglês, e aceita o código, `PTM-0312`) e 11 filtros combináveis · ficha com aquecimento, principal, volta à calma, critérios de entrada, progressão, regressão e o que registar · **«Usar este modelo»** cria o programa do aluno, editável como qualquer outro. **«Validação clínica» e «supervisão técnica» são avisos**, com a ressalva ao lado — a aplicação não tem papéis nem forma de bloquear, e assinala, nunca diagnostica (10b). Estendeu `METODOS_COMBINACAO` com **EMOM, AMRAP e For time**, e deu **«pausa entre rondas»** ao bi-set, supersérie, trissérie… **Preservado do documento, nunca corrigido em silêncio** (26 fichas levam um aviso em `avisosEditoriais`): o RPE do complemento do «Personalizado» (4 na dose base, 5 no cronómetro), a regra de dose que deixa `pliometria técnica` e `unilateral` de fora das repetições de pliometria, e a preparação específica de uma família temporal. **A representação B não está construída** — o documento não reproduz as suas 860 prescrições. **Não há registo do realizado** (o que o aluno fez a sério): é o mesmo buraco de sempre, ver a área do aluno |
+| **Biblioteca de modelos** | 860 fichas pré-construídas (representação A do documento de consolidação: 14 categorias, 8 objetivos, 4 níveis de experiência, 4 de condicionamento, 26 métodos), em **Alunos → aluno → Treinos → «Biblioteca de modelos»**. Procura (traduz pt-BR e inglês, e aceita o código, `PTM-0312`) e 11 filtros combináveis · ficha com aquecimento, principal, volta à calma, critérios de entrada, progressão, regressão e o que registar · **«Usar este modelo»** cria o programa do aluno, editável como qualquer outro, e **«Guardar nos meus modelos»** guarda a ficha sem precisar de aluno; os dois registam a `origem`, e a vista do treino mostra «Modelo PTM-…» · navegável por teclado, com o foco a seguir a vista (título ao abrir, cartão ao voltar). **«Validação clínica» e «supervisão técnica» são avisos**, com a ressalva ao lado — a aplicação não tem papéis nem forma de bloquear, e assinala, nunca diagnostica (10b). Estendeu `METODOS_COMBINACAO` com **EMOM, AMRAP e For time**, e deu **«pausa entre rondas»** ao bi-set, supersérie, trissérie… **Preservado do documento, nunca corrigido em silêncio** (26 fichas levam um aviso em `avisosEditoriais`): o RPE do complemento do «Personalizado» (4 na dose base, 5 no cronómetro), a regra de dose que deixa `pliometria técnica` e `unilateral` de fora das repetições de pliometria, e a preparação específica de uma família temporal. **A representação B não está construída** — o documento não reproduz as suas 860 prescrições. **Não há registo do realizado** (o que o aluno fez a sério): é o mesmo buraco de sempre, ver a área do aluno |
 | **Vista de treino** | O programa como se lê, e não como se escreve: um treino de cada vez, por bloco, com o resumo em números (exercícios, séries, pausa somada, volume). **A carga de cada série e os números do método editam-se ali mesmo**; o resto é no construtor. **Dois modos**: completo (tudo de uma vez) e **passo a passo** — um exercício por vez, uma combinação inteira (bi-set, trissérie…) num só passo, com setas e barra de progresso (`TreinoSegmentado`, `passosDoTreino`). Exercícios soltos também têm cor própria, mais discreta que a de uma combinação, só para se distinguirem na lista. `TreinoVista`, ao lado de `PrescricaoBuilder` |
 | **Biblioteca** | Procura que traduz o termo escrito (pt-BR e inglês de ginásio) · sinónimos por exercício · favoritos · pastas · progressões, regressões e substituições, com **troca de exercício num clique dentro do treino** |
 | **Avaliações** | Dobras, % massa gorda, perímetros, fotografias, gráfico de evolução, PDF · **rascunho e final, autosave, revisões com motivo, comparar e repor** |

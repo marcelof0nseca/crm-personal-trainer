@@ -408,6 +408,16 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   no Playwright em Chromium** — a mesma lição do arrasto, mais acima nesta
   lista: testar num browser de automação prova a lógica, não o desenho de
   um controlo nativo específico doutra plataforma.
+  **O `min-width` sozinho não chegou.** Num iPhone real, no construtor de
+  treino e no relatório do período, o campo continuava a passar da caixa
+  cerca de 26 px — o padding mais a borda, como se o `box-sizing` fosse
+  ignorado neste controlo. Agora, só no iOS (`@supports (-webkit-touch-callout:
+  none)`, para o desktop não mudar), o campo perde o aspeto nativo e usa
+  `width: -webkit-fill-available`, que enche o espaço qualquer que seja o
+  `box-sizing`; e o `FormField` ganhou `min-w-0`. **Por confirmar num
+  iPhone:** nem o Chromium nem o WebKit do Playwright reproduzem o problema
+  (o WebKit de secretária não tem o CSS de iOS), por isso só se testou que o
+  desktop fica igual e que as regras, forçadas, desenham bem.
 - **Um trial (Stripe) faz o "primeiro ciclo" começar tarde, não no dia
   zero.** `isFirstCycle()` (em `stripe-webhook`, decide se o bónus de meses
   grátis se aplica) comparava `current_period_start` contra `start_date` da

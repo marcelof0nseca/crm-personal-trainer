@@ -6383,7 +6383,8 @@ function SettingsModal({
 
                 <SettingsBlock title="Dados dos seus alunos" description="Um lembrete importante sobre a sua responsabilidade.">
                   <div className="rounded-lg px-3.5 py-3 text-xs font-body leading-relaxed" style={{ backgroundColor: 'var(--gold-soft)', color: 'var(--text-muted)', border: '1px solid rgba(245,180,76,0.28)' }}>
-                    Medidas corporais, avaliações físicas e fotografias são dados de saúde e exigem
+                    Medidas corporais, avaliações físicas, fotografias, respostas a formulários de
+                    saúde e os sintomas que registar nas sessões de treino são dados de saúde e exigem
                     consentimento explícito de cada aluno, de preferência por escrito. Perante os seus
                     alunos, é o titular da conta quem responde por esses dados.
                   </div>

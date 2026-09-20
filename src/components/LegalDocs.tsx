@@ -22,7 +22,7 @@ const LEGAL_ENTITY = {
 
 // Atualizar sempre que o conteúdo mudar de forma material: é a data que o
 // utilizador vê e que prova quando as condições passaram a ser estas.
-const LAST_UPDATED = '2 de setembro de 2026';
+const LAST_UPDATED = '20 de setembro de 2026';
 
 // Região onde o projeto Supabase está alojado. Verificado a 2026-09-01:
 // projeto `veqeecnwtwunntojicko`, região eu-west-3 (Paris, França).
@@ -48,7 +48,7 @@ function docs(supportEmail) {
           h: '2. Papéis: os dados dos seus alunos são da sua responsabilidade',
           p: [
             'Esta distinção é importante. Quanto aos dados da sua própria conta (e-mail, subscrição), o PTMANAGER é o responsável pelo tratamento.',
-            'Quanto aos dados que introduz sobre os seus alunos — nome, contacto, medidas corporais, avaliações físicas e fotografias — é o utilizador quem determina o que recolhe e porquê. Nessa relação, o utilizador é o responsável pelo tratamento e o PTMANAGER atua como subcontratante, limitando-se a alojar e processar esses dados por sua conta.',
+            'Quanto aos dados que introduz sobre os seus alunos — nome, contacto, medidas corporais, avaliações físicas, fotografias, respostas a formulários de saúde e registos de treino — é o utilizador quem determina o que recolhe e porquê. Nessa relação, o utilizador é o responsável pelo tratamento e o PTMANAGER atua como subcontratante, limitando-se a alojar e processar esses dados por sua conta.',
             'Na prática, isto significa que é da sua responsabilidade obter o consentimento dos seus alunos, informá-los sobre o que guarda e responder aos pedidos que lhe façam.',
           ],
         },
@@ -56,15 +56,16 @@ function docs(supportEmail) {
           h: '3. Que dados são tratados',
           p: [
             'Da sua conta: endereço de e-mail, palavra-passe (guardada apenas em forma cifrada, nunca legível), data de registo, data do último acesso e estado da subscrição.',
-            'Que o utilizador introduz sobre os seus alunos: nome, número de sócio, telefone, sexo, altura, plano contratado e valores associados; registos de aulas, faltas e reposições; avaliações físicas, incluindo peso, percentagem de massa gorda, dobras cutâneas e outros indicadores corporais; e fotografias de progresso, quando as adicionar.',
+            'Que o utilizador introduz sobre os seus alunos: nome, número de sócio, telefone, sexo, altura, plano contratado e valores associados; registos de aulas, faltas e reposições; avaliações físicas, incluindo peso, percentagem de massa gorda, dobras cutâneas e outros indicadores corporais; programas de treino; respostas a formulários de saúde e consentimentos, com as respetivas assinaturas; registos das sessões de treino realizadas (o que foi feito em cada exercício, a duração, o esforço e, quando o utilizador os escreve, os sintomas ou queixas que o aluno refere durante ou depois do treino); e fotografias de progresso, quando as adicionar.',
             'Financeiros: os valores e categorias que lançar na área de finanças. Os dados do cartão nunca passam pelo PTMANAGER — são tratados diretamente pela Stripe.',
           ],
         },
         {
           h: '4. Dados de saúde',
           p: [
-            'As medidas corporais, avaliações físicas e fotografias de progresso podem constituir dados relativos à saúde, que o Regulamento Geral sobre a Proteção de Dados classifica como categoria especial e sujeita a proteção reforçada.',
-            'O tratamento destes dados assenta no consentimento explícito do titular. Compete ao utilizador obter esse consentimento junto de cada aluno, de preferência por escrito, antes de registar medições ou fotografias.',
+            'As medidas corporais, avaliações físicas, fotografias de progresso, respostas a formulários de saúde e registos de sintomas ou queixas podem constituir dados relativos à saúde, que o Regulamento Geral sobre a Proteção de Dados classifica como categoria especial e sujeita a proteção reforçada.',
+            'Os registos das sessões de treino guardam o que o utilizador escreve, tal como o escreve. O PTMANAGER não interpreta esses registos nem faz diagnósticos: o que o aluno refere é uma informação para o treinador ter em conta, não uma avaliação clínica.',
+            'O tratamento destes dados assenta no consentimento explícito do titular. Compete ao utilizador obter esse consentimento junto de cada aluno, de preferência por escrito, antes de registar medições, fotografias, respostas a formulários de saúde ou sintomas.',
           ],
         },
         {
@@ -95,7 +96,7 @@ function docs(supportEmail) {
           p: [
             'O acesso exige autenticação e as palavras-passe são guardadas com função de hash pelo fornecedor de autenticação, não sendo legíveis por ninguém, incluindo por nós.',
             'O acesso ao painel exige sessão iniciada e subscrição ativa, e existe proteção contra tentativas repetidas de início de sessão.',
-            'As cópias de segurança que exportar são ficheiros sem cifra: contêm nomes, medidas e fotografias em texto legível. Guarde-as em local seguro e não as partilhe por canais não protegidos.',
+            'As cópias de segurança que exportar são ficheiros sem cifra: contêm nomes, medidas, fotografias e registos de saúde, como sintomas, em texto legível. Guarde-as em local seguro e não as partilhe por canais não protegidos.',
           ],
         },
         {
@@ -150,7 +151,7 @@ function docs(supportEmail) {
         {
           h: '5. Dados dos seus alunos',
           p: [
-            'Ao introduzir dados sobre terceiros, garante que dispõe de fundamento legítimo para o fazer e que obteve o consentimento necessário, em especial no que respeita a medidas corporais, avaliações físicas e fotografias.',
+            'Ao introduzir dados sobre terceiros, garante que dispõe de fundamento legítimo para o fazer e que obteve o consentimento necessário, em especial no que respeita a medidas corporais, avaliações físicas, fotografias, respostas a formulários de saúde e sintomas referidos pelos alunos.',
             'É o utilizador quem responde perante os seus alunos pelo tratamento desses dados. O PTMANAGER limita-se a alojá-los e processá-los por sua conta e segundo as suas instruções.',
           ],
         },

@@ -54,6 +54,9 @@ import {
 // A cópia de segurança, também em lógica pura: o que se exporta, como se lê um
 // ficheiro e o que muda nas sessões ao restaurar -- scripts/validar-copia.mjs.
 import { montarCopia, lerCopia, resumoDaCopia, planoDeSessoes } from './src/data/copia';
+// O que sai ao apagar uma avaliação ou um aluno, fotografias incluídas --
+// scripts/validar-eliminar.mjs.
+import { fotosSoltas, planoDeEliminacao } from './src/data/eliminar';
 
 /* ============================== LOGO ============================== */
 
@@ -2972,9 +2975,18 @@ async function assinarFotos(caminhos) {
   return porCaminho;
 }
 
+// Devolve se os ficheiros ficaram apagados. Quem apaga por obrigação de
+// privacidade (eliminar um aluno, «Apagar todos os dados») precisa de o saber:
+// um ficheiro que fica no balde, sem ninguém que o referencie, já não se
+// apaga nunca.
 async function apagarFotosDoBalde(caminhos) {
-  if (!supabase || caminhos.length === 0) return;
-  await supabase.storage.from(BALDE_FOTOS).remove(caminhos).catch(() => null);
+  if (!supabase || caminhos.length === 0) return true;
+  try {
+    const { error } = await supabase.storage.from(BALDE_FOTOS).remove(caminhos);
+    return !error;
+  } catch (e) {
+    return false;
+  }
 }
 
 // Traz de volta os bytes, para a cópia de segurança continuar a ser um ficheiro
@@ -9232,7 +9244,7 @@ function StudentFormModal({ student, sessions, customCategories, definicoes, tre
       {confirmDelete && (
         <ConfirmDialog
           title="Eliminar aluno"
-          message={`Tem a certeza de que pretende eliminar ${form.name || 'este aluno'}? Todas as aulas, avaliações e sessões de treino registadas para ele também serão removidas.`}
+          message={`Tem a certeza de que pretende eliminar ${form.name || 'este aluno'}? Vão ser removidos de forma permanente as aulas e avaliações, os programas de treino, as respostas a formulários, as sessões de treino registadas e as fotografias dele.`}
           onCancel={() => setConfirmDelete(false)}
           onConfirm={() => { onDelete(form.id); setConfirmDelete(false); }}
         />
@@ -17201,6 +17213,9 @@ function AppInner() {
   useEffect(() => { photosRef.current = photos; }, [photos]);
 
   async function persistPhotos(next) {
+    // A referência acompanha já, e não só no render seguinte: duas gravações
+    // seguidas a partir dela (apagar duas avaliações) não podem repor a primeira.
+    photosRef.current = next;
     setPhotos(next);
     if (!storageOk) return true;
     return gravarBloco('fotos', JSON.stringify(next), 'Fotografias');
@@ -17365,20 +17380,23 @@ function AppInner() {
   // Ao apagar um aluno: o registo dele são dados de saúde e não ficam para trás.
   // Apaga a linha (e os rascunhos deste aparelho), em vez de a esvaziar. Passa
   // pela fila da chave, para não se cruzar com uma gravação ainda em curso.
+  // Devolve se ficou apagado (quem elimina o aluno di-lo se não).
   async function limparExecucoes(idAluno) {
     apagarRascunhosCom(chaveRascunho(idAluno, ''));
+    let apagou = true;
     if (storageOk) {
       try {
         const chave = chaveExecucoes(idAluno);
         await filaDeExecucoes.current(chave, () => apagarStoredValue(chave));
       } catch (e) {
         console.error(`[PTMANAGER] falhou a apagar o registo de treinos do aluno ${idAluno}`, e);
-        showToast('Não foi possível apagar as sessões registadas deste aluno.', 'error');
+        apagou = false;
       }
     }
     const { [idAluno]: removido, ...resto } = execucoesRef.current;
     execucoesRef.current = resto;
     setExecucoes(resto);
+    return apagou;
   }
 
   // O que está em cache é de antes de o restauro ou o «Apagar tudo»: esquece-se,
@@ -17607,12 +17625,51 @@ function AppInner() {
     setShowStudentModal(false);
     showToast(exists ? 'Aluno atualizado.' : 'Aluno registado.');
   }
-  function deleteStudent(id) {
-    persistStudents(students.filter((s) => s.id !== id));
-    persistSessions(sessions.filter((s) => s.studentId !== id));
-    limparExecucoes(id);
+  // Eliminar um aluno elimina tudo o que é dele (`planoDeEliminacao`): as aulas e
+  // avaliações, os programas de treino, as respostas a formulários, as sessões
+  // de treino realizadas e as fotografias -- incluindo as assinaturas. Antes só
+  // saíam o aluno, a agenda e (desde há pouco) as sessões, e o resto ficava na
+  // base de dados, invisível, sem ninguém que o pudesse apagar.
+  async function deleteStudent(id) {
+    const plano = planoDeEliminacao(id, {
+      alunos: students,
+      sessions,
+      treinos: serializarTreinos(treinosRef.current),
+      formularios,
+      fotos: photosRef.current,
+      definicoes,
+    });
+    // Os ficheiros primeiro, e sem eles não se elimina: um ficheiro que fica no
+    // balde sem ninguém que o referencie já não se apaga nunca. O aluno fica
+    // como estava, e repete-se.
+    if (!(await apagarFotosDoBalde(plano.soltas.filter((p) => p.path).map((p) => p.path)))) {
+      showToast('Não foi possível apagar as fotografias deste aluno do armazenamento. O aluno não foi eliminado: tente outra vez.', 'error');
+      return;
+    }
     setShowStudentModal(false);
-    showToast('Aluno excluído.');
+    const gravados = [persistStudents(plano.alunos), persistSessions(plano.sessoes), limparExecucoes(id)];
+    if (plano.tem.programas > 0) gravados.push(persistTreinos((t) => ({ ...t, prescricoes: t.prescricoes.filter((p) => p.studentId !== id) })));
+    if (plano.tem.respostas > 0) gravados.push(persistFormularios({ ...formularios, respostas: plano.respostas }));
+    if (plano.soltas.length > 0) gravados.push(persistPhotos(plano.fotos));
+    if ((await Promise.all(gravados)).every(Boolean)) showToast('Aluno excluído.');
+    else showToast('O aluno só foi excluído em parte. Volte a tentar: o que já foi apagado continua apagado.', 'error');
+  }
+
+  // Apaga as fotografias que só o que se removeu referia. Os ficheiros primeiro:
+  // se falha, a entrada fica no bloco (o «Apagar todos os dados» ainda chega ao
+  // ficheiro por ela) e diz-se, em vez de a esconder e deixar o ficheiro órfão.
+  async function apagarFotosSoltas(soltas) {
+    if (soltas.length === 0) return true;
+    const ids = new Set(soltas.map((p) => p.id));
+    if (!(await apagarFotosDoBalde(soltas.filter((p) => p.path).map((p) => p.path)))) {
+      showToast('Não foi possível apagar do armazenamento as fotografias desta avaliação. Volte a tentar mais tarde.', 'error');
+      return false;
+    }
+    return persistPhotos(photosRef.current.filter((p) => !ids.has(p.id)));
+  }
+  // O que ainda pode referir uma fotografia, para só se apagar a que mais nada usa.
+  function restanteDosDados(sessoesQueFicam) {
+    return [students, sessoesQueFicam, serializarTreinos(treinosRef.current), formularios, definicoes];
   }
 
   // `plano` descreve a repetição a criar: ou { semanas } (o formato antigo), ou
@@ -17709,6 +17766,8 @@ function AppInner() {
         }
         : s));
     persistSessions(next);
+    // Uma avaliação tem fotografias, e apagá-la sem elas deixava-as para trás.
+    apagarFotosSoltas(fotosSoltas(sessions.filter((s) => remover.has(s.id)), restanteDosDados(next), photosRef.current));
     setShowSessionModal(false);
     if (remover.size > 1) {
       showToast(`${plural(remover.size, 'ocorrência removida', 'ocorrências removidas')}.`);
@@ -17931,7 +17990,11 @@ function AppInner() {
     return session.id;
   }
   function deleteAssessment(id) {
-    persistSessions(sessions.filter((s) => s.id !== id));
+    const next = sessions.filter((s) => s.id !== id);
+    persistSessions(next);
+    // As fotografias corporais são o dado mais sensível: saem com a avaliação,
+    // se mais nada as usar.
+    apagarFotosSoltas(fotosSoltas(sessions.filter((s) => s.id === id), restanteDosDados(next), photosRef.current));
     showToast('Avaliação removida.');
   }
   function goToTreinos(student) {
@@ -18618,7 +18681,11 @@ function AppInner() {
       // Os ficheiros primeiro: apagar só o bloco deixava as fotografias no
       // balde, a ocupar espaço e — pior — a existir depois de o utilizador
       // pedir para as apagar.
-      await apagarFotosDoBalde(photos.filter((p) => p.path).map((p) => p.path));
+      // Se os ficheiros não se apagarem, pára-se aqui, antes de esvaziar o bloco
+      // que sabe onde estão: sem ele, ficavam no balde para sempre.
+      if (!(await apagarFotosDoBalde(photos.filter((p) => p.path).map((p) => p.path)))) {
+        throw new Error('não foi possível apagar as fotografias do armazenamento');
+      }
       await writeStoredValue('alunos', JSON.stringify([]));
       await writeStoredValue('agenda', JSON.stringify([]));
       await writeStoredValue('financas', JSON.stringify([]));

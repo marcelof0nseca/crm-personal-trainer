@@ -42,6 +42,15 @@ import {
   COLECOES_MODELOS, CATEGORIAS_MODELOS, OBJETIVOS_MODELOS, EXPERIENCIAS_MODELOS,
   CONDICIONAMENTOS_MODELOS, METODOS_MODELOS,
 } from './src/data/modelos-treino-textos';
+// O treino realizado: lógica pura (normalizar, texto, «última vez», fila de
+// gravações) num ficheiro à parte, testável sem browser -- ver
+// scripts/validar-sessoes.mjs.
+import {
+  chaveExecucoes, normalizarExecucoes, criarFilaPorChave, podeGravarExecucoes,
+  normalizarSessaoRealizada, construirItens, resumoDaSessao, ultimaVezDoExercicio, valoresSugeridos, camposRealizaveis,
+  textoSerieRealizada, ordenarSessoes, temSintomas, fechoDaSessao, sessaoCorrigida, textoDeBuscaDaSessao, estadoDoItem,
+  VERSAO_RASCUNHO, chaveRascunho, lerRascunho, rascunhoTemTrabalho, seriesFeitasDoRascunho,
+} from './src/data/sessoes';
 
 /* ============================== LOGO ============================== */
 
@@ -3682,6 +3691,12 @@ function GlobalStyles() {
           -webkit-backdrop-filter: none;
           backdrop-filter: none;
         }
+      }
+      /* Barra do registo de uma sessao: fixa em baixo e, no telemovel, acima da
+         barra de navegacao (que so aparece abaixo de 640 px). */
+      .barra-sessao { position: fixed; left: 0; right: 0; bottom: 0; z-index: 29; padding-bottom: env(safe-area-inset-bottom); }
+      @media (max-width: 639px) {
+        .barra-sessao { bottom: calc(var(--nav-h) + env(safe-area-inset-bottom)); padding-bottom: 0; }
       }
 
       /* ---------- Folha ----------
@@ -9119,7 +9134,7 @@ function StudentFormModal({ student, sessions, customCategories, definicoes, tre
       {confirmDelete && (
         <ConfirmDialog
           title="Eliminar aluno"
-          message={`Tem a certeza de que pretende eliminar ${form.name || 'este aluno'}? Todas as aulas e avaliações registadas para ele também serão removidas.`}
+          message={`Tem a certeza de que pretende eliminar ${form.name || 'este aluno'}? Todas as aulas, avaliações e sessões de treino registadas para ele também serão removidas.`}
           onCancel={() => setConfirmDelete(false)}
           onConfirm={() => { onDelete(form.id); setConfirmDelete(false); }}
         />
@@ -10641,7 +10656,7 @@ function NumeroDoResumo({ rotulo, valor, nota }) {
   );
 }
 
-function TreinoVista({ prescricao, biblioteca, onMudar, onEditar, onImprimir }) {
+function TreinoVista({ prescricao, biblioteca, onMudar, onEditar, onImprimir, onRegistar }) {
   const treinos = prescricao.treinos || [];
   const [abertoId, setAbertoId] = useState(treinos[0] ? treinos[0].id : null);
   // 'completo' mostra o treino inteiro; 'segmentado' mostra um passo de cada
@@ -10698,7 +10713,18 @@ function TreinoVista({ prescricao, biblioteca, onMudar, onEditar, onImprimir }) 
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
+        {/* max-w-full: com três botões a fila passava do ecrã (o último ficava
+            cortado) em vez de quebrar para a linha seguinte. */}
+        <div className="flex items-center gap-2 flex-wrap max-w-full">
+          <button
+            type="button"
+            onClick={() => treino && onRegistar(treino.id)}
+            disabled={!treino || (treino.exercicios || []).length === 0}
+            className="btn btn-primary disabled:opacity-40"
+            style={{ fontSize: 12 }}
+          >
+            <ClipboardCheck size={14} /> Registar sessão
+          </button>
           <button type="button" onClick={onImprimir} className="btn btn-ghost" style={{ fontSize: 12 }}>
             <Printer size={14} /> Exportar PDF
           </button>
@@ -10844,8 +10870,9 @@ function TreinoVista({ prescricao, biblioteca, onMudar, onEditar, onImprimir }) 
 
               {modo === 'completo' && (
                 <p className="text-2xs font-body text-faint">
-                  A carga de cada série e os números dos métodos mudam-se aqui mesmo. Para trocar
-                  exercícios, séries ou blocos, abra o construtor em «Editar programa».
+                  A carga de cada série e os números dos métodos mudam-se aqui mesmo, e são o que
+                  está prescrito. Para registar o que foi feito na sessão, use «Registar sessão».
+                  Para trocar exercícios, séries ou blocos, abra o construtor em «Editar programa».
                 </p>
               )}
             </>
@@ -11688,7 +11715,769 @@ function BibliotecaModelosView({ student, biblioteca, onUsar, onGuardar, onFecha
   );
 }
 
-function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, onEliminarPrescricao, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivarPrescricao, onGuardarModelo, onCriarDeModelo, onApagarModelo, usosDoExercicio, onImprimir, onVoltar }) {
+/* ============================== REGISTAR SESSÃO ==============================
+   O treinador regista, na sala e no telemóvel, o que o aluno fez num treino do
+   programa: por série o valor real (repetições, carga, tempo…) e o esforço
+   observado; no fim, sintomas, duração e notas. NUNCA toca na prescrição --
+   que é o que a vista de treino faz à carga, e por isso a vista aponta para cá.
+
+   O que se vai escrevendo fica num rascunho neste aparelho (localStorage, como
+   o tema) e só no fim há uma gravação na base de dados, a do registo do aluno:
+   é o padrão dos formulários e evita gravar a cada tecla. Nada se marca como
+   feito sozinho: uma série só conta quando o treinador carrega em ✓. */
+const ROTULO_CAMPO_REALIZADO = {
+  reps: 'Reps', carga: 'Carga', tempo: 'Tempo (s)', duracao: 'Duração (min)', distancia: 'Distância (m)',
+  velocidade: 'Km/h', ritmo: 'Ritmo', potencia: 'Watts', inclinacao: 'Inclin. (%)', rir: 'RIR', rpe: 'RPE',
+};
+const TECLADO_CAMPO_REALIZADO = {
+  reps: 'numeric', carga: 'decimal', tempo: 'numeric', duracao: 'decimal', distancia: 'decimal',
+  velocidade: 'decimal', potencia: 'numeric', inclinacao: 'decimal', rir: 'numeric', rpe: 'numeric',
+};
+const PAUSA_RASCUNHO_MS = 400;
+
+function lerRascunhoGuardado(chave) {
+  try { return lerRascunho(window.localStorage.getItem(chave)); } catch (e) { return null; }
+}
+function guardarRascunho(chave, rascunho) {
+  try { window.localStorage.setItem(chave, JSON.stringify(rascunho)); } catch (e) { /* sem armazenamento: a sessão continua, só não sobrevive a recarregar */ }
+}
+function apagarRascunho(chave) {
+  try { window.localStorage.removeItem(chave); } catch (e) { /* idem */ }
+}
+function horaDeMs(ms) {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+// «2 de 4 séries» -- e «1 de 1 série», que no plural ficava «1 de 1 séries».
+function seriesFeitasDe(resumo) {
+  return `${resumo.feitas} de ${plural(resumo.series, 'série', 'séries')}`;
+}
+// 'AAAA-MM-DD' -> '20/09/2026'
+function dataCurta(iso) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(iso || '') ? iso.split('-').reverse().join('/') : '';
+}
+
+// Enter avança dentro do passo em que se está, não pelo documento inteiro, e
+// no último campo fecha o teclado.
+function avancarCampo(e) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const raiz = e.currentTarget.closest('[data-passo-sessao]') || document;
+  const campos = Array.from(raiz.querySelectorAll('[data-campo-sessao]'));
+  const proximo = campos[campos.indexOf(e.currentTarget) + 1];
+  if (proximo) { proximo.focus(); if (proximo.select) proximo.select(); } else e.currentTarget.blur();
+}
+
+// Os campos de uma série: os mesmos ao registar e ao corrigir depois.
+function CamposDaSerie({ campos, valores, sugeridos, onMudar, rotulo }) {
+  return (
+    <div className="flex flex-wrap gap-2 min-w-0" style={{ flex: '1 1 0' }}>
+      {campos.map((campo) => (
+        <label key={campo} className="flex flex-col gap-0.5 min-w-0" style={{ flex: '1 1 72px' }}>
+          <span className="text-2xs font-body text-faint">{ROTULO_CAMPO_REALIZADO[campo]}</span>
+          <input
+            value={valores[campo] || ''}
+            onChange={(e) => onMudar(campo, e.target.value)}
+            onKeyDown={avancarCampo}
+            placeholder={(sugeridos && sugeridos[campo]) || ''}
+            inputMode={TECLADO_CAMPO_REALIZADO[campo]}
+            enterKeyHint="next"
+            aria-label={`${ROTULO_CAMPO_REALIZADO[campo]} ${rotulo}`}
+            data-campo-sessao=""
+            className="input-field font-mono"
+          />
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function SerieRegisto({ indice, linha, campos, estado, onMudarCampo, onAlternar, nomeExercicio }) {
+  const feito = Boolean(estado.feito);
+  const sugeridos = valoresSugeridos(linha, campos);
+  const rotulo = `da série ${indice + 1} de ${nomeExercicio}`;
+  return (
+    <div className="flex flex-col gap-1.5 py-2 min-w-0" style={{ borderTop: indice === 0 ? 'none' : '1px solid var(--border-hair)' }}>
+      <div className="flex items-baseline gap-2 min-w-0">
+        <span className="font-mono text-2xs text-faint flex-shrink-0">Série {indice + 1}</span>
+        <span className="text-xs font-body text-muted min-w-0">{descreverLinha(linha) || '—'}</span>
+        {linha.descanso ? (
+          <span className="font-mono text-2xs text-faint flex-shrink-0" style={{ marginLeft: 'auto' }}>pausa {formatarPausa(linha.descanso)}</span>
+        ) : null}
+      </div>
+      <div className="flex items-end gap-2 min-w-0">
+        {campos.length > 0 ? (
+          <CamposDaSerie campos={campos} valores={estado.v || {}} sugeridos={sugeridos} onMudar={onMudarCampo} rotulo={rotulo} />
+        ) : (
+          <span className="flex-1 text-xs font-body text-faint">Só observação.</span>
+        )}
+        <BotaoSerieFeita feito={feito} onClick={onAlternar} rotulo={`Série ${indice + 1} de ${nomeExercicio}: ${feito ? 'feita' : 'por fazer'}`} />
+      </div>
+    </div>
+  );
+}
+
+// O ✓ de uma série, igual ao registar e ao corrigir depois.
+function BotaoSerieFeita({ feito, onClick, rotulo }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={feito}
+      aria-label={rotulo}
+      className="flex-shrink-0 rounded-lg border flex items-center justify-center"
+      style={{
+        width: 48,
+        height: 48,
+        borderColor: feito ? 'var(--brass)' : 'var(--border-strong)',
+        backgroundColor: feito ? 'var(--brass)' : 'transparent',
+        color: feito ? 'var(--on-accent)' : 'var(--text-faint)',
+      }}
+    >
+      <Check size={22} style={{ display: 'block' }} />
+    </button>
+  );
+}
+
+function ExercicioRegisto({ ex, info, biblioteca, estado, ultima, onMudar }) {
+  const daBiblioteca = biblioteca.find((b) => b.id === ex.exercicioId);
+  const linhas = Array.isArray(ex.linhas) ? ex.linhas : [];
+  const saltado = Boolean(estado.saltado);
+  const subtitulo = [daBiblioteca && daBiblioteca.grupo, daBiblioteca && daBiblioteca.equipamento].filter(Boolean).join(' · ');
+  const metodo = descreverMetodo(ex);
+
+  function mudarCampo(linha, campo, valor) {
+    onMudar((it) => {
+      const s = (it.series && it.series[linha.id]) || {};
+      const v = { ...(s.v || {}) };
+      if (valor === '') delete v[campo]; else v[campo] = valor;
+      return { ...it, series: { ...(it.series || {}), [linha.id]: { ...s, v } } };
+    });
+  }
+  // ✓ confirma o que está escrito e, no que falta, o que a prescrição sugere:
+  // é o toque único de quem fez o que estava previsto.
+  function alternar(linha, campos) {
+    onMudar((it) => {
+      const s = (it.series && it.series[linha.id]) || {};
+      if (s.feito) return { ...it, series: { ...(it.series || {}), [linha.id]: { ...s, feito: false } } };
+      return { ...it, saltado: false, series: { ...(it.series || {}), [linha.id]: { feito: true, v: { ...valoresSugeridos(linha, campos), ...(s.v || {}) } } } };
+    });
+  }
+
+  return (
+    <div
+      className="rounded-lg px-3 py-2.5 flex flex-col gap-1 min-w-0"
+      style={{
+        backgroundColor: info ? `color-mix(in srgb, ${info.cor} ${info.tinta}%, var(--bg-elevated))` : 'var(--bg-elevated)',
+        borderLeft: info ? `3px solid ${info.cor}` : '3px solid transparent',
+        opacity: saltado ? 0.6 : 1,
+      }}
+    >
+      <div className="flex items-baseline gap-2 flex-wrap min-w-0">
+        {info && info.etiqueta && (
+          <span className="font-mono text-2xs flex-shrink-0" style={{ color: acentoTexto(info.cor), fontWeight: 700 }}>{info.etiqueta}</span>
+        )}
+        <span className="font-body text-sm text-primary min-w-0" style={{ fontWeight: 600 }}>{ex.nome || 'Exercício'}</span>
+        {subtitulo && <span className="text-2xs font-body text-faint">{subtitulo}</span>}
+        {metodo && <span className="badge flex-shrink-0" style={{ ...ESTILO_BADGE_METODO, marginLeft: 'auto' }}>{metodo}</span>}
+      </div>
+      {ultima && (
+        <p className="text-2xs font-body text-faint" style={{ margin: 0 }}>
+          Última vez ({dataCurta(ultima.data)}): {ultima.series.slice(0, 6).join(' · ')}
+        </p>
+      )}
+      {saltado ? (
+        <p className="text-xs font-body text-muted" style={{ margin: '6px 0' }}>Exercício saltado.</p>
+      ) : (
+        <div className="flex flex-col min-w-0">
+          {linhas.map((linha, i) => {
+            const campos = camposRealizaveis(tipoDeSerie(linha.tipo).campos, linha);
+            return (
+              <SerieRegisto
+                key={linha.id}
+                indice={i}
+                linha={linha}
+                campos={campos}
+                estado={(estado.series && estado.series[linha.id]) || {}}
+                nomeExercicio={ex.nome || 'exercício'}
+                onMudarCampo={(campo, valor) => mudarCampo(linha, campo, valor)}
+                onAlternar={() => alternar(linha, campos)}
+              />
+            );
+          })}
+        </div>
+      )}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <button
+          type="button"
+          onClick={() => onMudar((it) => ({ ...it, saltado: !it.saltado }))}
+          className="text-2xs font-body link-sky tap"
+        >
+          {saltado ? 'Fazer este exercício' : 'Saltar exercício'}
+        </button>
+        {!saltado && (
+          <input
+            value={estado.notas || ''}
+            onChange={(e) => onMudar((it) => ({ ...it, notas: e.target.value }))}
+            placeholder="Nota técnica (opcional)"
+            aria-label={`Nota sobre ${ex.nome || 'o exercício'}`}
+            className="input-field"
+            style={{ flex: '1 1 160px' }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Os campos com que se fecha uma sessão: os mesmos ao terminá-la e ao corrigi-la
+// depois. `f` é sempre texto -- só `sessaoCorrigida` os converte.
+function CamposDoFecho({ f, mudar }) {
+  return (
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <FormField label="Data da sessão">
+          <input type="date" value={f.data} onChange={(e) => mudar('data', e.target.value)} required className="input-field" />
+        </FormField>
+        <FormField label="Duração (min)">
+          <input inputMode="numeric" value={f.duracaoMin} onChange={(e) => mudar('duracaoMin', e.target.value)} className="input-field font-mono" />
+        </FormField>
+      </div>
+      <FormField label="Esforço da sessão (0 = repouso, 10 = máximo)">
+        <select value={f.esforco} onChange={(e) => mudar('esforco', e.target.value)} className="input-field">
+          <option value="">Sem indicar</option>
+          {Array.from({ length: 11 }, (_, n) => <option key={n} value={String(n)}>{n}</option>)}
+        </select>
+      </FormField>
+      <FormField label="Sintomas durante o treino">
+        <textarea rows={2} value={f.durante} onChange={(e) => mudar('durante', e.target.value)} className="input-field" style={{ resize: 'vertical' }} placeholder="Ex.: dor no ombro direito ao subir" />
+      </FormField>
+      <FormField label="Sintomas depois">
+        <textarea rows={2} value={f.depois} onChange={(e) => mudar('depois', e.target.value)} className="input-field" style={{ resize: 'vertical' }} />
+      </FormField>
+      <p className="text-2xs font-body text-faint" style={{ margin: 0 }}>
+        Regista o que o aluno referiu, nas palavras dele. Não é um diagnóstico.
+      </p>
+      <label className="flex items-center gap-2 text-sm font-body text-primary">
+        <input type="checkbox" checked={f.interrompida} onChange={(e) => mudar('interrompida', e.target.checked)} />
+        A sessão foi interrompida
+      </label>
+      {f.interrompida && (
+        <FormField label="Motivo">
+          <input value={f.motivo} onChange={(e) => mudar('motivo', e.target.value)} className="input-field" placeholder="Ex.: tontura, falta de tempo" />
+        </FormField>
+      )}
+      <FormField label="Notas da sessão (opcional)">
+        <textarea rows={2} value={f.notas} onChange={(e) => mudar('notas', e.target.value)} className="input-field" style={{ resize: 'vertical' }} />
+      </FormField>
+    </>
+  );
+}
+
+function FecharSessaoFolha({ resumo, minutos, aGuardar, onGuardar, onFechar }) {
+  const [f, setF] = useState(() => ({
+    data: fmtDateISO(new Date()), duracaoMin: String(Math.max(1, minutos)), esforco: '',
+    durante: '', depois: '', interrompida: false, motivo: '', notas: '',
+  }));
+  const mudar = (campo, valor) => setF((x) => ({ ...x, [campo]: valor }));
+  return (
+    <Modal title="Fechar a sessão" onClose={aGuardar ? () => {} : onFechar}>
+      <div className="flex flex-col gap-3">
+        <p className="text-sm font-body text-primary" style={{ margin: 0 }}>
+          {seriesFeitasDe(resumo)} · {plural(resumo.feitos, 'exercício feito', 'exercícios feitos')}
+          {resumo.saltados > 0 ? ` · ${plural(resumo.saltados, 'não feito', 'não feitos')}` : ''}
+        </p>
+        {resumo.saltados > 0 && (
+          <p className="text-2xs font-body text-faint" style={{ margin: 0 }}>O que não marcou fica registado como não feito.</p>
+        )}
+        <CamposDoFecho f={f} mudar={mudar} />
+        <div className="folha-rodape flex gap-2 items-stretch">
+          {/* Sem data a sessão ficava fora da ordem e da ficha 360º. */}
+          <button type="button" onClick={() => onGuardar(f)} disabled={aGuardar || !f.data} className="btn btn-primary flex-1">
+            {aGuardar ? 'A guardar…' : 'Guardar sessão'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function RegistarSessao({ student, prescricao, treinoId, biblioteca, execucao, onCarregar, onGuardar, onSair }) {
+  const treinos = prescricao.treinos || [];
+  const treino = treinos.find((t) => t.id === treinoId) || treinos[0] || null;
+  const exercicios = treino ? (treino.exercicios || []) : [];
+  const blocos = useMemo(() => agruparPorBloco(exercicios), [exercicios]);
+  const infos = useMemo(() => infoDeGrupos(exercicios), [exercicios]);
+  const passos = useMemo(() => passosDoTreino(blocos, infos), [blocos, infos]);
+  const chave = chaveRascunho(student.id, treino ? treino.id : 'sem-treino');
+  const titulo = useRef(null);
+  const dep = useMemo(() => ({ descreverLinha, camposDoTipo: (l) => tipoDeSerie(l.tipo).campos }), []);
+
+  const [rascunho, setRascunho] = useState(() => ({ v: VERSAO_RASCUNHO, inicioMs: Date.now(), passo: 0, itens: {} }));
+  // Um rascunho de uma sessão que ficou a meio (o telemóvel bloqueou, a página
+  // recarregou): pergunta-se antes de o usar, e enquanto se pergunta não se
+  // grava nada -- senão o rascunho vazio apagava o que se veio buscar.
+  const [aDecidir, setADecidir] = useState(() => {
+    const r = lerRascunhoGuardado(chave);
+    return r && rascunhoTemTrabalho(r) ? r : null;
+  });
+  const [agora, setAgora] = useState(() => Date.now());
+  const [fechar, setFechar] = useState(false);
+  const [aSair, setASair] = useState(false);
+  const [aGuardar, setAGuardar] = useState(false);
+  const rascunhoRef = useRef(rascunho);
+  const aDecidirRef = useRef(aDecidir);
+  useEffect(() => { rascunhoRef.current = rascunho; }, [rascunho]);
+  useEffect(() => { aDecidirRef.current = aDecidir; }, [aDecidir]);
+
+  useEffect(() => { onCarregar(student.id); }, [student.id]);
+  useEffect(() => { if (titulo.current) titulo.current.focus({ preventScroll: true }); }, []);
+  useEffect(() => {
+    const t = setInterval(() => setAgora(Date.now()), 20000);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => {
+    if (aDecidir) return undefined;
+    const t = setTimeout(() => { if (rascunhoTemTrabalho(rascunho)) guardarRascunho(chave, rascunho); }, PAUSA_RASCUNHO_MS);
+    return () => clearTimeout(t);
+  }, [rascunho, aDecidir, chave]);
+  // Ao esconder a página (bloquear o telemóvel, mudar de aplicação) grava já:
+  // um temporizador pode nunca chegar a disparar.
+  useEffect(() => {
+    function aoEsconder() {
+      if (document.visibilityState !== 'hidden' || aDecidirRef.current) return;
+      if (rascunhoTemTrabalho(rascunhoRef.current)) guardarRascunho(chave, rascunhoRef.current);
+    }
+    document.addEventListener('visibilitychange', aoEsconder);
+    return () => document.removeEventListener('visibilitychange', aoEsconder);
+  }, [chave]);
+
+  const itensPrevios = useMemo(() => (treino ? construirItens(treino, rascunho.itens, dep) : []), [treino, rascunho.itens, dep]);
+  const resumo = useMemo(() => resumoDaSessao({ itens: itensPrevios }), [itensPrevios]);
+  const minutos = Math.max(0, Math.floor((agora - rascunho.inicioMs) / 60000));
+
+  if (!treino || passos.length === 0) {
+    return (
+      <div className="px-4 py-4 max-w-3xl mx-auto flex flex-col gap-4">
+        <button onClick={() => onSair()} type="button" className="p-2 rounded-lg bg-surface border border-hair btn-surface self-start" aria-label="Voltar ao programa">
+          <ArrowLeft size={16} className="text-muted" />
+        </button>
+        <EmptyState icon={Dumbbell} message="Este treino ainda não tem exercícios para registar." hint="Acrescente exercícios em «Editar programa»." />
+      </div>
+    );
+  }
+
+  const indice = Math.min(rascunho.passo, passos.length - 1);
+  const passo = passos[indice];
+  const infoPrimeiro = infos[passo.membros[0].id];
+  const percentagem = Math.round(((indice + 1) / passos.length) * 100);
+  const ultimoPasso = indice === passos.length - 1;
+
+  function irParaPasso(n) {
+    setRascunho((r) => ({ ...r, passo: Math.max(0, Math.min(passos.length - 1, n)) }));
+    window.scrollTo(0, 0);
+  }
+  function atualizarItem(exId, fn) {
+    setRascunho((r) => ({ ...r, itens: { ...r.itens, [exId]: fn(r.itens[exId] || { series: {} }) } }));
+  }
+  function tentarSair() {
+    if (rascunhoTemTrabalho(rascunho)) { guardarRascunho(chave, rascunho); setASair(true); } else onSair();
+  }
+
+  async function guardar(f) {
+    setAGuardar(true);
+    // Garante que o registo do aluno foi lido antes de gravar por cima dele.
+    await onCarregar(student.id);
+    const sessao = normalizarSessaoRealizada({
+      id: uid(),
+      data: f.data,
+      inicio: horaDeMs(rascunho.inicioMs),
+      duracaoMin: f.duracaoMin,
+      prescricaoId: prescricao.id,
+      prescricaoNome: prescricao.nome,
+      treinoId: treino.id,
+      treinoNome: treino.nome,
+      origem: prescricao.origem || null,
+      estado: f.interrompida ? 'interrompida' : 'concluida',
+      motivoInterrupcao: f.interrompida ? f.motivo : '',
+      esforco: f.esforco,
+      sintomas: { durante: f.durante, depois: f.depois },
+      notas: f.notas,
+      itens: construirItens(treino, rascunho.itens, dep),
+      criadoEm: new Date().toISOString(),
+      editadoEm: '',
+    });
+    const gravou = await onGuardar(sessao);
+    setAGuardar(false);
+    // O rascunho só se apaga com a sessão gravada: se falhou, continua aqui.
+    if (gravou) { apagarRascunho(chave); onSair(); }
+  }
+
+  return (
+    <div className="px-4 py-4 max-w-3xl mx-auto flex flex-col gap-4" style={{ paddingBottom: 96 }}>
+      <div className="flex items-center gap-2">
+        <button onClick={tentarSair} type="button" className="p-2 rounded-lg bg-surface border border-hair btn-surface flex-shrink-0" aria-label="Sair do registo da sessão">
+          <ArrowLeft size={16} className="text-muted" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <h1 ref={titulo} tabIndex={-1} className="font-display font-semibold text-lg text-primary tracking-wide truncate" style={{ margin: 0, outline: 'none' }}>Registar sessão</h1>
+          <div className="text-2xs font-body text-faint truncate">{student.name} · {prescricao.nome || 'Programa'} · {treino.nome}</div>
+        </div>
+        <span className="badge flex-shrink-0" style={ESTILO_BADGE_NEUTRO}><Clock size={10} /> {minutos} min</span>
+        <button type="button" onClick={() => setFechar(true)} className="btn btn-ghost flex-shrink-0" style={{ fontSize: 12 }}>Terminar</button>
+      </div>
+
+      {execucao.estado === 'erro' && (
+        <div role="alert" className="rounded-lg px-3 py-2.5 flex items-start gap-2.5" style={{ backgroundColor: 'var(--gold-soft)' }}>
+          <Info size={15} className="flex-shrink-0" style={{ color: 'var(--gold)', marginTop: 1 }} />
+          <div className="text-xs font-body text-muted min-w-0">
+            Não foi possível ler o histórico deste aluno. Pode registar na mesma: a sessão só se guarda quando voltar a haver ligação.{' '}
+            <button type="button" onClick={() => onCarregar(student.id, true)} className="link-sky">Tentar de novo</button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between text-2xs font-body text-faint">
+          <span>Passo {indice + 1} de {passos.length} · {seriesFeitasDe(resumo)}</span>
+          <span className="font-mono">{percentagem}%</span>
+        </div>
+        <div className="w-full rounded-full overflow-hidden" style={{ height: 6, backgroundColor: 'var(--bg-inset)' }} role="progressbar" aria-valuenow={percentagem} aria-valuemin={0} aria-valuemax={100} aria-label="Progresso da sessão">
+          <div style={{ width: `${percentagem}%`, height: '100%', backgroundColor: 'var(--brass)', transition: 'width 240ms var(--ease)' }} />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 min-w-0" data-passo-sessao="">
+        {blocos.length > 1 && <div className="text-2xs uppercase tracking-wide text-faint font-mono">{passo.bloco}</div>}
+        {passo.grupo && infoPrimeiro && (
+          <div className="flex items-center gap-2 text-2xs font-body px-1" style={{ color: acentoTexto(infoPrimeiro.cor) }}>
+            <span className="font-mono" style={{ fontWeight: 700 }}>{infoPrimeiro.letra}</span>
+            <span style={{ fontWeight: 500 }}>{descreverCombinacao(grupoDoTreino(treino, passo.grupo)) || 'Em conjunto'}</span>
+            <span className="text-faint">· {plural(passo.membros.length, 'exercício seguido', 'exercícios seguidos')}</span>
+          </div>
+        )}
+        {passo.membros.map((ex) => (
+          <ExercicioRegisto
+            key={ex.id}
+            ex={ex}
+            info={infos[ex.id]}
+            biblioteca={biblioteca}
+            estado={rascunho.itens[ex.id] || { series: {} }}
+            ultima={ultimaVezDoExercicio(execucao.sessoes, ex.exercicioId)}
+            onMudar={(fn) => atualizarItem(ex.id, fn)}
+          />
+        ))}
+      </div>
+
+      {/* Fixa em baixo e acima da barra de navegação: entre duas séries é isto
+          que se toca, com uma mão só. */}
+      <div className="barra-sessao vidro border-t border-hair">
+        <div className="max-w-3xl mx-auto px-4 py-2 flex items-center gap-2">
+          <button type="button" onClick={() => irParaPasso(indice - 1)} disabled={indice === 0} className="btn btn-ghost disabled:opacity-30 flex-shrink-0" aria-label="Passo anterior">
+            <ChevronLeft size={16} />
+          </button>
+          <span className="font-mono text-2xs text-faint flex-shrink-0">{indice + 1}/{passos.length}</span>
+          {ultimoPasso ? (
+            <button type="button" onClick={() => setFechar(true)} className="btn btn-primary flex-1">Concluir sessão</button>
+          ) : (
+            <button type="button" onClick={() => irParaPasso(indice + 1)} className="btn btn-primary flex-1" aria-label="Passo seguinte">
+              Seguinte <ChevronRight size={16} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {fechar && (
+        <FecharSessaoFolha resumo={resumo} minutos={minutos} aGuardar={aGuardar} onGuardar={guardar} onFechar={() => setFechar(false)} />
+      )}
+      {aDecidir && (
+        // Uma folha e não um ConfirmDialog: nele, tocar fora ou carregar em
+        // Esc é «cancelar», e aqui cancelar era apagar o rascunho. Fechar
+        // esta folha, por qualquer via, é continuar; só o botão apaga.
+        <Modal title="Continuar a sessão?" onClose={() => { setRascunho(aDecidir); setADecidir(null); }}>
+          <div className="flex flex-col gap-4">
+            <p className="text-sm font-body text-muted" style={{ margin: 0, lineHeight: 1.5 }}>
+              {`Começou às ${horaDeMs(aDecidir.inicioMs)} e já tem ${plural(seriesFeitasDoRascunho(aDecidir), 'série registada', 'séries registadas')} neste aparelho.`}
+            </p>
+            <div className="folha-rodape flex gap-2 items-stretch">
+              <button type="button" onClick={() => { apagarRascunho(chave); setADecidir(null); }} className="btn btn-ghost">
+                Começar de novo
+              </button>
+              <button type="button" onClick={() => { setRascunho(aDecidir); setADecidir(null); }} className="btn btn-primary flex-1">
+                Continuar
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {aSair && (
+        <ConfirmDialog
+          title="Sair da sessão?"
+          message="O que já registou fica guardado neste aparelho e pode continuar mais tarde."
+          confirmLabel="Sair"
+          cancelLabel="Ficar"
+          tone="brass"
+          onConfirm={() => { setASair(false); onSair(); }}
+          onCancel={() => setASair(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ------------------ histórico das sessões realizadas ------------------ */
+
+const ROTULO_ESTADO_ITEM = { feito: 'Feito', parcial: 'Parcial', saltado: 'Não feito' };
+// Dourado no que ficou a meio, neutro no que não se fez: aqui ninguém errou.
+const ESTILO_ESTADO_ITEM = { feito: ESTILO_BADGE_METODO, parcial: ESTILO_BADGE_AVISO, saltado: ESTILO_BADGE_NEUTRO };
+
+function EstadoDoItem({ estado }) {
+  return <span className="badge flex-shrink-0" style={ESTILO_ESTADO_ITEM[estado] || ESTILO_BADGE_NEUTRO}>{ROTULO_ESTADO_ITEM[estado] || estado}</span>;
+}
+
+const SESSOES_VISIVEIS = 6;
+
+function ListaSessoes({ execucao, onAbrir, onTentarDeNovo }) {
+  const [todas, setTodas] = useState(false);
+  const ordenadas = useMemo(() => ordenarSessoes(execucao.sessoes), [execucao.sessoes]);
+  if (execucao.estado === 'a-carregar') return null;
+  const visiveis = todas ? ordenadas : ordenadas.slice(0, SESSOES_VISIVEIS);
+  return (
+    <>
+      <div className="text-2xs uppercase tracking-wide text-faint font-mono">
+        Sessões realizadas{execucao.estado === 'ok' ? ` (${ordenadas.length})` : ''}
+      </div>
+      {execucao.estado === 'erro' ? (
+        <div role="alert" className="rounded-lg px-3 py-2.5 flex items-start gap-2.5" style={{ backgroundColor: 'var(--gold-soft)' }}>
+          <Info size={15} className="flex-shrink-0" style={{ color: 'var(--gold)', marginTop: 1 }} />
+          <div className="text-xs font-body text-muted min-w-0">
+            Não foi possível ler as sessões registadas deste aluno.{' '}
+            <button type="button" onClick={onTentarDeNovo} className="link-sky">Tentar de novo</button>
+          </div>
+        </div>
+      ) : ordenadas.length === 0 ? (
+        <p className="text-xs font-body text-faint" style={{ margin: 0 }}>
+          Ainda não há sessões registadas. Abra um programa e carregue em «Registar sessão» para guardar o que o aluno fez.
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {visiveis.map((s) => {
+            const r = resumoDaSessao(s);
+            return (
+              <button key={s.id} type="button" onClick={() => onAbrir(s.id)} className="card p-4 flex items-center justify-between gap-3 text-left min-w-0 card-hover">
+                <span className="min-w-0 flex flex-col gap-1.5">
+                  <span className="flex items-baseline gap-2 min-w-0">
+                    <span className="text-sm font-body text-primary truncate" style={{ fontWeight: 500 }}>{s.treinoNome || 'Treino'}</span>
+                    <span className="font-mono text-2xs text-faint flex-shrink-0">{dataCurta(s.data)}</span>
+                  </span>
+                  {s.prescricaoNome && <span className="block text-2xs font-body text-faint truncate">{s.prescricaoNome}</span>}
+                  <span className="flex flex-wrap gap-1.5">
+                    <span className="badge" style={ESTILO_BADGE_NEUTRO}>{seriesFeitasDe(r)}</span>
+                    {s.duracaoMin ? <span className="badge" style={ESTILO_BADGE_NEUTRO}><Clock size={10} /> {s.duracaoMin} min</span> : null}
+                    {s.esforco !== '' ? <span className="badge" style={ESTILO_BADGE_NEUTRO}>Esforço {s.esforco}/10</span> : null}
+                    {s.estado === 'interrompida' ? <span className="badge" style={ESTILO_BADGE_AVISO}>Interrompida</span> : null}
+                    {temSintomas(s) ? <span className="badge" style={ESTILO_BADGE_AVISO}>Sintomas referidos</span> : null}
+                  </span>
+                </span>
+                <ChevronRight size={16} className="text-faint flex-shrink-0" />
+              </button>
+            );
+          })}
+          {ordenadas.length > SESSOES_VISIVEIS && (
+            <button type="button" onClick={() => setTodas((v) => !v)} className="btn btn-ghost self-start" style={{ fontSize: 12 }}>
+              {todas ? 'Mostrar só as mais recentes' : `Ver todas (${ordenadas.length})`}
+            </button>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+// Ver o que foi feito, série a série, ao lado do que estava prescrito; e
+// corrigi-lo ou apagá-lo. Fechar a meio de uma correção pergunta primeiro:
+// tocar fora da folha não pode gastar o que se escreveu.
+function VerSessaoModal({ sessao, onGuardar, onApagar, onFechar }) {
+  const [editando, setEditando] = useState(false);
+  const [f, setF] = useState(() => fechoDaSessao(sessao));
+  const [itens, setItens] = useState(() => sessao.itens);
+  const [aGuardar, setAGuardar] = useState(false);
+  const [aApagar, setAApagar] = useState(false);
+  const [aDescartar, setADescartar] = useState(false);
+  const resumo = resumoDaSessao(sessao);
+  const sujo = editando && JSON.stringify({ f, itens }) !== JSON.stringify({ f: fechoDaSessao(sessao), itens: sessao.itens });
+
+  function comecarAEditar() { setF(fechoDaSessao(sessao)); setItens(sessao.itens); setEditando(true); }
+  // `aDescartar` guarda o que se queria fazer quando havia alterações por
+  // guardar: fechar a folha, ou só voltar a ver a sessão.
+  function pedirFecho() {
+    if (aGuardar) return;
+    if (sujo) setADescartar('fechar'); else onFechar();
+  }
+  function pedirCancelar() {
+    if (sujo) setADescartar('cancelar'); else setEditando(false);
+  }
+  function mudarSerie(i, j, alterar) {
+    setItens((lista) => lista.map((it, a) => (a !== i ? it : { ...it, series: it.series.map((s, b) => (b !== j ? s : { ...s, ...alterar(s) })) })));
+  }
+  async function guardar() {
+    setAGuardar(true);
+    const gravou = await onGuardar(sessaoCorrigida(sessao, f, itens, new Date().toISOString()));
+    setAGuardar(false);
+    if (gravou) setEditando(false);
+  }
+
+  const titulo = sessao.treinoNome || 'Sessão de treino';
+  const acoes = editando ? null : (
+    <button type="button" onClick={comecarAEditar} className="btn btn-ghost" style={{ fontSize: 12 }}>
+      <Pencil size={13} /> Editar
+    </button>
+  );
+
+  return (
+    <>
+      <Modal title={titulo} onClose={pedirFecho} largura="620px" acoes={acoes}>
+        {editando ? (
+          <div className="flex flex-col gap-3" data-passo-sessao="">
+            <CamposDoFecho f={f} mudar={(campo, valor) => setF((x) => ({ ...x, [campo]: valor }))} />
+            <div className="text-2xs uppercase tracking-wide text-faint font-mono pt-1">Exercícios</div>
+            {itens.map((it, i) => (
+              <div key={i} className="rounded-lg px-3 py-2.5 flex flex-col gap-1 min-w-0" style={{ backgroundColor: 'var(--bg-elevated)' }}>
+                <div className="flex items-baseline justify-between gap-2 min-w-0">
+                  <span className="text-sm font-body text-primary min-w-0" style={{ fontWeight: 600 }}>{it.nome || 'Exercício'}</span>
+                  <EstadoDoItem estado={estadoDoItem({ series: it.series, saltado: false })} />
+                </div>
+                {it.series.map((s, j) => (
+                  <div key={j} className="flex flex-col gap-1.5 py-2 min-w-0" style={{ borderTop: j === 0 ? 'none' : '1px solid var(--border-hair)' }}>
+                    <div className="flex items-baseline gap-2 min-w-0">
+                      <span className="font-mono text-2xs text-faint flex-shrink-0">Série {j + 1}</span>
+                      {s.prescrito && <span className="text-2xs font-body text-faint min-w-0">prescrito: {s.prescrito}</span>}
+                    </div>
+                    <div className="flex items-end gap-2 min-w-0">
+                      {s.c.length > 0 ? (
+                        <CamposDaSerie
+                          campos={s.c}
+                          valores={s.v}
+                          rotulo={`da série ${j + 1} de ${it.nome}`}
+                          onMudar={(campo, valor) => mudarSerie(i, j, (x) => {
+                            const v = { ...x.v };
+                            if (valor === '') delete v[campo]; else v[campo] = valor;
+                            return { v };
+                          })}
+                        />
+                      ) : (
+                        <span className="flex-1 text-xs font-body text-faint">Só observação.</span>
+                      )}
+                      <BotaoSerieFeita
+                        feito={s.feito}
+                        onClick={() => mudarSerie(i, j, (x) => ({ feito: !x.feito }))}
+                        rotulo={`Série ${j + 1} de ${it.nome}: ${s.feito ? 'feita' : 'por fazer'}`}
+                      />
+                    </div>
+                  </div>
+                ))}
+                <input
+                  value={it.notas}
+                  onChange={(e) => setItens((lista) => lista.map((x, a) => (a === i ? { ...x, notas: e.target.value } : x)))}
+                  placeholder="Nota técnica (opcional)"
+                  aria-label={`Nota sobre ${it.nome || 'o exercício'}`}
+                  className="input-field"
+                />
+              </div>
+            ))}
+            <div className="folha-rodape flex gap-2 items-stretch">
+              <button type="button" onClick={pedirCancelar} disabled={aGuardar} className="btn btn-ghost">Cancelar</button>
+              <button type="button" onClick={guardar} disabled={aGuardar || !f.data} className="btn btn-primary flex-1">
+                {aGuardar ? 'A guardar…' : 'Guardar alterações'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <div className="text-xs font-body text-muted">
+                {[sessao.prescricaoNome || 'Programa', dataCurta(sessao.data), sessao.inicio ? `às ${sessao.inicio}` : ''].filter(Boolean).join(' · ')}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <span className="badge" style={ESTILO_BADGE_NEUTRO}>{seriesFeitasDe(resumo)}</span>
+                {sessao.duracaoMin ? <span className="badge" style={ESTILO_BADGE_NEUTRO}><Clock size={10} /> {sessao.duracaoMin} min</span> : null}
+                {sessao.esforco !== '' ? <span className="badge" style={ESTILO_BADGE_NEUTRO}>Esforço {sessao.esforco}/10</span> : null}
+                {sessao.estado === 'interrompida' ? <span className="badge" style={ESTILO_BADGE_AVISO}>Interrompida</span> : null}
+              </div>
+              {sessao.estado === 'interrompida' && sessao.motivoInterrupcao && (
+                <p className="text-xs font-body text-muted" style={{ margin: 0 }}>Motivo: {sessao.motivoInterrupcao}</p>
+              )}
+            </div>
+
+            {temSintomas(sessao) && (
+              <div className="rounded-lg px-3 py-2.5 flex flex-col gap-1" style={{ backgroundColor: 'var(--gold-soft)' }}>
+                <span className="text-xs font-body" style={{ color: acentoTexto('#F5B44C'), fontWeight: 600 }}>O que o aluno referiu</span>
+                {sessao.sintomas.durante.trim() && (
+                  <span className="text-sm font-body text-primary" style={{ whiteSpace: 'pre-line' }}><span className="text-faint">Durante: </span>{sessao.sintomas.durante}</span>
+                )}
+                {sessao.sintomas.depois.trim() && (
+                  <span className="text-sm font-body text-primary" style={{ whiteSpace: 'pre-line' }}><span className="text-faint">Depois: </span>{sessao.sintomas.depois}</span>
+                )}
+                <span className="text-2xs font-body text-faint">Nas palavras do aluno. Não é um diagnóstico.</span>
+              </div>
+            )}
+
+            {sessao.notas.trim() && (
+              <p className="text-sm font-body text-muted" style={{ margin: 0, whiteSpace: 'pre-line' }}><span className="text-faint">Notas: </span>{sessao.notas}</p>
+            )}
+
+            <div className="flex flex-col gap-3">
+              {sessao.itens.map((it, i) => (
+                <div key={i} className="flex flex-col gap-1 min-w-0" style={{ borderTop: i === 0 ? 'none' : '1px solid var(--border-hair)', paddingTop: i === 0 ? 0 : 12 }}>
+                  <div className="flex items-baseline justify-between gap-2 min-w-0">
+                    <span className="text-sm font-body text-primary min-w-0" style={{ fontWeight: 600 }}>{it.nome || 'Exercício'}</span>
+                    <EstadoDoItem estado={it.estado} />
+                  </div>
+                  {it.estado !== 'saltado' && it.series.map((s, j) => (
+                    <div key={j} className="flex items-baseline gap-x-2 flex-wrap min-w-0">
+                      <span className="font-mono text-2xs text-faint flex-shrink-0">Série {j + 1}</span>
+                      <span className={`text-sm font-mono ${s.feito ? 'text-primary' : 'text-faint'}`}>{s.feito ? (textoSerieRealizada(s) || 'feita') : 'não feita'}</span>
+                      {s.prescrito && <span className="text-2xs font-body text-faint">prescrito: {s.prescrito}</span>}
+                    </div>
+                  ))}
+                  {it.notas && <p className="text-2xs font-body text-muted" style={{ margin: 0 }}>Nota: {it.notas}</p>}
+                </div>
+              ))}
+            </div>
+
+            <div className="folha-rodape flex gap-2 items-stretch">
+              <button type="button" onClick={() => setAApagar(true)} className="btn btn-ghost" style={{ color: 'var(--rust)' }}>
+                <Trash2 size={14} /> Apagar sessão
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+      {aApagar && (
+        <ConfirmDialog
+          title="Apagar esta sessão?"
+          message="O registo do que o aluno fez neste dia deixa de existir. O programa de treino não é afetado."
+          confirmLabel="Apagar"
+          onCancel={() => setAApagar(false)}
+          onConfirm={async () => { setAApagar(false); if (await onApagar()) onFechar(); }}
+        />
+      )}
+      {aDescartar && (
+        <ConfirmDialog
+          title="Descartar as alterações?"
+          message="O que corrigiu nesta sessão ainda não foi guardado."
+          confirmLabel="Descartar"
+          cancelLabel="Continuar a editar"
+          tone="brass"
+          onCancel={() => setADescartar(false)}
+          onConfirm={() => { const queria = aDescartar; setADescartar(false); if (queria === 'fechar') onFechar(); else setEditando(false); }}
+        />
+      )}
+    </>
+  );
+}
+
+function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, onEliminarPrescricao, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivarPrescricao, onGuardarModelo, onCriarDeModelo, onApagarModelo, usosDoExercicio, onImprimir, onVoltar, execucoes, onCarregarExecucoes, onGuardarSessao, onCorrigirSessao, onApagarSessao, sessaoInicial, onSessaoInicialLida }) {
   const [abertoId, setAbertoId] = useState(null);
   // Um programa que já tem trabalho escrito abre para ser visto; um acabado de
   // criar abre no construtor, que é o que falta fazer-lhe.
@@ -11696,10 +12485,44 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
   const [verArquivados, setVerArquivados] = useState(false);
   const [modeloAApagar, setModeloAApagar] = useState(null);
   const [verBiblioteca, setVerBiblioteca] = useState(false);
+  // Registar uma sessão: { prescricaoId, treinoId }. Ocupa o ecrã, como a
+  // biblioteca; a vista do programa fica como estava por baixo.
+  const [registo, setRegisto] = useState(null);
   const ativos = useMemo(() => prescricoesDoAluno(treinos, student.id, false), [treinos, student.id]);
   const arquivados = useMemo(() => prescricoesDoAluno(treinos, student.id, true), [treinos, student.id]);
   const modelos = treinos.modelos || [];
   const aberta = [...ativos, ...arquivados].find((p) => p.id === abertoId);
+  const execucaoDoAluno = execucoes[student.id] || { estado: 'a-carregar', sessoes: [] };
+  // A sessão aberta na lista. Vem também da ficha 360º (`sessaoInicial`), que
+  // a esquece logo que a recebemos para não reabrir ao voltar.
+  const [sessaoAbertaId, setSessaoAbertaId] = useState(sessaoInicial || null);
+  const sessaoAberta = sessaoAbertaId ? execucaoDoAluno.sessoes.find((s) => s.id === sessaoAbertaId) : null;
+  // O registo do aluno lê-se por pedido: ao abrir os treinos dele, não no arranque.
+  useEffect(() => { onCarregarExecucoes(student.id); }, [student.id]);
+  useEffect(() => { if (sessaoInicial) onSessaoInicialLida(); }, []);
+  // Lida a lista e a sessão pedida já não existe (apagada noutro aparelho):
+  // não fica um pedido pendente à espera de uma sessão que não vem.
+  useEffect(() => {
+    if (sessaoAbertaId && execucaoDoAluno.estado === 'ok' && !sessaoAberta) setSessaoAbertaId(null);
+  }, [sessaoAbertaId, execucaoDoAluno.estado, sessaoAberta]);
+
+  if (registo) {
+    const alvo = [...ativos, ...arquivados].find((p) => p.id === registo.prescricaoId);
+    if (alvo) {
+      return (
+        <RegistarSessao
+          student={student}
+          prescricao={alvo}
+          treinoId={registo.treinoId}
+          biblioteca={treinos.biblioteca}
+          execucao={execucaoDoAluno}
+          onCarregar={onCarregarExecucoes}
+          onGuardar={(sessao) => onGuardarSessao(student.id, sessao)}
+          onSair={() => setRegisto(null)}
+        />
+      );
+    }
+  }
 
   // A biblioteca de modelos ocupa o ecrã e traz o seu próprio cabeçalho. Usar
   // uma ficha cria o programa do aluno e abre-o, como os modelos guardados.
@@ -11744,6 +12567,7 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
           onMudar={onMudarPrescricao}
           onEditar={() => setModo('editar')}
           onImprimir={() => onImprimir(aberta)}
+          onRegistar={(treinoId) => setRegisto({ prescricaoId: aberta.id, treinoId })}
         />
       ) : aberta ? (
         <PrescricaoBuilder
@@ -11827,6 +12651,8 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
             </div>
           )}
 
+          <ListaSessoes execucao={execucaoDoAluno} onAbrir={setSessaoAbertaId} onTentarDeNovo={() => onCarregarExecucoes(student.id, true)} />
+
           {arquivados.length > 0 && (
             <>
               <button
@@ -11861,6 +12687,16 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
           confirmLabel="Apagar"
           onCancel={() => setModeloAApagar(null)}
           onConfirm={() => { onApagarModelo(modeloAApagar.id); setModeloAApagar(null); }}
+        />
+      )}
+
+      {sessaoAberta && (
+        <VerSessaoModal
+          key={sessaoAberta.id}
+          sessao={sessaoAberta}
+          onGuardar={(nova) => onCorrigirSessao(student.id, nova)}
+          onApagar={() => onApagarSessao(student.id, sessaoAberta.id)}
+          onFechar={() => setSessaoAbertaId(null)}
         />
       )}
     </div>
@@ -12833,6 +13669,8 @@ const TIPOS_EVENTO = [
   { id: 'avaliacao', label: 'Avaliações', um: 'Avaliação', cor: '#5DA9E9' },
   { id: 'treino', label: 'Treinos', um: 'Treino', cor: '#6FCF97' },
   { id: 'formulario', label: 'Formulários', um: 'Formulário', cor: '#C77DFF' },
+  // Rosa: as outras seis já ocupam o teal, o vermelho, o dourado, o azul, o verde e o roxo.
+  { id: 'sessao', label: 'Sessões de treino', um: 'Sessão', cor: '#EF88AD' },
 ];
 
 function tipoDeEvento(id) { return TIPOS_EVENTO.find((t) => t.id === id) || TIPOS_EVENTO[0]; }
@@ -12844,7 +13682,7 @@ function instanteDe(dia, hora) {
   return `${dia}T${hora && /^\d{2}:\d{2}$/.test(hora) ? hora : '00:00'}:00`;
 }
 
-function eventosDoAluno(studentId, { sessions, treinos, formularios, student }) {
+function eventosDoAluno(studentId, { sessions, treinos, formularios, student, execucao }) {
   const eventos = [];
 
   (sessions || []).filter((s) => s.studentId === studentId).forEach((s) => {
@@ -12901,6 +13739,24 @@ function eventosDoAluno(studentId, { sessions, treinos, formularios, student }) 
       });
     });
 
+  // O que o treinador registou de cada sessão de treino. O detalhe diz que houve
+  // sintomas, mas não os repete: o texto do aluno lê-se ao abrir a sessão. Entra
+  // na procura, para se achar «ombro» sem ter de abrir todas.
+  ((execucao && execucao.sessoes) || []).forEach((r) => {
+    const resumo = resumoDaSessao(r);
+    eventos.push({
+      id: `ex-${r.id}`, tipo: 'sessao', quando: instanteDe(r.data, r.inicio),
+      titulo: `${r.treinoNome || 'Treino'} realizado`,
+      detalhe: [r.prescricaoNome, seriesFeitasDe(resumo),
+        r.duracaoMin ? `${r.duracaoMin} min` : null,
+        r.esforco !== '' ? `esforço ${r.esforco}/10` : null,
+        r.estado === 'interrompida' ? 'interrompida' : null,
+        temSintomas(r) ? 'sintomas referidos' : null].filter(Boolean).join(' · '),
+      textoBusca: textoDeBuscaDaSessao(r),
+      fonte: r,
+    });
+  });
+
   respostasDoAluno(formularios, studentId).forEach((r) => {
     const alertas = alertasDaResposta(r, modeloPorId(formularios, r.modeloId));
     eventos.push({
@@ -12914,7 +13770,7 @@ function eventosDoAluno(studentId, { sessions, treinos, formularios, student }) 
   });
 
   return eventos
-    .map((e) => ({ ...e, busca: chaveBusca(`${e.titulo} ${e.detalhe}`) }))
+    .map((e) => ({ ...e, busca: chaveBusca(`${e.titulo} ${e.detalhe} ${e.textoBusca || ''}`) }))
     .sort((a, b) => String(b.quando).localeCompare(String(a.quando)));
 }
 
@@ -12952,14 +13808,17 @@ const PERIODOS_FICHA = [
   { id: '365', label: 'Último ano', dias: 365 },
 ];
 
-function FichaView({ student, sessions, treinos, formularios, onOpenSession, onGoToAssessments, onGoToTreinos, onGoToFormularios, onProgresso, onVoltar }) {
+function FichaView({ student, sessions, treinos, formularios, execucao, onCarregarExecucoes, onOpenSession, onGoToAssessments, onGoToTreinos, onGoToSessaoRealizada, onGoToFormularios, onProgresso, onVoltar }) {
   const [procura, setProcura] = useState('');
   const [tipos, setTipos] = useState([]);   // vazio = todos
   const [periodo, setPeriodo] = useState('todos');
+  const execucaoDoAluno = execucao || { estado: 'a-carregar', sessoes: [] };
+  // As sessões de treino lêem-se por pedido, ao abrir a ficha, não no arranque.
+  useEffect(() => { onCarregarExecucoes(student.id); }, [student.id]);
 
   const eventos = useMemo(
-    () => eventosDoAluno(student.id, { sessions, treinos, formularios, student }),
-    [student, sessions, treinos, formularios],
+    () => eventosDoAluno(student.id, { sessions, treinos, formularios, student, execucao: execucaoDoAluno }),
+    [student, sessions, treinos, formularios, execucao],
   );
   const resumo = useMemo(
     () => resumoDoAluno(student.id, { sessions, treinos, formularios }),
@@ -12988,6 +13847,7 @@ function FichaView({ student, sessions, treinos, formularios, onOpenSession, onG
   function abrir(evento) {
     if (evento.tipo === 'avaliacao') { onGoToAssessments(student); return; }
     if (evento.tipo === 'treino') { onGoToTreinos(student); return; }
+    if (evento.tipo === 'sessao') { onGoToSessaoRealizada(student, evento.fonte.id); return; }
     if (evento.tipo === 'formulario') { onGoToFormularios(student); return; }
     onOpenSession(evento.fonte);
   }
@@ -13052,6 +13912,18 @@ function FichaView({ student, sessions, treinos, formularios, onOpenSession, onG
           accent="brass"
         />
       </div>
+
+      {execucaoDoAluno.estado === 'erro' && (
+        // Sem este aviso, uma leitura falhada era uma ficha sem sessões de
+        // treino, e ninguém percebia que faltavam.
+        <div role="alert" className="rounded-lg px-3 py-2.5 flex items-start gap-2.5" style={{ backgroundColor: 'var(--gold-soft)' }}>
+          <Info size={15} className="flex-shrink-0" style={{ color: 'var(--gold)', marginTop: 1 }} />
+          <div className="text-xs font-body text-muted min-w-0">
+            Não foi possível ler as sessões de treino deste aluno, por isso não aparecem na lista.{' '}
+            <button type="button" onClick={() => onCarregarExecucoes(student.id, true)} className="link-sky">Tentar de novo</button>
+          </div>
+        </div>
+      )}
 
       {resumo.formulariosPorPreencher.length > 0 && (
         <div className="card p-3 flex items-center justify-between gap-2 flex-wrap">
@@ -15851,6 +16723,9 @@ function AppInner() {
   const [pedirPeriodo, setPedirPeriodo] = useState(false);
   const [preencherForm, setPreencherForm] = useState(null); // { modelo, resposta }
   const [treinosStudentId, setTreinosStudentId] = useState(null);
+  // Uma sessão realizada a abrir logo que os treinos do aluno aparecem: é o que
+  // a ficha 360º pede ao carregar num «Treino realizado».
+  const [sessaoRealizadaAAbrir, setSessaoRealizadaAAbrir] = useState(null);
   // Qual o bloco que foi alterado noutro sítio. Enquanto estiver preenchido, a
   // aplicação diz-lhe que o que está no ecrã não ficou guardado.
   const [conflito, setConflito] = useState(null);
@@ -16120,6 +16995,14 @@ function AppInner() {
     setCustomCategories(EMPTY_CUSTOM_CATEGORIES);
     setDefinicoes(normalizarDefinicoes(null));
     setTreinos(EMPTY_TREINOS);
+    // O registo de treinos realizados é lido por aluno; o que ficou em cache é
+    // da conta anterior, e sem os carimbos (esquecerVersoes) a primeira
+    // gravação da conta nova daria conflito. A geração faz com que uma leitura
+    // ainda em curso não escreva por cima do que vem a seguir.
+    execucoesRef.current = {};
+    cargasDeExecucoes.current = {};
+    geracaoDeExecucoes.current += 1;
+    setExecucoes({});
     // Os endereços assinados são da conta anterior e expiram; guardá-los só
     // serviria para mostrar fotografias de outra pessoa a carregar em erro.
     setUrlsDeFotos({});
@@ -16148,15 +17031,19 @@ function AppInner() {
   // Separa "não deu para gravar" de "outro dispositivo mexeu nisto primeiro".
   // O segundo caso não é um erro de rede: é trabalho de outra sessão que seria
   // apagado se continuássemos. Mostra-se e pára-se.
+  // Devolve se ficou gravado. Quem não precisa de saber ignora; o registo de
+  // uma sessão precisa: só apaga o rascunho, que vive no aparelho, com um true.
   async function gravarBloco(chave, texto, oQueE) {
     try {
       await writeStoredValue(chave, texto);
+      return true;
     } catch (e) {
-      if (e && e.name === 'ConflitoDeGravacao') { setConflito(chave); return; }
+      if (e && e.name === 'ConflitoDeGravacao') { setConflito(chave); return false; }
       // O erro do servidor vai inteiro para a consola: é o que permite
       // perceber o que se passou sem ter de adivinhar.
       console.error(`[PTMANAGER] falhou a gravar "${chave}"`, e);
       showToast(`${oQueE}: ${descreverErroDeGravacao(e)}`, 'error');
+      return false;
     }
   }
 
@@ -16273,6 +17160,114 @@ function AppInner() {
     await gravarBloco('formularios', JSON.stringify(normalizado), 'Formulário');
   }
 
+  /* ------------------ treino realizado: uma linha por aluno ------------------
+     `execucoes:<idDoAluno>`, lida por pedido (ao abrir o registo, o histórico
+     ou a ficha do aluno) e nunca no arranque. Não vive dentro de `treinos`: o
+     registo cresce sem fim e cada gravação reescreve o bloco inteiro. */
+  // { [idAluno]: { estado: 'a-carregar' | 'ok' | 'erro', sessoes } }. O ref
+  // existe pelo mesmo motivo do `treinosRef`: quem grava tem de ver o valor
+  // mais recente, não o do render.
+  const [execucoes, setExecucoes] = useState({});
+  const execucoesRef = useRef({});
+  const cargasDeExecucoes = useRef({});
+  const geracaoDeExecucoes = useRef(0);
+  const filaDeExecucoes = useRef(null);
+  if (!filaDeExecucoes.current) filaDeExecucoes.current = criarFilaPorChave();
+
+  function guardarExecucoesDe(idAluno, valor) {
+    execucoesRef.current = { ...execucoesRef.current, [idAluno]: valor };
+    setExecucoes(execucoesRef.current);
+  }
+
+  // Várias vistas podem pedir o mesmo aluno ao mesmo tempo; esperam todas pela
+  // mesma leitura. Um erro fica no aluno (com «Tentar de novo»), não no aviso
+  // global de `loadAll`.
+  function carregarExecucoes(idAluno, forcar = false) {
+    if (!idAluno) return Promise.resolve();
+    const atual = execucoesRef.current[idAluno];
+    if (!forcar && atual && atual.estado === 'ok') return Promise.resolve();
+    if (cargasDeExecucoes.current[idAluno]) return cargasDeExecucoes.current[idAluno];
+    const geracao = geracaoDeExecucoes.current;
+    guardarExecucoesDe(idAluno, { estado: 'a-carregar', sessoes: [] });
+    const leitura = (async () => {
+      let resultado;
+      try {
+        const r = storageOk ? await readStoredValue(chaveExecucoes(idAluno)) : null;
+        resultado = { estado: 'ok', ...normalizarExecucoes(r && r.value ? JSON.parse(r.value) : null) };
+      } catch (e) {
+        console.error(`[PTMANAGER] falhou a ler o registo de treinos do aluno ${idAluno}`, e);
+        resultado = { estado: 'erro', sessoes: [] };
+      }
+      if (geracao === geracaoDeExecucoes.current) guardarExecucoesDe(idAluno, resultado);
+    })().finally(() => { if (geracao === geracaoDeExecucoes.current) delete cargasDeExecucoes.current[idAluno]; });
+    cargasDeExecucoes.current[idAluno] = leitura;
+    return leitura;
+  }
+
+  // `atualizar` recebe { estado, sessoes } e devolve { sessoes }. Só grava
+  // depois de o aluno ter sido lido (senão a gravação segue por INSERT e, se
+  // já havia linha, dá um conflito que não é conflito nenhum) e uma de cada vez
+  // por aluno. Devolve true só se ficou gravado: se não, o ecrã volta ao que
+  // estava, para não mostrar como registado o que não está.
+  async function persistExecucoes(idAluno, atualizar) {
+    const atual = execucoesRef.current[idAluno];
+    if (!podeGravarExecucoes(atual)) {
+      showToast('O registo deste aluno ainda não foi lido. Tente outra vez daqui a pouco.', 'error');
+      return false;
+    }
+    const seguinte = { estado: 'ok', ...normalizarExecucoes(atualizar(atual)) };
+    guardarExecucoesDe(idAluno, seguinte);
+    if (!storageOk) return true;
+    const chave = chaveExecucoes(idAluno);
+    const gravou = await filaDeExecucoes.current(chave, () => gravarBloco(chave, JSON.stringify({ sessoes: seguinte.sessoes }), 'Sessão'));
+    if (!gravou && execucoesRef.current[idAluno] === seguinte) guardarExecucoesDe(idAluno, atual);
+    return gravou;
+  }
+
+  // A sessão que o treinador fechou. Garante a leitura do registo do aluno
+  // antes de gravar; devolve se ficou gravado, para o rascunho só se apagar então.
+  async function guardarSessaoRealizada(idAluno, sessao) {
+    await carregarExecucoes(idAluno);
+    const gravou = await persistExecucoes(idAluno, (atual) => ({ sessoes: [...atual.sessoes, sessao] }));
+    if (gravou) showToast('Sessão registada.');
+    return gravou;
+  }
+
+  // Corrigir ou apagar uma sessão já gravada. Passam pela mesma fila e pela mesma
+  // regra de só gravar depois de ler; apanham a sessão pelo id no valor atual,
+  // não pela cópia que estava no ecrã.
+  async function corrigirSessaoRealizada(idAluno, sessao) {
+    await carregarExecucoes(idAluno);
+    const gravou = await persistExecucoes(idAluno, (atual) => ({ sessoes: atual.sessoes.map((s) => (s.id === sessao.id ? sessao : s)) }));
+    if (gravou) showToast('Sessão atualizada.');
+    return gravou;
+  }
+
+  async function apagarSessaoRealizada(idAluno, idSessao) {
+    await carregarExecucoes(idAluno);
+    const gravou = await persistExecucoes(idAluno, (atual) => ({ sessoes: atual.sessoes.filter((s) => s.id !== idSessao) }));
+    if (gravou) showToast('Sessão apagada.');
+    return gravou;
+  }
+
+  // Ao apagar um aluno: o registo dele são dados de saúde e não ficam para trás.
+  // Lê primeiro para ter o carimbo de versão; sem linha, não há nada a limpar.
+  async function limparExecucoes(idAluno) {
+    if (storageOk) {
+      try {
+        const chave = chaveExecucoes(idAluno);
+        const lido = await readStoredValue(chave);
+        if (lido) await filaDeExecucoes.current(chave, () => gravarBloco(chave, JSON.stringify({ sessoes: [] }), 'Sessões realizadas'));
+      } catch (e) {
+        console.error(`[PTMANAGER] falhou a limpar o registo de treinos do aluno ${idAluno}`, e);
+        showToast('Não foi possível apagar as sessões registadas deste aluno.', 'error');
+      }
+    }
+    const { [idAluno]: removido, ...resto } = execucoesRef.current;
+    execucoesRef.current = resto;
+    setExecucoes(resto);
+  }
+
   // A assinatura segue o caminho das fotografias: sobe para o balde e fica
   // registada no bloco `fotos`. É uma imagem pequena, mas são muitas ao longo
   // dos anos, e o bloco dos formulários viaja inteiro a cada gravação.
@@ -16361,6 +17356,7 @@ function AppInner() {
     setTreinosStudentId(null);
     setFormulariosStudentId(null);
     setFichaStudentId(null);
+    setSessaoRealizadaAAbrir(null);
     setView(v);
   }
 
@@ -16492,6 +17488,7 @@ function AppInner() {
   function deleteStudent(id) {
     persistStudents(students.filter((s) => s.id !== id));
     persistSessions(sessions.filter((s) => s.studentId !== id));
+    limparExecucoes(id);
     setShowStudentModal(false);
     showToast('Aluno excluído.');
   }
@@ -16818,6 +17815,11 @@ function AppInner() {
   function goToTreinos(student) {
     setShowStudentModal(false);
     setTreinosStudentId(student.id);
+  }
+
+  function goToSessaoRealizada(student, idSessao) {
+    setSessaoRealizadaAAbrir(idSessao);
+    goToTreinos(student);
   }
 
   function criarPrescricao(studentId) {
@@ -17495,9 +18497,12 @@ function AppInner() {
             onOpenSession={openEditSession}
             onGoToAssessments={(st) => { setFichaStudentId(null); goToAssessments(st); }}
             onGoToTreinos={(st) => { setFichaStudentId(null); goToTreinos(st); }}
+            onGoToSessaoRealizada={(st, idSessao) => { setFichaStudentId(null); goToSessaoRealizada(st, idSessao); }}
             onGoToFormularios={(st) => { setFichaStudentId(null); goToFormularios(st); }}
             onProgresso={printProgresso}
             onVoltar={() => setFichaStudentId(null)}
+            execucao={execucoes[fichaStudentId]}
+            onCarregarExecucoes={carregarExecucoes}
           />
         ) : formulariosStudentId && students.some((st) => st.id === formulariosStudentId) ? (
           <FormulariosView
@@ -17532,6 +18537,13 @@ function AppInner() {
             usosDoExercicio={usosDoExercicio}
             onImprimir={printTreino}
             onVoltar={() => setTreinosStudentId(null)}
+            execucoes={execucoes}
+            onCarregarExecucoes={carregarExecucoes}
+            onGuardarSessao={guardarSessaoRealizada}
+            onCorrigirSessao={corrigirSessaoRealizada}
+            onApagarSessao={apagarSessaoRealizada}
+            sessaoInicial={sessaoRealizadaAAbrir}
+            onSessaoInicialLida={() => setSessaoRealizadaAAbrir(null)}
           />
         ) : (
         <>

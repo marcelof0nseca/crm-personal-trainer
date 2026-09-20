@@ -13734,7 +13734,7 @@ function eventosDoAluno(studentId, { sessions, treinos, formularios, student, ex
         titulo: p.nome || 'Programa de treino',
         detalhe: [p.objetivo, `${plural((p.treinos || []).length, 'treino', 'treinos')}`,
           `${plural(exercicios, 'exercício', 'exercícios')}`,
-          p.ativo === false ? 'arquivado' : null].filter(Boolean).join(' · '),
+          p.arquivado ? 'arquivado' : null].filter(Boolean).join(' · '),
         fonte: p,
       });
     });
@@ -14243,6 +14243,16 @@ function ExemploPrintDoc({ trainerName, userEmail, timbre }) {
 // um transform: mudar a largura do A4 daria uma previsão que não corresponde
 // ao que sai impresso, que é justamente o que isto existe para evitar.
 const LARGURA_FOLHA_PX = 824;   // 190 mm de conteúdo + 2 × 14 mm de margem, a 96 dpi
+
+// O que o e-mail de pré-visualização diz que segue em anexo. Estava fixo em «a
+// sua avaliação física» para tudo o que não fosse o plano de treino.
+const ASSUNTO_DA_FOLHA = {
+  treino: 'o seu plano de treino',
+  avaliacao: 'a sua avaliação física',
+  progresso: 'o seu relatório de progresso',
+  formulario: 'o formulário preenchido',
+  relatorio: 'o relatório do período',
+};
 
 function PrevisualizacaoModal({ titulo, aluno, assunto, onImprimir, onClose, children }) {
   const caixa = useRef(null);
@@ -18693,7 +18703,7 @@ function AppInner() {
         <PrevisualizacaoModal
           titulo={tituloDaFolha(previaJob)}
           aluno={students.find((st) => st.id === previaJob.studentId)}
-          assunto={previaJob.tipo === 'treino' ? 'o seu plano de treino' : 'a sua avaliação física'}
+          assunto={ASSUNTO_DA_FOLHA[previaJob.tipo] || 'o documento'}
           onImprimir={() => { setPrintJob(previaJob); setPreviaJob(null); }}
           onClose={() => setPreviaJob(null)}
         >

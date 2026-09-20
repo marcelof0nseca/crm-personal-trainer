@@ -75,6 +75,8 @@ técnica — é uma decisão de produto, e condiciona metade do que se pode ofer
 | `scripts/gerar-modelos-treino.mjs` | Gera `modelos-treino.ts` e `exercicios-modelos.ts`. Funções puras, sem aleatoriedade: duas corridas dão o mesmo resultado. Dados de origem e regras em `scripts/dados-modelos-treino/`; `validar.mjs` confere contagens, referências e a aritmética dos blocos temporizados |
 | `src/data/sessoes.ts` | À mão. A lógica pura do **treino realizado**: normalização, texto das séries, «última vez», campos que cada série pede, rascunho, fila de gravações. Sem React nem Supabase, para se testar sozinha |
 | `scripts/validar-sessoes.mjs` | `node scripts/validar-sessoes.mjs`. Confere a lógica acima, incluindo a fila de gravações contra um armazenamento falso com o mesmo carimbo de versão do real |
+| `src/data/copia.ts` | À mão. A lógica pura da **cópia de segurança**: montar o ficheiro, lê-lo (os antigos também) e decidir o que muda nas sessões ao restaurar. Sem React nem Supabase |
+| `scripts/validar-copia.mjs` | `node scripts/validar-copia.mjs`. Confere `copia.ts`. Usa `scripts/resolver-extensao-ts.mjs`, um gancho do Node que resolve `import './sessoes'` sem extensão como o Vite, para o código da aplicação não ter de escrever `.ts` |
 | `scripts/gerar-exercicios.mjs` | Gera o ficheiro acima a partir do catálogo MFIT (que não está no repositório) |
 | `scripts/exercicios-legado.json` | Os 202 exercícios que a aplicação tinha antes do catálogo |
 | `supabase/functions/` | 5 Edge Functions: `admin-overview`, `create-checkout-session`, `create-mbway-checkout-session`, `create-portal-session`, `stripe-webhook` |
@@ -250,14 +252,42 @@ Consequências que decidem quase tudo:
     rascunho antigo não se aplica sozinho: pergunta-se «Continuar a sessão?».
   - **Os sintomas são dados de saúde**, ditos como o que o aluno referiu, com a
     ressalva «não é um diagnóstico» (10b), em dourado e nunca em vermelho.
-    Apagar o aluno esvazia-lhe o registo (`limparExecucoes`).
+    Apagar o aluno apaga-lhe a linha do registo e os rascunhos deste
+    aparelho (`limparExecucoes`).
   - **Ficam de fora**: PDF ou relatório das sessões, recordes/1RM/gráficos,
     esquerdo e direito por série, e ligar «Aula dada» da agenda ao registo.
-    E o **backup, o restauro e «Apagar todos os dados»** só conhecem 5 das 8
-    chaves (faltam `treinos`, `formularios` e `definicoes`) — e portanto também
-    não conhecem esta. É uma lacuna anterior a este registo, à espera de decisão
-    do dono do produto: mexe no restauro, e a política de privacidade promete
-    exportar e apagar «todos os dados».
+- **A cópia de segurança, o restauro e o «Apagar todos os dados» cobrem tudo o
+  que a conta guarda.** Estiveram meses a cobrir 5 das 8 chaves (faltavam
+  `treinos`, `formularios` e `definicoes`) enquanto a política de privacidade
+  prometia «todos os dados». **Uma chave nova de `app_data` tem de entrar nos
+  três sítios**: em `juntarCopia` (o que se exporta, com `montarCopia`), em
+  `restoreBackup`, e em `resetAllData`. A lógica pura vive em
+  `src/data/copia.ts` (`montarCopia`, `lerCopia`, `resumoDaCopia`,
+  `planoDeSessoes`) e testa-se com `node scripts/validar-copia.mjs`.
+  - **O ficheiro tem versão** (`versao: 2`). Um ficheiro antigo (sem o campo)
+    continua a restaurar-se, e **o que ele não leva não se toca**: programas,
+    formulários, definições e sessões ficam como estão, e o aviso di-lo. Uma
+    chave presente com a forma errada recusa o ficheiro inteiro — quem restaura
+    substitui os dados que tem, e restaurar metade seria pior.
+  - **As sessões de treino seguem o aluno** (`planoDeSessoes`). Numa cópia nova, no
+    fim as da conta são as do ficheiro e só essas; numa cópia antiga, as dos
+    alunos que ficam não se tocam, e as de quem sai da lista saem com ele. As
+    linhas lêem-se antes de se escrever, pelo carimbo de versão.
+  - **A cópia falha alto.** `juntarCopia` lê as sessões de cada aluno, e se um
+    não se conseguir ler não gera nada: uma cópia que se diz completa sem as
+    sessões dele era pior do que nenhuma (a armadilha do «erro de leitura
+    engolido»).
+  - **`apagarStoredValue` apaga a linha de vez** (só as `execucoes:*` a usam; as
+    outras chaves esvaziam-se). O `DELETE` leva sempre a conta e a chave, e o
+    «Apagar tudo» lista as linhas `execucoes:*` da conta
+    (`listarChavesDeExecucoes`) em vez de confiar na lista de alunos, para
+    apanhar também as de um aluno que já não existe. Os rascunhos deste
+    aparelho (`ptmanager:sessao:*`) saem no «Apagar tudo» e ao eliminar o aluno.
+  - **Ainda não cobre eliminar um aluno**: `deleteStudent` tira o aluno, a
+    agenda e as sessões de treino dele, mas **deixa os programas de treino, as
+    respostas a formulários (PAR-Q, assinaturas) e as fotografias**, que ficam
+    órfãos e invisíveis. Só o «Apagar todos os dados» os apaga. É a mesma classe
+    de lacuna, à espera de decisão do dono do produto.
 
 ### O carimbo de versão
 
@@ -642,7 +672,14 @@ padrão funciona. O treino realizado repete-o com o código pronto em
 `scripts/validar-sessoes.mjs`: a lógica está em `src/data/sessoes.ts`, sem
 React nem Supabase, e a fila de gravações corre contra um armazenamento falso
 que tem o mesmo carimbo de versão do real. **Corre-se antes de mexer no
-registo:** `node scripts/validar-sessoes.mjs`.
+registo:** `node scripts/validar-sessoes.mjs`; e `node scripts/validar-copia.mjs`
+antes de mexer na cópia de segurança.
+
+O que fala com o Supabase e não se pode testar ao vivo (apagar uma linha, listar
+as `execucoes:*`) testou-se extraindo as funções do `painel-pt.tsx` por texto e
+correndo-as contra um cliente falso que **aplica os filtros a sério** — é assim
+que se confirma que um `DELETE` nunca sai sem a conta e a chave, e que não
+apanha as linhas de outra conta.
 
 **Reaproveitar um componente real para uma pré-visualização isolada** (a
 landing a mostrar `SessionCard`/`StatCard`/`ExercicioVista`, ou gerar
@@ -702,7 +739,7 @@ existe de verdade.
 | **Ficha 360º** | Aulas, faltas, avaliações, treinos, **sessões de treino realizadas** e formulários numa linha só, por aluno · procura livre sobre tudo · filtros por tipo e período · resumo com comparência e créditos · os pontos a ter em conta em cima · tocar numa sessão de treino abre-a no histórico do aluno |
 | **Formulários** | PAR-Q, anamnese e consentimentos (treino, imagem, dados de saúde) · construtor próprio · assinatura desenhada · PDF timbrado · pontos a ter em conta, ditos como avisos |
 | **Segurança** | Auth, RLS por utilizador, Turnstile, termos e política em pt-PT, dados na UE, exportação e apagamento · **início de sessão** com olho para mostrar/esconder a palavra-passe e **recuperar palavra-passe** por e-mail (`LoginScreen`, modo `recover`) · `ResetPasswordScreen` dedicado, com aviso próprio se o link já não for válido em vez do erro em bruto do Supabase |
-| **Fiabilidade** | Gravação imediata, backup e restauro, **carimbo de versão contra perda silenciosa** |
+| **Fiabilidade** | Gravação imediata, **carimbo de versão contra perda silenciosa**, e **backup, restauro e «Apagar todos os dados» que cobrem tudo o que a conta guarda** (alunos, agenda, finanças, fotografias, definições, programas de treino, formulários e sessões de treino realizadas) — ficheiro com versão, ficheiros antigos ainda se restauram, e a cópia falha em vez de sair incompleta |
 | **Admin** | Subscrições, receita, churn, alertas · **contas em trial contam como "ativas" (usam a aplicação) mas ficam de fora do MRR** (`pagante`, só quem já paga), com a contagem visível na legenda de "Contas ativas" e um filtro próprio "Em trial" |
 | **Painel** | Navega para qualquer mês, para trás e para a frente (`monthCursor`) — a receita, a atividade e o gráfico por aluno seguem o mês visto; "hoje" e "esta semana" continuam presos ao presente, que não faz sentido navegar |
 | **Desenho de aplicação** | Escala de forma/toque/movimento em tokens CSS (`--r-*`, `--tap`, `--ease-folha`) · barra de topo contextual e barra de separadores em vidro translúcido (`backdrop-filter`, com salvaguarda para sem suporte e para transparência reduzida) · **modais viram folhas** que se puxam para fechar, com resistência progressiva no limite e projeção do lançamento (`useFolhaArrastavel`) · estados de premir, carregar (esqueleto) e vazio revistos · botões feitos à mão convergiram para `.btn`/`.btn-primary`/`.btn-ghost` |
@@ -808,10 +845,13 @@ Combinado por níveis, do mais barato ao mais caro:
 21. ~~Registo do treino realizado, feito pelo treinador~~ **feito**
     — uma linha por aluno (`execucoes:<id>`), lida por pedido, gravada depois
     de ler e uma de cada vez; rascunho no aparelho; histórico, ver/corrigir/
-    apagar e o novo tipo na Ficha 360º. **SQL por correr** (o `check` de
-    `data_key`); **rever a política de privacidade** (não nomeia treinos nem
-    sintomas, e isto acrescenta dados de saúde); backup/restauro/«Apagar todos
-    os dados» à espera de decisão
+    apagar e o novo tipo na Ficha 360º. SQL corrido (o `check` de `data_key`).
+    Backup, restauro e «Apagar todos os dados» passaram a cobrir tudo, e a
+    política de privacidade e os termos nomeiam agora os treinos, os
+    formulários de saúde e os sintomas (atualizados a 20/09/2026) — **falta a
+    revisão por advogado**, que o cabeçalho de `LegalDocs.tsx` já pedia, e
+    **eliminar um aluno continua a deixar programas, formulários e fotografias**
+    (ver a secção 4)
 22. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
 23. Decisões de produto — ver secção 10
 

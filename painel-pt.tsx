@@ -46,11 +46,14 @@ import {
 // gravações) num ficheiro à parte, testável sem browser -- ver
 // scripts/validar-sessoes.mjs.
 import {
-  chaveExecucoes, normalizarExecucoes, criarFilaPorChave, podeGravarExecucoes,
+  chaveExecucoes, PREFIXO_CHAVE_EXECUCOES, normalizarExecucoes, criarFilaPorChave, podeGravarExecucoes,
   normalizarSessaoRealizada, construirItens, resumoDaSessao, ultimaVezDoExercicio, valoresSugeridos, camposRealizaveis,
   textoSerieRealizada, ordenarSessoes, temSintomas, fechoDaSessao, sessaoCorrigida, textoDeBuscaDaSessao, estadoDoItem,
-  VERSAO_RASCUNHO, chaveRascunho, lerRascunho, rascunhoTemTrabalho, seriesFeitasDoRascunho,
+  VERSAO_RASCUNHO, PREFIXO_RASCUNHO, chaveRascunho, lerRascunho, rascunhoTemTrabalho, seriesFeitasDoRascunho,
 } from './src/data/sessoes';
+// A cópia de segurança, também em lógica pura: o que se exporta, como se lê um
+// ficheiro e o que muda nas sessões ao restaurar -- scripts/validar-copia.mjs.
+import { montarCopia, lerCopia, resumoDaCopia, planoDeSessoes } from './src/data/copia';
 
 /* ============================== LOGO ============================== */
 
@@ -2791,9 +2794,10 @@ async function fotosComImagem(photos) {
   return saida;
 }
 
-function downloadBackup(students, sessions, finances, photos, customCategories) {
-  const data = { exportedAt: new Date().toISOString(), alunos: students, agenda: sessions, financas: finances, fotos: photos, categorias: customCategories };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+// `copia` vem de `montarCopia`: tudo o que a conta guarda, e não só o que o
+// ecrã de definições tem à mão.
+function downloadBackup(copia) {
+  const blob = new Blob([JSON.stringify(copia, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -2802,6 +2806,32 @@ function downloadBackup(students, sessions, finances, photos, customCategories) 
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// O aviso de «Restaurar backup»: o que o ficheiro leva e, se vem de uma versão
+// anterior, o que não leva -- para ninguém achar que restaura mais do que
+// restaura.
+function textoDoRestauro(copia) {
+  const r = resumoDaCopia(copia);
+  const itens = [
+    plural(r.alunos, 'aluno', 'alunos'),
+    plural(r.aulas, 'aula', 'aulas'),
+    plural(r.lancamentos, 'lançamento', 'lançamentos'),
+    plural(r.fotos, 'foto', 'fotos'),
+  ];
+  if (r.completa) {
+    itens.push(
+      plural(r.programas, 'programa de treino', 'programas de treino'),
+      plural(r.sessoes, 'sessão de treino registada', 'sessões de treino registadas'),
+      plural(r.respostas, 'resposta a formulário', 'respostas a formulários'),
+    );
+  }
+  const ultimo = itens.pop();
+  let texto = `Isto vai SUBSTITUIR os dados atuais pelo conteúdo do ficheiro: ${itens.join(', ')} e ${ultimo}.`;
+  if (!r.completa) {
+    texto += '\n\nEste ficheiro vem de uma versão anterior e não leva programas de treino, formulários, definições nem sessões registadas. Esses ficam como estão, exceto as sessões dos alunos que não constem do ficheiro, que saem com eles.';
+  }
+  return `${texto}\n\nEsta ação não pode ser desfeita.`;
 }
 
 function resizePhoto(file, maxDim, quality) {
@@ -3087,6 +3117,66 @@ async function writeStoredValue(key, value) {
   if (customStorage) return customStorage.set(key, value, false);
   window.localStorage.setItem(key, value);
   return null;
+}
+
+// Apaga a linha de vez, em vez de a esvaziar. Serve o que é dado de saúde e não
+// pode ficar para trás: o registo de sessões de um aluno que se elimina e o
+// «Apagar todos os dados». Não compara a data de versão de propósito -- a
+// intenção é apagar o que lá estiver.
+async function apagarStoredValue(key) {
+  if (supabaseConfigured && supabase) {
+    const userId = await currentSupabaseUserId();
+    if (!userId) throw new Error('Utilizador não autenticado.');
+    const { error } = await supabase
+      .from('app_data')
+      .delete()
+      .eq('user_id', userId)
+      .eq('data_key', key);
+    if (error) throw error;
+    // Sem linha, a próxima gravação segue por INSERT.
+    versoesConhecidas.delete(key);
+    return;
+  }
+  const customStorage = typeof window !== 'undefined' ? (window as any).storage : null;
+  if (customStorage) { if (customStorage.delete) await customStorage.delete(key, false); return; }
+  window.localStorage.removeItem(key);
+}
+
+// Todas as linhas `execucoes:*` desta conta, incluindo as de alunos que já não
+// estão na lista. É o que deixa o «Apagar todos os dados» e o restauro
+// apanharem tudo, e não só o que a lista de alunos conhece.
+async function listarChavesDeExecucoes() {
+  if (supabaseConfigured && supabase) {
+    const userId = await currentSupabaseUserId();
+    if (!userId) return [];
+    const { data, error } = await supabase
+      .from('app_data')
+      .select('data_key')
+      .eq('user_id', userId)
+      .like('data_key', `${PREFIXO_CHAVE_EXECUCOES}%`);
+    if (error) throw error;
+    return (data || []).map((linha) => linha.data_key);
+  }
+  if (typeof window === 'undefined' || (window as any).storage) return [];
+  const chaves = [];
+  for (let i = 0; i < window.localStorage.length; i += 1) {
+    const chave = window.localStorage.key(i);
+    if (chave && chave.startsWith(PREFIXO_CHAVE_EXECUCOES)) chaves.push(chave);
+  }
+  return chaves;
+}
+
+// Os rascunhos de sessões a meio vivem só neste aparelho, mas levam o que o
+// treinador escreveu sobre o aluno. Saem com ele e no «Apagar todos os dados».
+function apagarRascunhosCom(prefixo) {
+  try {
+    const chaves = [];
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const chave = window.localStorage.key(i);
+      if (chave && chave.startsWith(prefixo)) chaves.push(chave);
+    }
+    chaves.forEach((chave) => window.localStorage.removeItem(chave));
+  } catch (e) { /* sem armazenamento: não há rascunhos */ }
 }
 
 async function readSubscriptionStatus() {
@@ -5341,7 +5431,7 @@ function SettingsBlock({ title, description, children }) {
 
 function SettingsModal({
   user, subscription, students, sessions, finances, photos, customCategories,
-  onClose, onSignOut, onRefreshSubscription, onChangePassword, onReset, onRestore,
+  onClose, onSignOut, onRefreshSubscription, onChangePassword, onReset, onRestore, onJuntarCopia,
   trainerName, onSaveTrainerName, definicoes, onSaveHorario, onSaveLembretes, permissaoNotificacoes,
   onCopiarHorario, onRestaurarHorario, onSaveDuracaoSlot, onSaveReposicao, onSavePrecoHora,
   onSaveTimbre, onSaveSeccao, onCarregarLogo, onPreverTimbre,
@@ -5406,12 +5496,7 @@ function SettingsModal({
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const data = JSON.parse(evt.target.result);
-        if (!Array.isArray(data.alunos) || !Array.isArray(data.agenda)) throw new Error('formato inválido');
-        if (!Array.isArray(data.financas)) data.financas = [];
-        if (!Array.isArray(data.fotos)) data.fotos = [];
-        if (!data.categorias) data.categorias = EMPTY_CUSTOM_CATEGORIES;
-        setPendingRestore(data);
+        setPendingRestore(lerCopia(evt.target.result));
       } catch (err) {
         setRestoreError('Não foi possível ler este ficheiro. Verifique se é uma cópia de segurança exportada por esta aplicação.');
       }
@@ -6304,13 +6389,17 @@ function SettingsModal({
                   </div>
                 </SettingsBlock>
 
-                <SettingsBlock title="Cópia de segurança" description="Transfira um ficheiro com alunos, aulas, avaliações, finanças e fotos. Pode restaurá-lo aqui se precisar.">
+                <SettingsBlock title="Cópia de segurança" description="Transfira um ficheiro com tudo o que tem na aplicação: alunos, aulas, avaliações, finanças, fotografias, programas de treino, sessões registadas, formulários e definições. Pode restaurá-lo aqui se precisar.">
                   <div className="flex gap-2 flex-wrap">
                     <button
                       onClick={async () => {
                         setBackupBusy(true);
+                        setRestoreError('');
                         try {
-                          downloadBackup(students, sessions, finances, await fotosComImagem(photos), customCategories);
+                          downloadBackup(await onJuntarCopia());
+                        } catch (e) {
+                          // Uma cópia que se diz completa e não é, é pior do que nenhuma: falha inteira.
+                          onToast((e && e.message) || 'Não foi possível preparar a cópia de segurança.', 'error');
                         } finally { setBackupBusy(false); }
                       }}
                       type="button"
@@ -6319,7 +6408,7 @@ function SettingsModal({
                       style={{ fontSize: 12 }}
                     >
                       {backupBusy
-                        ? <><Loader2 size={14} className="spin" /> A juntar as fotos...</>
+                        ? <><Loader2 size={14} className="spin" /> A preparar a cópia...</>
                         : <><Download size={14} /> Exportar backup</>}
                     </button>
                     <button onClick={() => fileRef.current?.click()} type="button" className="btn btn-ghost" style={{ fontSize: 12 }}>
@@ -6329,12 +6418,13 @@ function SettingsModal({
                   </div>
                   {restoreError && <div className="text-2xs font-body text-rust">{restoreError}</div>}
                   <p className="text-2xs font-body text-faint">
-                    O ficheiro exportado não é cifrado: contém nomes, medidas e fotografias em texto
-                    legível. Guarde-o em local seguro e evite enviá-lo por canais não protegidos.
+                    O ficheiro exportado não é cifrado: contém nomes, medidas, fotografias e registos de
+                    saúde, como sintomas, em texto legível. Guarde-o em local seguro e evite enviá-lo por
+                    canais não protegidos.
                   </p>
                 </SettingsBlock>
 
-                <SettingsBlock title="Apagar todos os dados" description="Remove alunos, aulas, avaliações, finanças e fotos desta aplicação. Esta ação não pode ser desfeita.">
+                <SettingsBlock title="Apagar todos os dados" description="Remove alunos, aulas, avaliações, finanças, fotografias, programas de treino, sessões registadas, formulários e definições desta aplicação. Esta ação não pode ser desfeita.">
                   <button onClick={() => setConfirmReset(true)} type="button" className="btn btn-danger self-start" style={{ fontSize: 12 }}>
                     <Trash2 size={14} /> Apagar tudo
                   </button>
@@ -6362,14 +6452,21 @@ function SettingsModal({
       </div>
 
       {confirmReset && (
-        <ConfirmDialog title="Apagar todos os dados" message="Tem a certeza? Todos os dados serão permanentemente removidos." onCancel={() => setConfirmReset(false)} onConfirm={onReset} />
+        <ConfirmDialog
+          title="Apagar todos os dados"
+          message={'Tem a certeza? Vão ser permanentemente removidos os alunos, as aulas e avaliações, as finanças, as fotografias, os programas de treino, as sessões registadas, os formulários e as definições.\n\nSe ainda não exportou uma cópia de segurança, faça-o antes.'}
+          confirmLabel="Apagar tudo"
+          onCancel={() => setConfirmReset(false)}
+          onConfirm={onReset}
+        />
       )}
       {pendingRestore && (
         <ConfirmDialog
           title="Restaurar backup"
-          message={`Isto vai SUBSTITUIR os dados atuais pelos ${plural(pendingRestore.alunos.length, 'aluno', 'alunos')}, ${plural(pendingRestore.agenda.length, 'aula', 'aulas')}, ${plural(pendingRestore.financas.length, 'lançamento', 'lançamentos')} e ${plural(pendingRestore.fotos.length, 'foto', 'fotos')} do ficheiro. Esta ação não pode ser desfeita.`}
+          message={textoDoRestauro(pendingRestore)}
+          confirmLabel="Restaurar"
           onCancel={() => setPendingRestore(null)}
-          onConfirm={() => { onRestore(pendingRestore.alunos, pendingRestore.agenda, pendingRestore.financas, pendingRestore.fotos, pendingRestore.categorias); setPendingRestore(null); }}
+          onConfirm={() => { onRestore(pendingRestore); setPendingRestore(null); }}
         />
       )}
       {legalDoc && <LegalModal docId={legalDoc} supportEmail={SUPPORT_EMAIL} onClose={() => setLegalDoc(null)} />}
@@ -12497,8 +12594,11 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
   // a esquece logo que a recebemos para não reabrir ao voltar.
   const [sessaoAbertaId, setSessaoAbertaId] = useState(sessaoInicial || null);
   const sessaoAberta = sessaoAbertaId ? execucaoDoAluno.sessoes.find((s) => s.id === sessaoAbertaId) : null;
-  // O registo do aluno lê-se por pedido: ao abrir os treinos dele, não no arranque.
-  useEffect(() => { onCarregarExecucoes(student.id); }, [student.id]);
+  // O registo do aluno lê-se por pedido: ao abrir os treinos dele, não no
+  // arranque. `semRegisto` volta a ser verdadeiro quando o restauro ou o
+  // «Apagar todos os dados» esquece o que estava em cache -- e lê-se outra vez.
+  const semRegisto = !execucoes[student.id];
+  useEffect(() => { onCarregarExecucoes(student.id); }, [student.id, semRegisto]);
   useEffect(() => { if (sessaoInicial) onSessaoInicialLida(); }, []);
   // Lida a lista e a sessão pedida já não existe (apagada noutro aparelho):
   // não fica um pedido pendente à espera de uma sessão que não vem.
@@ -13813,8 +13913,9 @@ function FichaView({ student, sessions, treinos, formularios, execucao, onCarreg
   const [tipos, setTipos] = useState([]);   // vazio = todos
   const [periodo, setPeriodo] = useState('todos');
   const execucaoDoAluno = execucao || { estado: 'a-carregar', sessoes: [] };
-  // As sessões de treino lêem-se por pedido, ao abrir a ficha, não no arranque.
-  useEffect(() => { onCarregarExecucoes(student.id); }, [student.id]);
+  // As sessões de treino lêem-se por pedido, ao abrir a ficha, não no arranque
+  // (e outra vez se o restauro ou o «Apagar tudo» esqueceu a cache).
+  useEffect(() => { onCarregarExecucoes(student.id); }, [student.id, !execucao]);
 
   const eventos = useMemo(
     () => eventosDoAluno(student.id, { sessions, treinos, formularios, student, execucao: execucaoDoAluno }),
@@ -17009,10 +17110,7 @@ function AppInner() {
     // da conta anterior, e sem os carimbos (esquecerVersoes) a primeira
     // gravação da conta nova daria conflito. A geração faz com que uma leitura
     // ainda em curso não escreva por cima do que vem a seguir.
-    execucoesRef.current = {};
-    cargasDeExecucoes.current = {};
-    geracaoDeExecucoes.current += 1;
-    setExecucoes({});
+    limparCacheDeExecucoes();
     // Os endereços assinados são da conta anterior e expiram; guardá-los só
     // serviria para mostrar fotografias de outra pessoa a carregar em erro.
     setUrlsDeFotos({});
@@ -17057,10 +17155,13 @@ function AppInner() {
     }
   }
 
+  // Todas as `persist*` devolvem se ficou gravado (sem armazenamento não há o
+  // que gravar, e conta como bem): o restauro só diz «restaurado» se todas
+  // disseram que sim.
   async function persistStudents(next) {
     setStudents(next);
-    if (!storageOk) { showToast('Dados salvos apenas nesta sessão (armazenamento indisponível).'); return; }
-    await gravarBloco('alunos', JSON.stringify(next), 'Aluno');
+    if (!storageOk) { showToast('Dados salvos apenas nesta sessão (armazenamento indisponível).'); return true; }
+    return gravarBloco('alunos', JSON.stringify(next), 'Aluno');
   }
   // Pergunta-se o nível a cada troca de utilizador. Quem não tem dois fatores
   // nunca chega a ver o ecrã do código: `faltaSegundoFator` dá falso.
@@ -17087,21 +17188,21 @@ function AppInner() {
 
   async function persistSessions(next) {
     setSessions(next);
-    if (!storageOk) return;
-    await gravarBloco('agenda', JSON.stringify(next), 'Agenda');
+    if (!storageOk) return true;
+    return gravarBloco('agenda', JSON.stringify(next), 'Agenda');
   }
   async function persistFinances(next) {
     setFinances(next);
-    if (!storageOk) return;
-    await gravarBloco('financas', JSON.stringify(next), 'Finanças');
+    if (!storageOk) return true;
+    return gravarBloco('financas', JSON.stringify(next), 'Finanças');
   }
   const photosRef = useRef([]);
   useEffect(() => { photosRef.current = photos; }, [photos]);
 
   async function persistPhotos(next) {
     setPhotos(next);
-    if (!storageOk) return;
-    await gravarBloco('fotos', JSON.stringify(next), 'Fotografias');
+    if (!storageOk) return true;
+    return gravarBloco('fotos', JSON.stringify(next), 'Fotografias');
   }
 
   // Assina os endereços das fotografias que estão no balde. As já assinadas não
@@ -17159,15 +17260,15 @@ function AppInner() {
     const normalizado = normalizarTreinos(typeof atualizar === 'function' ? atualizar(base) : atualizar);
     treinosRef.current = normalizado;
     setTreinos(normalizado);
-    if (!storageOk) return;
-    await gravarBloco('treinos', JSON.stringify(serializarTreinos(normalizado)), 'Treinos');
+    if (!storageOk) return true;
+    return gravarBloco('treinos', JSON.stringify(serializarTreinos(normalizado)), 'Treinos');
   }
 
   async function persistFormularios(next) {
     const normalizado = normalizarFormularios(next);
     setFormularios(normalizado);
-    if (!storageOk) return;
-    await gravarBloco('formularios', JSON.stringify(normalizado), 'Formulário');
+    if (!storageOk) return true;
+    return gravarBloco('formularios', JSON.stringify(normalizado), 'Formulário');
   }
 
   /* ------------------ treino realizado: uma linha por aluno ------------------
@@ -17261,21 +17362,31 @@ function AppInner() {
   }
 
   // Ao apagar um aluno: o registo dele são dados de saúde e não ficam para trás.
-  // Lê primeiro para ter o carimbo de versão; sem linha, não há nada a limpar.
+  // Apaga a linha (e os rascunhos deste aparelho), em vez de a esvaziar. Passa
+  // pela fila da chave, para não se cruzar com uma gravação ainda em curso.
   async function limparExecucoes(idAluno) {
+    apagarRascunhosCom(chaveRascunho(idAluno, ''));
     if (storageOk) {
       try {
         const chave = chaveExecucoes(idAluno);
-        const lido = await readStoredValue(chave);
-        if (lido) await filaDeExecucoes.current(chave, () => gravarBloco(chave, JSON.stringify({ sessoes: [] }), 'Sessões realizadas'));
+        await filaDeExecucoes.current(chave, () => apagarStoredValue(chave));
       } catch (e) {
-        console.error(`[PTMANAGER] falhou a limpar o registo de treinos do aluno ${idAluno}`, e);
+        console.error(`[PTMANAGER] falhou a apagar o registo de treinos do aluno ${idAluno}`, e);
         showToast('Não foi possível apagar as sessões registadas deste aluno.', 'error');
       }
     }
     const { [idAluno]: removido, ...resto } = execucoesRef.current;
     execucoesRef.current = resto;
     setExecucoes(resto);
+  }
+
+  // O que está em cache é de antes de o restauro ou o «Apagar tudo»: esquece-se,
+  // e a geração faz com que uma leitura ainda em curso não escreva por cima.
+  function limparCacheDeExecucoes() {
+    execucoesRef.current = {};
+    cargasDeExecucoes.current = {};
+    geracaoDeExecucoes.current += 1;
+    setExecucoes({});
   }
 
   // A assinatura segue o caminho das fotografias: sobe para o balde e fica
@@ -17391,15 +17502,15 @@ function AppInner() {
   async function persistDefinicoes(next) {
     const normalizado = normalizarDefinicoes(next);
     setDefinicoes(normalizado);
-    if (!storageOk) return;
-    await gravarBloco('definicoes', JSON.stringify(normalizado), 'Definições');
+    if (!storageOk) return true;
+    return gravarBloco('definicoes', JSON.stringify(normalizado), 'Definições');
   }
 
   async function persistCustomCategories(next) {
     const normalized = { ...EMPTY_CUSTOM_CATEGORIES, ...(next || {}) };
     setCustomCategories(normalized);
-    if (!storageOk) return;
-    await gravarBloco('categorias', JSON.stringify(normalized), 'Categorias');
+    if (!storageOk) return true;
+    return gravarBloco('categorias', JSON.stringify(normalized), 'Categorias');
   }
 
   function addCategory(kind, item) {
@@ -18414,19 +18525,93 @@ function AppInner() {
   function openNewTransaction(type) { setTransactionModal({ tx: null, defaultType: type }); setShowTransactionModal(true); }
   function openEditTransaction(tx) { setTransactionModal({ tx, defaultType: null }); setShowTransactionModal(true); }
 
-  function restoreBackup(importedStudents, importedSessions, importedFinances, importedPhotos, importedCategories) {
-    persistStudents(importedStudents);
-    persistSessions(importedSessions);
-    persistFinances(Array.isArray(importedFinances) ? importedFinances : []);
-    persistPhotos(Array.isArray(importedPhotos) ? importedPhotos : []);
-    persistCustomCategories({ ...EMPTY_CUSTOM_CATEGORIES, ...(importedCategories || {}) });
-    showToast('Backup restaurado.');
+  // Tudo o que a conta guarda, para a cópia de segurança. O registo de sessões
+  // lê-se por aluno, e um aluno que não se conseguiu ler faz falhar a cópia: uma
+  // cópia que se diz completa sem as sessões dele era pior do que nenhuma.
+  async function juntarCopia() {
+    await Promise.all(students.map((s) => carregarExecucoes(s.id)));
+    const sessoesPorAluno = {};
+    let porLer = 0;
+    students.forEach((s) => {
+      const e = execucoesRef.current[s.id];
+      if (!e || e.estado !== 'ok') { porLer += 1; return; }
+      if (e.sessoes.length > 0) sessoesPorAluno[s.id] = { sessoes: e.sessoes };
+    });
+    if (porLer > 0) {
+      throw new Error(`Não foi possível ler as sessões de treino de ${plural(porLer, 'aluno', 'alunos')}, por isso a cópia não foi gerada. Tente de novo.`);
+    }
+    return montarCopia({
+      alunos: students,
+      agenda: sessions,
+      financas: finances,
+      fotos: await fotosComImagem(photos),
+      categorias: customCategories,
+      definicoes,
+      treinos: serializarTreinos(treinosRef.current),
+      formularios,
+      execucoes: sessoesPorAluno,
+    }, new Date().toISOString());
+  }
+
+  // As sessões de treino seguem o aluno (ver `planoDeSessoes`). Cada linha lê-se
+  // antes de se escrever, para ter o carimbo de versão: sem isso, uma linha que
+  // já exista dava um falso conflito.
+  async function restaurarSessoes(copia) {
+    if (!storageOk) return true;
+    try {
+      const { escrever, apagar } = planoDeSessoes(copia, await listarChavesDeExecucoes());
+      for (const chave of apagar) await filaDeExecucoes.current(chave, () => apagarStoredValue(chave));
+      for (const { chave, valor } of escrever) {
+        await filaDeExecucoes.current(chave, async () => {
+          await readStoredValue(chave);
+          await writeStoredValue(chave, JSON.stringify(valor));
+        });
+      }
+      return true;
+    } catch (e) {
+      console.error('[PTMANAGER] falhou a restaurar as sessões de treino', e);
+      return false;
+    } finally {
+      limparCacheDeExecucoes();
+    }
+  }
+
+  async function restoreBackup(copia) {
     setSettingsOpen(false);
+    showToast('A restaurar a cópia de segurança...');
+    const gravados = [
+      persistStudents(copia.alunos),
+      persistSessions(copia.agenda),
+      persistFinances(copia.financas),
+      persistPhotos(copia.fotos),
+      persistCustomCategories({ ...EMPTY_CUSTOM_CATEGORIES, ...(copia.categorias || {}) }),
+    ];
+    // O que um ficheiro da versão 1 não leva, não se toca.
+    if (copia.definicoes) gravados.push(persistDefinicoes(copia.definicoes));
+    if (copia.treinos) gravados.push(persistTreinos(() => copia.treinos));
+    if (copia.formularios) gravados.push(persistFormularios(copia.formularios));
+    const blocosOk = (await Promise.all(gravados)).every(Boolean);
+    const sessoesOk = await restaurarSessoes(copia);
+    if (blocosOk && sessoesOk) showToast('Backup restaurado.');
+    else showToast('A cópia não ficou restaurada por inteiro. Volte a tentar: o que já foi restaurado mantém-se.', 'error');
   }
 
   async function resetAllData() {
+    // Os rascunhos das sessões a meio vivem só neste aparelho.
+    apagarRascunhosCom(PREFIXO_RASCUNHO);
+    const definicoesVazias = normalizarDefinicoes(null);
+    const treinosVazios = normalizarTreinos(null);
+    const formulariosVazios = normalizarFormularios(null);
+    function limparEcra() {
+      setStudents([]); setSessions([]); setFinances([]); setPhotos([]); setCustomCategories(EMPTY_CUSTOM_CATEGORIES);
+      setDefinicoes(definicoesVazias);
+      treinosRef.current = treinosVazios;
+      setTreinos(treinosVazios);
+      setFormularios(formulariosVazios);
+      limparCacheDeExecucoes();
+    }
     if (!storageOk) {
-      setStudents([]); setSessions([]); setFinances([]); setPhotos([]); setCustomCategories(EMPTY_CUSTOM_CATEGORIES); showToast('Dados apagados.'); setSettingsOpen(false); return;
+      limparEcra(); showToast('Dados apagados.'); setSettingsOpen(false); return;
     }
     try {
       // Os ficheiros primeiro: apagar só o bloco deixava as fotografias no
@@ -18438,10 +18623,20 @@ function AppInner() {
       await writeStoredValue('financas', JSON.stringify([]));
       await writeStoredValue('fotos', JSON.stringify([]));
       await writeStoredValue('categorias', JSON.stringify(EMPTY_CUSTOM_CATEGORIES));
-      setStudents([]); setSessions([]); setFinances([]); setPhotos([]); setCustomCategories(EMPTY_CUSTOM_CATEGORIES);
+      await writeStoredValue('definicoes', JSON.stringify(definicoesVazias));
+      await writeStoredValue('treinos', JSON.stringify(serializarTreinos(treinosVazios)));
+      await writeStoredValue('formularios', JSON.stringify(formulariosVazios));
+      // Uma linha por aluno, e também as de quem já não está na lista.
+      for (const chave of await listarChavesDeExecucoes()) {
+        await filaDeExecucoes.current(chave, () => apagarStoredValue(chave));
+      }
+      limparEcra();
       showToast('Dados apagados.');
-    } catch (e) { showToast('Erro ao apagar dados.', 'error'); }
-    setSettingsOpen(false);
+      setSettingsOpen(false);
+    } catch (e) {
+      console.error('[PTMANAGER] falhou o «Apagar todos os dados»', e);
+      showToast('Não foi possível apagar tudo. Volte a tentar: o que já foi apagado continua apagado.', 'error');
+    }
   }
 
   if (!authReady || !subscriptionReady || loading) return <LoadingScreen />;
@@ -18763,6 +18958,7 @@ function AppInner() {
           onChangePassword={supabaseConfigured && user?.email ? () => setShowChangePassword(true) : null}
           onReset={resetAllData}
           onRestore={restoreBackup}
+          onJuntarCopia={juntarCopia}
           trainerName={trainerName}
           onSaveTrainerName={saveTrainerName}
           definicoes={definicoes}

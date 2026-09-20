@@ -291,7 +291,10 @@ export function textoDeBuscaDaSessao(s) {
 /* ============================== rascunho (neste aparelho) ============================== */
 
 export const VERSAO_RASCUNHO = 1;
-export function chaveRascunho(idAluno, idTreino) { return `ptmanager:sessao:${idAluno}:${idTreino}`; }
+// Os rascunhos vivem só neste aparelho, mas levam o que o treinador escreveu
+// sobre o aluno: saem com ele e no «Apagar todos os dados», por prefixo.
+export const PREFIXO_RASCUNHO = 'ptmanager:sessao:';
+export function chaveRascunho(idAluno, idTreino) { return `${PREFIXO_RASCUNHO}${idAluno}:${idTreino}`; }
 
 export function normalizarRascunho(raw) {
   if (!raw || typeof raw !== 'object' || raw.v !== VERSAO_RASCUNHO || !raw.itens || typeof raw.itens !== 'object') return null;

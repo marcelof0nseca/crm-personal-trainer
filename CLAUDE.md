@@ -73,6 +73,8 @@ técnica — é uma decisão de produto, e condiciona metade do que se pode ofer
 | `src/data/exercicios-modelos.ts` | **Gerado.** Os 76 exercícios do dicionário dos modelos que a biblioteca de exercícios não tinha, mais as instruções e regressões dos 95, o total de fichas e a versão do catálogo. Pequeno; importado no arranque |
 | `src/data/modelos-treino-textos.ts` | À mão. Os textos fixos das fichas (critérios de entrada, progressão, o que registar…) e a taxonomia dos filtros. Estão aqui, uma vez, porque repetidos nas 860 fichas custavam ~2 MB |
 | `scripts/gerar-modelos-treino.mjs` | Gera `modelos-treino.ts` e `exercicios-modelos.ts`. Funções puras, sem aleatoriedade: duas corridas dão o mesmo resultado. Dados de origem e regras em `scripts/dados-modelos-treino/`; `validar.mjs` confere contagens, referências e a aritmética dos blocos temporizados |
+| `src/data/sessoes.ts` | À mão. A lógica pura do **treino realizado**: normalização, texto das séries, «última vez», campos que cada série pede, rascunho, fila de gravações. Sem React nem Supabase, para se testar sozinha |
+| `scripts/validar-sessoes.mjs` | `node scripts/validar-sessoes.mjs`. Confere a lógica acima, incluindo a fila de gravações contra um armazenamento falso com o mesmo carimbo de versão do real |
 | `scripts/gerar-exercicios.mjs` | Gera o ficheiro acima a partir do catálogo MFIT (que não está no repositório) |
 | `scripts/exercicios-legado.json` | Os 202 exercícios que a aplicação tinha antes do catálogo |
 | `supabase/functions/` | 5 Edge Functions: `admin-overview`, `create-checkout-session`, `create-mbway-checkout-session`, `create-portal-session`, `stripe-webhook` |
@@ -109,7 +111,9 @@ formularios
 ```
 
 As chaves são limitadas por um `check` em `supabase-schema.sql`. **Uma chave
-nova exige alterar esse `check` e correr o SQL no painel do Supabase.**
+nova exige alterar esse `check` e correr o SQL no painel do Supabase.** A única
+família fora desta lista é `execucoes:<idDoAluno>` (o treino realizado, mais
+abaixo), que o `check` aceita por expressão regular.
 
 Consequências que decidem quase tudo:
 
@@ -211,6 +215,49 @@ Consequências que decidem quase tudo:
   `requerSupervisaoTecnica` e `precisaAvisoPliometriaContraste` só existem
   quando verdadeiras (ausente = falso); os textos que delas dependem
   resolvem-se em `modelos-treino-textos.ts`.
+- **O treino realizado vive numa linha por aluno**, `execucoes:<idDoAluno>`, com
+  `{ sessoes: [...] }` — não é uma das oito chaves. É o que o **treinador**
+  regista (o aluno não tem acesso) do que aconteceu numa sessão: por série, a
+  carga, as repetições, o tempo… reais e o RIR/RPE observado; os sintomas
+  durante e depois; a duração; notas. Cresce sem fim (~150 sessões por aluno por
+  ano, ~300 kB) e cada gravação reescreve a linha inteira, por isso **nunca vai
+  para dentro de `treinos`**, que já viaja inteiro; uma linha por aluno faz
+  também que só haja conflito entre dois dispositivos **no mesmo aluno**.
+  **O `check` de `data_key` tem de aceitar `execucoes:`** — é o SQL de
+  `supabase-schema.sql` que o dono do produto corre à mão. Sem ele, ler devolve
+  vazio e gravar falha com «Falta correr o SQL do schema»; o rascunho não se
+  perde. RLS e a política de dois fatores herdam sozinhas (nenhuma nomeia
+  `data_key`).
+  - **Lê-se por pedido** (`carregarExecucoes`: ao abrir os treinos ou a ficha
+    360º do aluno), nunca no `loadAll`. O estado é por aluno —
+    `'a-carregar' | 'ok' | 'erro'` — e um erro fica no aluno, com «Tentar de
+    novo», em vez de a ficha mostrar sessões em falta sem dizer porquê.
+  - **Só se grava depois de ler** (`podeGravarExecucoes`): sem leitura não há
+    carimbo, a gravação segue por INSERT e, se já havia linha, dá um falso
+    «alterado noutro dispositivo». E **uma de cada vez por chave**
+    (`criarFilaPorChave`): duas gravações seguidas liam o mesmo carimbo e a
+    segunda dava o mesmo falso conflito. Se falha, o ecrã volta ao que estava.
+  - **A prescrição nunca é tocada.** A sessão leva uma cópia do que interessa
+    (`prescrito`, o nome do programa e do treino): o construtor apaga e reordena
+    linhas, e os ids das linhas repetem-se nas cópias do mesmo modelo.
+    **Nada se marca como feito sozinho** — cada série só conta com o ✓, e o que
+    não se tocou fica «saltado», dito ao fechar. O ✓ preenche o que falta com o
+    que a prescrição diz, só quando é um valor certo: uma faixa («8-10») ou uma
+    percentagem não são o que se fez (`valoresSugeridos`).
+  - **O rascunho vive no aparelho**, em `localStorage['ptmanager:sessao:<aluno>:<treino>']`
+    (como o tema), grava a cada alteração e apaga-se ao concluir. A base de
+    dados leva **uma só gravação, no fim** — o padrão dos formulários. Um
+    rascunho antigo não se aplica sozinho: pergunta-se «Continuar a sessão?».
+  - **Os sintomas são dados de saúde**, ditos como o que o aluno referiu, com a
+    ressalva «não é um diagnóstico» (10b), em dourado e nunca em vermelho.
+    Apagar o aluno esvazia-lhe o registo (`limparExecucoes`).
+  - **Ficam de fora**: PDF ou relatório das sessões, recordes/1RM/gráficos,
+    esquerdo e direito por série, e ligar «Aula dada» da agenda ao registo.
+    E o **backup, o restauro e «Apagar todos os dados»** só conhecem 5 das 8
+    chaves (faltam `treinos`, `formularios` e `definicoes`) — e portanto também
+    não conhecem esta. É uma lacuna anterior a este registo, à espera de decisão
+    do dono do produto: mexe no restauro, e a política de privacidade promete
+    exportar e apagar «todos os dados».
 
 ### O carimbo de versão
 
@@ -450,6 +497,25 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   várias versões do iOS. O favicon normal (browser, separador) pode ficar
   transparente sem problema; o `apple-touch-icon` precisa de fundo opaco
   (aqui, `--bg-base` do tema escuro) com uma margem à volta do símbolo.
+- **`ConfirmDialog` e `Modal` fecham ao tocar fora e com Esc, e «fechar» é
+  «cancelar».** Numa pergunta em que cancelar **destrói** — o «Continuar a
+  sessão?» do registo, em que «Começar de novo» apagava o rascunho — um toque
+  perdido no véu bastava para perder a sessão. Foi apanhado a testar, não a
+  ler. Nesses casos, usar um `Modal` em que fechar por qualquer via é o
+  caminho seguro (continuar), e só o botão explícito apaga. E numa folha com
+  um formulário por gravar (`VerSessaoModal`), pedir confirmação antes de
+  descartar em vez de deixar o toque fora gastar o que se escreveu; o
+  `ConfirmDialog` do «descartar» tem cancelar = continuar a editar, que é o lado
+  seguro.
+- **Campos de texto a 16 px no telemóvel, ou o iOS aproxima a página ao
+  tocar neles** e não a volta a afastar. `.input-field` já o faz; o
+  `CargaDaSerie` (13 px em linha) não, e por isso o registo do realizado tem os
+  seus próprios campos (`CamposDaSerie`), com `inputMode` e `enterKeyHint`.
+  O alvo de toque de um ✓ entre duas séries é de 48 px.
+- **Uma barra fixa em baixo tem de ficar acima da navegação, não por cima
+  dela.** No telemóvel a barra de separadores ocupa `--nav-h`;
+  `.barra-sessao` sobe essa altura (mais `env(safe-area-inset-bottom)`). A 390 px
+  o teste confere `fundo da barra <= topo da navegação`.
 
 ---
 
@@ -572,7 +638,11 @@ perda de dados só apareceram assim.
 
 Para lógica que só corre contra o Supabase (o carimbo de versão), extrai-se a
 função do ficheiro e corre-se contra um cliente falso. Já feito uma vez; o
-padrão funciona.
+padrão funciona. O treino realizado repete-o com o código pronto em
+`scripts/validar-sessoes.mjs`: a lógica está em `src/data/sessoes.ts`, sem
+React nem Supabase, e a fila de gravações corre contra um armazenamento falso
+que tem o mesmo carimbo de versão do real. **Corre-se antes de mexer no
+registo:** `node scripts/validar-sessoes.mjs`.
 
 **Reaproveitar um componente real para uma pré-visualização isolada** (a
 landing a mostrar `SessionCard`/`StatCard`/`ExercicioVista`, ou gerar
@@ -620,7 +690,8 @@ existe de verdade.
 | **Agenda** | Dia, semana, mês, lista · procura e filtros · **botão de horários na própria agenda**, com horário por dia, **exceções por data** e pré-visualização da semana · horários livres em lote · **selecionar várias e mover, mudar a duração, bloquear ou apagar de uma vez** · recorrência com "só esta / toda a série" · **replicar uma marcação por X semanas** · **três botões de confirmação com cor cheia: dada, falta, e falta com direito a reposição**, coloridos pelo **tipo da marcação** (`SESSION_TYPES`/`EVENT_TYPES`, agora em `AgendaAtoms.tsx`, sem cores repetidas dentro da mesma lista), não pelo aluno · **aviso de conflito** (nunca bloqueia — alguns treinadores atendem dois alunos ao mesmo tempo de propósito) · **o cartão ocupa o espaço proporcional à duração real** (uma sessão de 2h fica visivelmente mais alta que uma de 30 min) e mostra "09:00–11:00", não só a hora de início · **reservar por cima de um Horário Livre remove-o** (`semLivresCobertosPor`) — antes ficava por baixo, a dizer que aquele tempo continuava livre · **vários alunos no mesmo horário**, um cartão só (`GroupedSessionCard`) — ver `groupId` na secção 4. **Sem arrastar o cartão para outro dia, nem copiar/colar** — os dois existiram, mediam todos os testes automatizados, mas o arrastar não funcionava em telemóvel real e o copiar/colar foi removido por decisão de produto; mover uma sessão é pelo formulário (mudar a data) ou por "Selecionar várias" |
 | **Faltas** | Estados, direito a reposição, crédito ligado à aula de origem · **validade do crédito, estado "Expirada" e registo de auditoria** (quem concedeu, quando, o que aconteceu desde então) |
 | **Prescrição** | Treinos A/B/C, 2 076 exercícios, modelos, arquivo, PDF timbrado agrupado por bloco. Blocos, métodos como lista, 15 campos por exercício, duplicar, arrastar para reordenar · **14 combinações com nome e cor** (`METODOS_COMBINACAO`: bi-set, supersérie, superset antagonista, pré-exaustão, pós-exaustão, série composta, trissérie, giant set, circuito, contraste, complexo, EMOM, AMRAP, For time), cada membro num tom da cor do grupo |
-| **Biblioteca de modelos** | 860 fichas pré-construídas (representação A do documento de consolidação: 14 categorias, 8 objetivos, 4 níveis de experiência, 4 de condicionamento, 26 métodos), em **Alunos → aluno → Treinos → «Biblioteca de modelos»**. Procura (traduz pt-BR e inglês, e aceita o código, `PTM-0312`) e 11 filtros combináveis · ficha com aquecimento, principal, volta à calma, critérios de entrada, progressão, regressão e o que registar · **«Usar este modelo»** cria o programa do aluno, editável como qualquer outro, e **«Guardar nos meus modelos»** guarda a ficha sem precisar de aluno; os dois registam a `origem`, e a vista do treino mostra «Modelo PTM-…» · navegável por teclado, com o foco a seguir a vista (título ao abrir, cartão ao voltar). **«Validação clínica» e «supervisão técnica» são avisos**, com a ressalva ao lado — a aplicação não tem papéis nem forma de bloquear, e assinala, nunca diagnostica (10b). Estendeu `METODOS_COMBINACAO` com **EMOM, AMRAP e For time**, e deu **«pausa entre rondas»** ao bi-set, supersérie, trissérie… **Preservado do documento, nunca corrigido em silêncio** (26 fichas levam um aviso em `avisosEditoriais`): o RPE do complemento do «Personalizado» (4 na dose base, 5 no cronómetro), a regra de dose que deixa `pliometria técnica` e `unilateral` de fora das repetições de pliometria, e a preparação específica de uma família temporal. **A representação B não está construída** — o documento não reproduz as suas 860 prescrições. **Não há registo do realizado** (o que o aluno fez a sério): é o mesmo buraco de sempre, ver a área do aluno |
+| **Biblioteca de modelos** | 860 fichas pré-construídas (representação A do documento de consolidação: 14 categorias, 8 objetivos, 4 níveis de experiência, 4 de condicionamento, 26 métodos), em **Alunos → aluno → Treinos → «Biblioteca de modelos»**. Procura (traduz pt-BR e inglês, e aceita o código, `PTM-0312`) e 11 filtros combináveis · ficha com aquecimento, principal, volta à calma, critérios de entrada, progressão, regressão e o que registar · **«Usar este modelo»** cria o programa do aluno, editável como qualquer outro, e **«Guardar nos meus modelos»** guarda a ficha sem precisar de aluno; os dois registam a `origem`, e a vista do treino mostra «Modelo PTM-…» · navegável por teclado, com o foco a seguir a vista (título ao abrir, cartão ao voltar). **«Validação clínica» e «supervisão técnica» são avisos**, com a ressalva ao lado — a aplicação não tem papéis nem forma de bloquear, e assinala, nunca diagnostica (10b). Estendeu `METODOS_COMBINACAO` com **EMOM, AMRAP e For time**, e deu **«pausa entre rondas»** ao bi-set, supersérie, trissérie… **Preservado do documento, nunca corrigido em silêncio** (26 fichas levam um aviso em `avisosEditoriais`): o RPE do complemento do «Personalizado» (4 na dose base, 5 no cronómetro), a regra de dose que deixa `pliometria técnica` e `unilateral` de fora das repetições de pliometria, e a preparação específica de uma família temporal. **A representação B não está construída** — o documento não reproduz as suas 860 prescrições |
+| **Treino realizado** | O **treinador** regista, na sala e no telemóvel, o que o aluno fez: **«Registar sessão»** na vista do treino abre um passo por exercício (uma combinação inteira num só passo), com barra de progresso, cronómetro, ✓ por série (que confirma o que a prescrição sugere) e carga, repetições, tempo, RIR ou RPE reais · «última vez» a partir do registo do próprio aluno · **rascunho no aparelho**, que sobrevive a bloquear o telemóvel ou recarregar · ao terminar, duração, esforço 0–10, **sintomas durante e depois** (ditos como o que o aluno referiu, nunca como diagnóstico), «interrompida» com motivo e notas · **«Sessões realizadas»** na lista de treinos do aluno, com selos dourados de «interrompida» e «sintomas referidos» · **ver, corrigir e apagar** uma sessão, com o prescrito ao lado do realizado · **na Ficha 360º**, «Sessões de treino» é um tipo de acontecimento com filtro e procura (por exercício, sintoma ou nota) · **a prescrição nunca é alterada**. Uma linha por aluno na base de dados — ver `execucoes:` na secção 4. **Exige correr o SQL de `supabase-schema.sql`** |
 | **Vista de treino** | O programa como se lê, e não como se escreve: um treino de cada vez, por bloco, com o resumo em números (exercícios, séries, pausa somada, volume). **A carga de cada série e os números do método editam-se ali mesmo**; o resto é no construtor. **Dois modos**: completo (tudo de uma vez) e **passo a passo** — um exercício por vez, uma combinação inteira (bi-set, trissérie…) num só passo, com setas e barra de progresso (`TreinoSegmentado`, `passosDoTreino`). Exercícios soltos também têm cor própria, mais discreta que a de uma combinação, só para se distinguirem na lista. `TreinoVista`, ao lado de `PrescricaoBuilder` |
 | **Biblioteca** | Procura que traduz o termo escrito (pt-BR e inglês de ginásio) · sinónimos por exercício · favoritos · pastas · progressões, regressões e substituições, com **troca de exercício num clique dentro do treino** |
 | **Avaliações** | Dobras, % massa gorda, perímetros, fotografias, gráfico de evolução, PDF · **rascunho e final, autosave, revisões com motivo, comparar e repor** |
@@ -628,7 +699,7 @@ existe de verdade.
 | **Finanças** | Entradas e saídas, categorias, IVA, taxa do ginásio, pendências |
 | **Pagamentos** | Stripe: mensal/trimestral/anual, cartão, Apple Pay, Google Pay, MB WAY, webhook, portal de faturação, meses grátis, **7 dias de trial nos três planos**, **preços de lançamento** com o valor anterior riscado |
 | **Relatórios** | Relatório do período (atividade, ocupação da agenda, receita dos planos, lançamentos, tabela por aluno) e relatório de progresso do aluno (primeira vs última avaliação, com gráfico) · ambos timbrados |
-| **Ficha 360º** | Aulas, faltas, avaliações, treinos e formulários numa linha só, por aluno · procura livre sobre tudo · filtros por tipo e período · resumo com comparência e créditos · os pontos a ter em conta em cima |
+| **Ficha 360º** | Aulas, faltas, avaliações, treinos, **sessões de treino realizadas** e formulários numa linha só, por aluno · procura livre sobre tudo · filtros por tipo e período · resumo com comparência e créditos · os pontos a ter em conta em cima · tocar numa sessão de treino abre-a no histórico do aluno |
 | **Formulários** | PAR-Q, anamnese e consentimentos (treino, imagem, dados de saúde) · construtor próprio · assinatura desenhada · PDF timbrado · pontos a ter em conta, ditos como avisos |
 | **Segurança** | Auth, RLS por utilizador, Turnstile, termos e política em pt-PT, dados na UE, exportação e apagamento · **início de sessão** com olho para mostrar/esconder a palavra-passe e **recuperar palavra-passe** por e-mail (`LoginScreen`, modo `recover`) · `ResetPasswordScreen` dedicado, com aviso próprio se o link já não for válido em vez do erro em bruto do Supabase |
 | **Fiabilidade** | Gravação imediata, backup e restauro, **carimbo de versão contra perda silenciosa** |
@@ -652,7 +723,7 @@ existe de verdade.
 
 | | Porquê |
 |---|---|
-| **Área do aluno** | Desbloqueia histórico, recordes, 1RM, progressão automática e adesão — hoje **não há de onde tirar esses dados**, porque o aluno não regista nada. Muda alojamento, termos, preço e suporte |
+| **Área do aluno** | O aluno continua sem acesso. Recordes, 1RM, gráficos de progressão e adesão **já têm de onde tirar dados** — o treinador regista o realizado (ver «Treino realizado») — e ficam por construir, sem precisar desta área. A área do aluno em si muda alojamento, termos, preço e suporte |
 | **Faturação** | Em Portugal exige software **certificado pela AT**. Não se constrói, integra-se |
 | **Multiprofissional, salas, locais** | Muda o modelo de dados inteiro, e vende-se a treinadores sozinhos |
 | **Offline e sincronização** | Meses de trabalho |
@@ -733,9 +804,16 @@ Combinado por níveis, do mais barato ao mais caro:
 20. ~~Biblioteca de modelos de treino~~ **feito**
     — 860 fichas geradas por regras, pesquisáveis e filtráveis, num *chunk*
     à parte; «Usar este modelo» cria o programa do aluno. Ficou de fora a
-    representação B e o registo do realizado
-21. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
-22. Decisões de produto — ver secção 10
+    representação B
+21. ~~Registo do treino realizado, feito pelo treinador~~ **feito**
+    — uma linha por aluno (`execucoes:<id>`), lida por pedido, gravada depois
+    de ler e uma de cada vez; rascunho no aparelho; histórico, ver/corrigir/
+    apagar e o novo tipo na Ficha 360º. **SQL por correr** (o `check` de
+    `data_key`); **rever a política de privacidade** (não nomeia treinos nem
+    sintomas, e isto acrescenta dados de saúde); backup/restauro/«Apagar todos
+    os dados» à espera de decisão
+22. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
+23. Decisões de produto — ver secção 10
 
 ---
 

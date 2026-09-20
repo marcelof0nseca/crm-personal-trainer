@@ -1,13 +1,23 @@
 create table if not exists public.app_data (
   user_id uuid not null references auth.users(id) on delete cascade,
-  data_key text not null check (data_key in ('alunos', 'agenda', 'financas', 'fotos', 'categorias', 'definicoes', 'treinos', 'formularios')),
+  data_key text not null check (data_key in ('alunos', 'agenda', 'financas', 'fotos', 'categorias', 'definicoes', 'treinos', 'formularios') or data_key ~ '^execucoes:[A-Za-z0-9_-]{1,64}$'),
   value jsonb not null default '[]'::jsonb,
   updated_at timestamptz not null default now(),
   primary key (user_id, data_key)
 );
 
+-- `execucoes:<idDoAluno>` é o registo dos treinos realizados, uma linha por
+-- aluno: cresce sem fim, e uma linha só por aluno limita o que cada gravação
+-- reescreve. O padrão aceita o id que a aplicação gera (letras e números) e
+-- fica curto de propósito, para não abrir a porta a chaves arbitrárias.
+-- Sem correr isto no SQL Editor, ler continua a funcionar (devolve vazio) mas
+-- gravar falha com "check constraint" -- a aplicação avisa e o rascunho da
+-- sessão fica no aparelho.
 alter table public.app_data drop constraint if exists app_data_data_key_check;
-alter table public.app_data add constraint app_data_data_key_check check (data_key in ('alunos', 'agenda', 'financas', 'fotos', 'categorias', 'definicoes', 'treinos', 'formularios'));
+alter table public.app_data add constraint app_data_data_key_check check (
+  data_key in ('alunos', 'agenda', 'financas', 'fotos', 'categorias', 'definicoes', 'treinos', 'formularios')
+  or data_key ~ '^execucoes:[A-Za-z0-9_-]{1,64}$'
+);
 
 alter table public.app_data enable row level security;
 

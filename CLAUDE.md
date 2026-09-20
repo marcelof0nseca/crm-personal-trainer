@@ -77,6 +77,8 @@ técnica — é uma decisão de produto, e condiciona metade do que se pode ofer
 | `scripts/validar-sessoes.mjs` | `node scripts/validar-sessoes.mjs`. Confere a lógica acima, incluindo a fila de gravações contra um armazenamento falso com o mesmo carimbo de versão do real |
 | `src/data/copia.ts` | À mão. A lógica pura da **cópia de segurança**: montar o ficheiro, lê-lo (os antigos também) e decidir o que muda nas sessões ao restaurar. Sem React nem Supabase |
 | `scripts/validar-copia.mjs` | `node scripts/validar-copia.mjs`. Confere `copia.ts`. Usa `scripts/resolver-extensao-ts.mjs`, um gancho do Node que resolve `import './sessoes'` sem extensão como o Vite, para o código da aplicação não ter de escrever `.ts` |
+| `src/data/eliminar.ts` | À mão. O que sai ao **eliminar um aluno** ou **apagar uma avaliação**: que fotografias saem (só as que mais nada refere) e o que um aluno tem. Sem React nem Supabase |
+| `scripts/validar-eliminar.mjs` | `node scripts/validar-eliminar.mjs`. Confere `eliminar.ts` |
 | `scripts/gerar-exercicios.mjs` | Gera o ficheiro acima a partir do catálogo MFIT (que não está no repositório) |
 | `scripts/exercicios-legado.json` | Os 202 exercícios que a aplicação tinha antes do catálogo |
 | `supabase/functions/` | 5 Edge Functions: `admin-overview`, `create-checkout-session`, `create-mbway-checkout-session`, `create-portal-session`, `stripe-webhook` |
@@ -283,11 +285,29 @@ Consequências que decidem quase tudo:
     (`listarChavesDeExecucoes`) em vez de confiar na lista de alunos, para
     apanhar também as de um aluno que já não existe. Os rascunhos deste
     aparelho (`ptmanager:sessao:*`) saem no «Apagar tudo» e ao eliminar o aluno.
-  - **Ainda não cobre eliminar um aluno**: `deleteStudent` tira o aluno, a
-    agenda e as sessões de treino dele, mas **deixa os programas de treino, as
-    respostas a formulários (PAR-Q, assinaturas) e as fotografias**, que ficam
-    órfãos e invisíveis. Só o «Apagar todos os dados» os apaga. É a mesma classe
-    de lacuna, à espera de decisão do dono do produto.
+- **Eliminar um aluno elimina tudo o que é dele** (`planoDeEliminacao`, em
+  `src/data/eliminar.ts`): o aluno, as aulas e avaliações, os programas de
+  treino, as respostas a formulários, as sessões de treino realizadas e as
+  fotografias — incluindo as assinaturas. Antes ficavam para trás os programas,
+  os formulários (PAR-Q) e as fotografias, órfãos e invisíveis, e só o «Apagar
+  todos os dados» os apagava: o treinador não conseguia atender um pedido de
+  apagamento de um aluno. Os modelos de treino não são de ninguém e ficam.
+  - **As fotografias não têm dono**: são entradas do bloco `fotos` e ficheiros no
+    balde, e quem as usa guarda só o id (`photoIds` numa avaliação, `fotoIds` numa
+    medição de mobilidade, `assinaturaId` num formulário, e as versões antigas
+    em `assessVersoes`). Por isso **procura-se o id em qualquer sítio dos dados**
+    (`idsDeFotosEm`) em vez de listar campos, e **só se apaga a fotografia que
+    mais nada refere** (`fotosSoltas`). Uma que outro aluno também usa fica; uma
+    que ninguém referia não se toca.
+  - **Apagar uma avaliação apaga as fotografias dela** (`deleteAssessment` e
+    `deleteSession`), pelo mesmo caminho. Era o dado mais sensível a ficar para
+    trás. Se o ficheiro não se apagar do balde, a entrada **fica** no bloco e
+    diz-se: o «Apagar todos os dados» ainda chega ao ficheiro por ela, e sem ela
+    ficava órfão para sempre.
+  - **Sem os ficheiros não se elimina.** `apagarFotosDoBalde` devolve se
+    apagou (engolia o erro e dava tudo por apagado). Ao eliminar um aluno, se
+    falha, o aluno fica como estava e repete-se; o «Apagar todos os dados» pára
+    antes de esvaziar o bloco que sabe onde estão os ficheiros.
 
 ### O carimbo de versão
 
@@ -673,13 +693,15 @@ padrão funciona. O treino realizado repete-o com o código pronto em
 React nem Supabase, e a fila de gravações corre contra um armazenamento falso
 que tem o mesmo carimbo de versão do real. **Corre-se antes de mexer no
 registo:** `node scripts/validar-sessoes.mjs`; e `node scripts/validar-copia.mjs`
-antes de mexer na cópia de segurança.
+antes de mexer na cópia de segurança, e `node scripts/validar-eliminar.mjs`
+antes de mexer no que se apaga com um aluno ou uma avaliação.
 
 O que fala com o Supabase e não se pode testar ao vivo (apagar uma linha, listar
 as `execucoes:*`) testou-se extraindo as funções do `painel-pt.tsx` por texto e
 correndo-as contra um cliente falso que **aplica os filtros a sério** — é assim
-que se confirma que um `DELETE` nunca sai sem a conta e a chave, e que não
-apanha as linhas de outra conta.
+que se confirma que um `DELETE` nunca sai sem a conta e a chave, que não
+apanha as linhas de outra conta, e que `apagarFotosDoBalde` devolve falso quando
+o servidor recusa (o que é o que faz eliminar o aluno parar).
 
 **Reaproveitar um componente real para uma pré-visualização isolada** (a
 landing a mostrar `SessionCard`/`StatCard`/`ExercicioVista`, ou gerar
@@ -739,7 +761,7 @@ existe de verdade.
 | **Ficha 360º** | Aulas, faltas, avaliações, treinos, **sessões de treino realizadas** e formulários numa linha só, por aluno · procura livre sobre tudo · filtros por tipo e período · resumo com comparência e créditos · os pontos a ter em conta em cima · tocar numa sessão de treino abre-a no histórico do aluno |
 | **Formulários** | PAR-Q, anamnese e consentimentos (treino, imagem, dados de saúde) · construtor próprio · assinatura desenhada · PDF timbrado · pontos a ter em conta, ditos como avisos |
 | **Segurança** | Auth, RLS por utilizador, Turnstile, termos e política em pt-PT, dados na UE, exportação e apagamento · **início de sessão** com olho para mostrar/esconder a palavra-passe e **recuperar palavra-passe** por e-mail (`LoginScreen`, modo `recover`) · `ResetPasswordScreen` dedicado, com aviso próprio se o link já não for válido em vez do erro em bruto do Supabase |
-| **Fiabilidade** | Gravação imediata, **carimbo de versão contra perda silenciosa**, e **backup, restauro e «Apagar todos os dados» que cobrem tudo o que a conta guarda** (alunos, agenda, finanças, fotografias, definições, programas de treino, formulários e sessões de treino realizadas) — ficheiro com versão, ficheiros antigos ainda se restauram, e a cópia falha em vez de sair incompleta |
+| **Fiabilidade** | Gravação imediata, **carimbo de versão contra perda silenciosa**, e **backup, restauro e «Apagar todos os dados» que cobrem tudo o que a conta guarda** (alunos, agenda, finanças, fotografias, definições, programas de treino, formulários e sessões de treino realizadas) — ficheiro com versão, ficheiros antigos ainda se restauram, e a cópia falha em vez de sair incompleta · **eliminar um aluno ou uma avaliação apaga também as fotografias, os programas, os formulários e as sessões dele**, e só as fotografias que mais nada usa |
 | **Admin** | Subscrições, receita, churn, alertas · **contas em trial contam como "ativas" (usam a aplicação) mas ficam de fora do MRR** (`pagante`, só quem já paga), com a contagem visível na legenda de "Contas ativas" e um filtro próprio "Em trial" |
 | **Painel** | Navega para qualquer mês, para trás e para a frente (`monthCursor`) — a receita, a atividade e o gráfico por aluno seguem o mês visto; "hoje" e "esta semana" continuam presos ao presente, que não faz sentido navegar |
 | **Desenho de aplicação** | Escala de forma/toque/movimento em tokens CSS (`--r-*`, `--tap`, `--ease-folha`) · barra de topo contextual e barra de separadores em vidro translúcido (`backdrop-filter`, com salvaguarda para sem suporte e para transparência reduzida) · **modais viram folhas** que se puxam para fechar, com resistência progressiva no limite e projeção do lançamento (`useFolhaArrastavel`) · estados de premir, carregar (esqueleto) e vazio revistos · botões feitos à mão convergiram para `.btn`/`.btn-primary`/`.btn-ghost` |
@@ -849,9 +871,11 @@ Combinado por níveis, do mais barato ao mais caro:
     Backup, restauro e «Apagar todos os dados» passaram a cobrir tudo, e a
     política de privacidade e os termos nomeiam agora os treinos, os
     formulários de saúde e os sintomas (atualizados a 20/09/2026) — **falta a
-    revisão por advogado**, que o cabeçalho de `LegalDocs.tsx` já pedia, e
-    **eliminar um aluno continua a deixar programas, formulários e fotografias**
-    (ver a secção 4)
+    revisão por advogado**, que o cabeçalho de `LegalDocs.tsx` já pedia.
+    Eliminar um aluno ou uma avaliação passou a apagar tudo o que é dele,
+    fotografias incluídas (secção 4). **Não há aviso aos utilizadores** da
+    alteração à política — a secção 10 dela promete-o para alterações
+    relevantes; o dono do produto decidiu adiar
 22. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
 23. Decisões de produto — ver secção 10
 

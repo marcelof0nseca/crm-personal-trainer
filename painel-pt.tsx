@@ -2394,6 +2394,57 @@ function studentFinance(student, monthKey) {
   return { gross, tax, gymFee, net };
 }
 
+/* ------------------------------ horas pagas ------------------------------
+   Quantas horas de trabalho o que o aluno paga por mês compra. Direto do
+   plano: lê-se "Nx por semana" do próprio nome do tipo de plano -- não exige
+   configurar um preço/hora à parte, que é o que ficava por fazer e dava
+   sempre zero. Só quando o nome do plano não diz a frequência (um
+   "Personalizado", ou um nome próprio como "Duplas") é que ainda se usa o
+   preço/hora manual de Definições, como único caminho que sobra para o saber. */
+
+// "3x por semana" -> 3. Sem esse padrão no nome, devolve null -- não se
+// inventa uma frequência que o plano não diz.
+function aulasPorSemanaDoPlano(planType) {
+  const m = /^(\d+)\s*x\b/i.exec(String(planType || '').trim());
+  const n = m ? Number(m[1]) : null;
+  return n > 0 ? n : null;
+}
+
+// Média de semanas por mês: nem todos têm o mesmo número de segundas-feiras,
+// e um valor fixo evita que "horas pagas" salte de mês para mês sem o aluno
+// ter mudado nada.
+const SEMANAS_POR_MES = 52 / 12;
+
+// O valor cheio do plano no mês, antes de qualquer quinzena por pagar -- é
+// contra isto que se compara o que entrou de facto (studentGross), para
+// escalar as horas na mesma proporção. Em modo quinzenal fixo os dois
+// valores são sempre iguais: a cobrança não depende de comparência.
+function studentValorPlanoCheio(student) {
+  const mode = student.paymentMode || 'mensal';
+  if (mode === 'quinzenal') return (Number(student.biweeklyValue) || 0) * 2;
+  if (mode === 'quinzenas_pagas') return (Number(student.biweeklyValue) || 0) * 4;
+  return Number(student.planValue) || 0;
+}
+
+// `duracaoSlotMin` vem de definicoes.duracaoSlot (a duração de uma aula, em
+// minutos); `precosPorHora` é o preço manual por tipo de plano, só para quem
+// não tem "Nx por semana" no nome.
+function horasPagasDoAluno(student, monthKey, duracaoSlotMin, precosPorHora) {
+  const gross = studentGross(student, monthKey);
+  const n = aulasPorSemanaDoPlano(student.planType);
+  if (n) {
+    const horasPorAula = (Number(duracaoSlotMin) || 60) / 60;
+    const horasCheias = n * SEMANAS_POR_MES * horasPorAula;
+    const valorCheio = studentValorPlanoCheio(student);
+    // Sem valor de plano definido não há fração nenhuma para calcular --
+    // assume-se o mês cheio em vez de dar sempre zero.
+    if (!valorCheio) return horasCheias;
+    return horasCheias * Math.min(1, Math.max(0, gross / valorCheio));
+  }
+  const precoHora = precosPorHora && precosPorHora[student.planType];
+  return precoHora ? gross / precoHora : null;
+}
+
 // A receita dos alunos é DERIVADA das fichas dos alunos, não gravada como
 // lançamento. Assim nunca duplica, e atualiza-se sozinha quando um aluno é
 // criado, editado, desativado ou removido. Painel e Finanças usam esta função,
@@ -6035,7 +6086,7 @@ function SettingsModal({
               <>
                 <SettingsBlock
                   title="Preço por hora, por tipo de plano"
-                  description="Serve só para calcular quantas horas cada aluno está a pagar por mês -- não muda o valor do plano dele, que continua a definir-se na própria ficha do aluno."
+                  description={'Só é preciso para planos cujo nome não diz quantas vezes por semana (ex.: "Personalizado", ou um nome seu). Um plano como "3x por semana" já calcula as horas pagas sozinho, a partir do próprio nome e da duração da aula. Não muda o valor do plano do aluno, que continua a definir-se na própria ficha dele.'}
                 >
                   <div className="flex flex-col">
                     {[...PLAN_TYPES, ...customCategories.planTypes].map((tipo) => (
@@ -7764,14 +7815,13 @@ function Dashboard({ students, sessions, finances, customCategories, definicoes,
     return acc;
   }, { gross: 0, tax: 0, gymFee: 0, net: 0 }), [activeStudents, monthCursorKey]);
 
-  // Soma, por aluno, o que o valor pago no mês compra ao preço/hora do seu
-  // tipo de plano -- fica de fora quem tem um tipo sem preço definido, em
-  // vez de contar 0 e subestimar sem avisar.
+  // Soma, por aluno, o que o valor pago no mês compra em horas -- direto do
+  // plano ("Nx por semana" no nome), ou pelo preço/hora manual para quem não
+  // tem essa frequência no nome. Fica de fora quem não tem nenhum dos dois.
   const horasPagasMes = useMemo(() => activeStudents.reduce((soma, s) => {
-    const precoHora = definicoes.precosPorHora?.[s.planType];
-    if (!precoHora) return soma;
-    return soma + studentFinance(s, monthCursorKey).gross / precoHora;
-  }, 0), [activeStudents, monthCursorKey, definicoes.precosPorHora]);
+    const h = horasPagasDoAluno(s, monthCursorKey, definicoes.duracaoSlot, definicoes.precosPorHora);
+    return soma + (h || 0);
+  }, 0), [activeStudents, monthCursorKey, definicoes.duracaoSlot, definicoes.precosPorHora]);
 
   // Últimos 12 meses terminando no mês real de hoje -- de propósito, não no
   // monthCursor: é uma vista anual estável, não deve saltar de lugar sempre
@@ -7943,7 +7993,7 @@ function Dashboard({ students, sessions, finances, customCategories, definicoes,
           value={`${horasPagasMes.toLocaleString('pt-PT', { maximumFractionDigits: 1 })} h`}
           icon={Clock}
           accent="brass"
-          sub="Só alunos com preço/hora definido"
+          sub="Direto do plano de cada aluno"
         />
         <StatCard label="Alunos Ativos" value={activeStudents.length} icon={Users} accent="sky" sub={`${students.length} no total`} />
         <StatCard label="Aulas / Semana" value={weekSessions.length} icon={CalendarDays} accent="sky" />
@@ -9027,10 +9077,16 @@ function StudentFormModal({ student, sessions, customCategories, definicoes, tre
     taxPercent: parseFloat(form.taxPercent) || 0,
     gymFeeValue: parseFloat(form.gymFeeValue) || 0,
   });
-  // Quantas horas o valor pago no mês compra, ao preço/hora definido para
-  // este tipo de plano em Definições -- não uma contagem de aulas reais.
-  const precoHora = definicoes?.precosPorHora?.[form.planType];
-  const horasPagas = precoHora ? finance.gross / precoHora : null;
+  // Quantas horas o valor pago no mês compra -- direto de "Nx por semana" no
+  // nome do plano × a duração da aula; só cai para o preço/hora manual de
+  // Definições quando o nome não diz a frequência.
+  const aulasSemana = aulasPorSemanaDoPlano(form.planType);
+  const horasPagas = horasPagasDoAluno(
+    { ...form, planValue: parseFloat(form.planValue) || 0, biweeklyValue: parseFloat(form.biweeklyValue) || 0 },
+    currentMonthKey,
+    definicoes?.duracaoSlot,
+    definicoes?.precosPorHora,
+  );
 
   const pf = isEdit ? pendingFaltas(student.id, sessions) : 0;
   const assessmentCount = isEdit ? sessions.filter((s) => s.studentId === student.id && s.type === 'avaliacao' && (s.assessWeight || s.assessBodyFat)).length : 0;
@@ -9176,8 +9232,13 @@ function StudentFormModal({ student, sessions, customCategories, definicoes, tre
           <div className="flex items-center gap-1.5 text-xs font-body text-muted mt-2.5">
             <Clock size={13} className="text-faint flex-shrink-0" />
             {horasPagas != null
-              ? <span>Paga o equivalente a <strong className="text-primary">{horasPagas.toLocaleString('pt-PT', { maximumFractionDigits: 1 })} h</strong> este mês, a {currency(precoHora)}/hora</span>
-              : <span>Defina o preço/hora do plano "{form.planType}" em Definições → Planos e Preços para ver as horas pagas</span>}
+              ? (
+                <span>
+                  Paga o equivalente a <strong className="text-primary">{horasPagas.toLocaleString('pt-PT', { maximumFractionDigits: 1 })} h</strong> este mês
+                  {aulasSemana ? `, a ${aulasSemana}x por semana × ${definicoes?.duracaoSlot || 60} min` : ''}
+                </span>
+              )
+              : <span>Escreva o plano como "Nx por semana" (ex.: "3x por semana"), ou defina o preço/hora de "{form.planType}" em Definições → Planos e Preços, para ver as horas pagas</span>}
           </div>
         </div>
 

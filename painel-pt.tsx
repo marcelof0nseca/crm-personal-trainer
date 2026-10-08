@@ -3760,10 +3760,10 @@ function GlobalStyles() {
       .font-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
       .font-mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-variant-numeric: tabular-nums; }
       /* Só para títulos grandes de marketing (hero e secções da landing) --
-         nunca na interface da aplicação: um serif de exibição lê-se mal a
+         nunca na interface da aplicação: uma face de exibição lê-se mal a
          14-16px num título de modal ou de definições, onde .font-display
          (system-ui) continua a ser a escolha certa. */
-      .font-hero { font-family: 'Fraunces', ui-serif, Georgia, serif; font-optical-sizing: auto; }
+      .font-hero { font-family: 'Bricolage Grotesque', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-optical-sizing: auto; }
 
       .text-2xs { font-size: 0.6875rem; line-height: 1rem; }
 

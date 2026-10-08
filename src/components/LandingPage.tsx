@@ -1128,7 +1128,7 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
             )}
             <h1
               className="font-hero text-3xl sm:text-4xl lg:text-[2.9rem] text-primary"
-              style={{ fontWeight: 480, letterSpacing: '-0.01em', lineHeight: 1.06 }}
+              style={{ fontWeight: 650, letterSpacing: '-0.02em', lineHeight: 1.04 }}
             >
               Gestão completa para <span style={{ color: 'var(--brass)' }}>Personal Trainers</span>
             </h1>

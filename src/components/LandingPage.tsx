@@ -969,6 +969,18 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
           .revelar { transition: opacity 200ms ease; transform: none; }
         }
 
+        @keyframes heroDeriva1 {
+          0%, 100% { transform: translate(-4%, -6%) scale(1); }
+          50% { transform: translate(6%, 4%) scale(1.1); }
+        }
+        @keyframes heroDeriva2 {
+          0%, 100% { transform: translate(5%, 6%) scale(1.05); }
+          50% { transform: translate(-6%, -4%) scale(0.95); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .hero-mancha { animation: none !important; }
+        }
+
         .faq-colapso {
           display: grid;
           grid-template-rows: 0fr;
@@ -1081,8 +1093,30 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
       </header>
 
       <main className="flex-1">
-        {/* Hero */}
-        <section className="max-w-6xl mx-auto px-4 pt-12 pb-16 sm:pt-16 sm:pb-24 grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-14 items-center">
+        {/* Hero -- sem vídeo de fundo: filmagem de banco de imagens não
+            combina com a paleta nem deixa espaço limpo para o texto (ver
+            candidatos testados). O movimento é gerado: duas manchas a
+            derivar muito devagar, nas cores da marca, atrás do conteúdo. */}
+        <div style={{ position: 'relative', overflow: 'hidden' }}>
+          <div
+            className="hero-mancha"
+            style={{
+              position: 'absolute', top: '-16%', left: '-8%', width: '52vw', height: '52vw',
+              minWidth: 420, minHeight: 420, maxWidth: 640, maxHeight: 640, borderRadius: '50%',
+              background: 'radial-gradient(circle at 40% 40%, color-mix(in srgb, var(--brass) 22%, transparent), transparent 70%)',
+              filter: 'blur(40px)', animation: 'heroDeriva1 28s ease-in-out infinite', pointerEvents: 'none',
+            }}
+          />
+          <div
+            className="hero-mancha"
+            style={{
+              position: 'absolute', top: '4%', right: '-10%', width: '40vw', height: '40vw',
+              minWidth: 320, minHeight: 320, maxWidth: 520, maxHeight: 520, borderRadius: '50%',
+              background: 'radial-gradient(circle at 60% 60%, color-mix(in srgb, var(--gold) 16%, transparent), transparent 70%)',
+              filter: 'blur(46px)', animation: 'heroDeriva2 34s ease-in-out infinite', pointerEvents: 'none',
+            }}
+          />
+        <section className="max-w-6xl mx-auto px-4 pt-12 pb-16 sm:pt-16 sm:pb-24 grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-14 items-center" style={{ position: 'relative' }}>
           <div className="flex flex-col gap-5 order-1">
             {trialPlan && (
               <Revelar className="inline-flex w-fit items-center gap-2">
@@ -1143,6 +1177,7 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
             </div>
           </div>
         </section>
+        </div>
 
         {/* Dores -- cada uma já com a resolução por baixo, numa lista só,
             sempre equilibrada (uma coluna, nunca duas com números

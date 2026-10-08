@@ -11483,6 +11483,17 @@ function LinhaPrograma({ p, onAbrir }) {
    autorização. */
 const LIMITE_LISTA_MODELOS = 60;
 
+// Os 200 protocolos semanais (src/data/protocolos-semanais.ts, gerado por
+// scripts/gerar-protocolos-semanais.mjs) são carregados por import() como os
+// 860 -- este número só serve para o contador na interface não ter de
+// carregar o ficheiro. scripts/validar-protocolos-semanais.mjs confirma que
+// são mesmo 200.
+const TOTAL_PROTOCOLOS_SEMANAIS = 200;
+// Sobe quando o conteúdo dos 200 protocolos mudar (o mesmo papel de
+// CATALOGO_MODELOS_VERSAO para os 860) -- guardado na origem de quem usar um,
+// para se saber de que versão veio.
+const CATALOGO_PROTOCOLOS_VERSAO = 'ptm_protocolos_semanais_v1';
+
 const FAIXAS_DURACAO = [
   { id: 'ate15', label: 'Até 15 min', min: 0, max: 15 },
   { id: '16a30', label: '16 a 30 min', min: 16, max: 30 },
@@ -11493,8 +11504,17 @@ const FAIXAS_DURACAO = [
 const FILTROS_MODELOS_VAZIOS = {
   colecao: 'todos', grupo: 'todos', categoria: 'todos', objetivo: 'todos', experiencia: 'todos',
   condicionamento: 'todos', metodo: 'todos', equipamento: 'todos', duracao: 'todos',
-  supervisao: 'todos', clinica: 'todos',
+  supervisao: 'todos', clinica: 'todos', frequencia: 'todos',
 };
+
+// Só os 200 protocolos semanais têm `frequenciaSemanal` -- as fichas antigas
+// não têm o campo, e por isso nunca aparecem quando este filtro está ativo.
+const FREQUENCIAS_MODELOS = [
+  { id: '1-2', label: '1 a 2x por semana' },
+  { id: '2-3', label: '2 a 3x por semana' },
+  { id: '4-5', label: '4 a 5x por semana' },
+  { id: '5-7', label: '5 a 7x por semana' },
+];
 
 const ESTILO_BADGE_NEUTRO = { color: 'var(--text-muted)', backgroundColor: 'var(--wash-strong)' };
 const ESTILO_BADGE_METODO = { color: 'var(--brass)', backgroundColor: 'var(--brass-soft)' };
@@ -11779,8 +11799,12 @@ function BibliotecaModelosView({ student, biblioteca, onUsar, onGuardar, onFecha
   useEffect(() => {
     let vivo = true;
     setErro(false);
-    import('./src/data/modelos-treino')
-      .then((m) => { if (vivo) setCatalogo(m.CATALOGO_MODELOS); })
+    // Os 200 protocolos semanais são um ficheiro à parte (geraram-se à parte,
+    // e sem documento de origem nenhum) mas entram na mesma vista: o mesmo
+    // "Usar este modelo", o mesmo PDF, os mesmos filtros -- só o id (PTS-, não
+    // PTM-) e o campo `frequenciaSemanal` os distinguem.
+    Promise.all([import('./src/data/modelos-treino'), import('./src/data/protocolos-semanais')])
+      .then(([m, p]) => { if (vivo) setCatalogo([...m.CATALOGO_MODELOS, ...p.CATALOGO_PROTOCOLOS_SEMANAIS]); })
       .catch(() => { if (vivo) setErro(true); });
     return () => { vivo = false; };
   }, [tentativa]);
@@ -11789,7 +11813,7 @@ function BibliotecaModelosView({ student, biblioteca, onUsar, onGuardar, onFecha
   // exercícios, sem acentos -- "agachamento" ou "ptm-0312" encontram a ficha.
   const indice = useMemo(() => (catalogo || []).map((f) => ({
     ficha: f,
-    busca: chaveBusca([f.nome, f.id, f.categoria, f.objetivo, f.experiencia, f.condicionamento, f.metodoPrincipal,
+    busca: chaveBusca([f.nome, f.id, f.categoria, f.objetivo, f.experiencia, f.condicionamento, f.metodoPrincipal, f.frequenciaSemanal,
       ...f.treinos[0].exercicios.map((e) => e.nome)].join(' ')),
   })), [catalogo]);
 
@@ -11816,6 +11840,7 @@ function BibliotecaModelosView({ student, biblioteca, onUsar, onGuardar, onFecha
       && (!faixa || (f.duracaoEstimadaMinutos.minutos >= faixa.min && f.duracaoEstimadaMinutos.minutos <= faixa.max))
       && (filtros.supervisao === 'todos' || Boolean(f.requerSupervisaoTecnica) === (filtros.supervisao === 'sim'))
       && (filtros.clinica === 'todos' || Boolean(f.requerValidacaoClinica) === (filtros.clinica === 'sim'))
+      && (filtros.frequencia === 'todos' || f.frequenciaSemanal === filtros.frequencia)
       && (!termos.length || termos.some((t) => busca.includes(t)))
     )).map((x) => x.ficha);
   }, [indice, procura, filtros]);
@@ -11849,7 +11874,9 @@ function BibliotecaModelosView({ student, biblioteca, onUsar, onGuardar, onFecha
 
   // O programa que nasce de uma ficha diz de que ficha e de que versão do
   // catálogo veio; o catálogo pode mudar, o programa já criado não.
-  const comOrigem = (f) => ({ ...f, origem: { ficha: f.id, catalogo: CATALOGO_MODELOS_VERSAO } });
+  // Os ids distinguem o catálogo: PTM- vem do documento de consolidação,
+  // PTS- dos protocolos semanais -- cada um com a sua própria versão.
+  const comOrigem = (f) => ({ ...f, origem: { ficha: f.id, catalogo: f.id.startsWith('PTS-') ? CATALOGO_PROTOCOLOS_VERSAO : CATALOGO_MODELOS_VERSAO } });
 
   const ficha = fichaId && catalogo ? catalogo.find((f) => f.id === fichaId) : null;
   if (ficha) {
@@ -11922,6 +11949,7 @@ function BibliotecaModelosView({ student, biblioteca, onUsar, onGuardar, onFecha
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <SeletorFiltro rotulo="Filtrar por coleção" valor={filtros.colecao} onMudar={(v) => mudarFiltro('colecao', v)} opcoes={COLECOES_MODELOS} todos="Todas as coleções" />
               <SeletorFiltro rotulo="Filtrar por grupo" valor={filtros.grupo} onMudar={(v) => mudarFiltro('grupo', v)} opcoes={gruposDaColecao} todos={filtros.colecao === 'todos' ? 'Escolha primeiro a coleção' : 'Todos os grupos'} desativado={filtros.colecao === 'todos'} />
+              <SeletorFiltro rotulo="Filtrar por frequência semanal" valor={filtros.frequencia} onMudar={(v) => mudarFiltro('frequencia', v)} opcoes={FREQUENCIAS_MODELOS} todos="Qualquer frequência" />
               <SeletorFiltro rotulo="Filtrar por categoria" valor={filtros.categoria} onMudar={(v) => mudarFiltro('categoria', v)} opcoes={CATEGORIAS_MODELOS} todos="Todas as categorias" />
               <SeletorFiltro rotulo="Filtrar por objetivo" valor={filtros.objetivo} onMudar={(v) => mudarFiltro('objetivo', v)} opcoes={OBJETIVOS_MODELOS} todos="Todos os objetivos" />
               <SeletorFiltro rotulo="Filtrar por experiência" valor={filtros.experiencia} onMudar={(v) => mudarFiltro('experiencia', v)} opcoes={EXPERIENCIAS_MODELOS} todos="Toda a experiência" />
@@ -11935,7 +11963,7 @@ function BibliotecaModelosView({ student, biblioteca, onUsar, onGuardar, onFecha
           )}
 
           <div className="text-2xs font-body text-faint" aria-live="polite">
-            {plural(filtrados.length, 'modelo', 'modelos')} de {TOTAL_MODELOS_CATALOGO}
+            {plural(filtrados.length, 'modelo', 'modelos')} de {TOTAL_MODELOS_CATALOGO + TOTAL_PROTOCOLOS_SEMANAIS}
             {escondidos > 0 ? ` · a mostrar os primeiros ${visiveis.length}` : ''}
           </div>
 
@@ -12850,7 +12878,7 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
           </button>
 
           <button type="button" onClick={() => setVerBiblioteca(true)} className="btn btn-ghost">
-            <BookMarked size={15} /> Biblioteca de modelos ({TOTAL_MODELOS_CATALOGO})
+            <BookMarked size={15} /> Biblioteca de modelos ({TOTAL_MODELOS_CATALOGO + TOTAL_PROTOCOLOS_SEMANAIS})
           </button>
 
           {modelos.length > 0 && (

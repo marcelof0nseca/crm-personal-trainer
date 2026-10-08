@@ -2036,6 +2036,36 @@ const METODOS_TREINO = [
   'Superset antagonista', 'Série composta', 'Cluster', 'Contraste',
 ];
 
+// Como se executa a série com cada método -- uma frase, para o treinador ler
+// no instante de prescrever, não um manual. Fica na mesma caixa dos números
+// do método (minutos, quedas, voltas…), que já mudam consoante o escolhido.
+const EXPLICACAO_METODO = {
+  'Série tradicional': 'Uma série isolada, até ao número de repetições prescrito, com descanso completo antes da seguinte.',
+  'Supersérie': 'Dois exercícios seguidos, sem pausa entre eles — descansa-se só depois dos dois.',
+  'Bi-set': 'Dois exercícios seguidos, sem pausa entre eles — descansa-se só depois dos dois.',
+  'Trissérie': 'Três exercícios seguidos, sem pausa entre eles — descansa-se só depois dos três.',
+  'Giant set': 'Quatro ou mais exercícios seguidos, sem pausa — descansa-se só no fim da ronda.',
+  'Circuito': 'Uma volta por todos os exercícios, com pouca ou nenhuma pausa entre eles, repetindo o número de voltas combinado.',
+  'EMOM': 'Faz-se o trabalho logo no início de cada minuto; o que sobra do minuto é o descanso até ao seguinte.',
+  'AMRAP': 'O máximo de repetições ou voltas possível dentro do tempo definido, sem perder a técnica.',
+  'Tabata': 'Alterna um tempo curto de esforço máximo com um tempo curto de pausa, pelo número de rondas definido.',
+  'Intervalado': 'Alterna um tempo de esforço com um tempo de recuperação, pelas vezes necessárias.',
+  'For time': 'Um volume de trabalho fixo, feito o mais rápido possível dentro de um tempo limite — o limite é um teto, não uma obrigação de acelerar.',
+  'Rest-pause': 'Vai-se até perto da falha, descansa-se poucos segundos de pé, e repete-se mais uma ou duas vezes com a mesma carga.',
+  'Drop-set': 'Ao chegar à falha, reduz-se a carga de imediato e continua-se sem descanso, tantas vezes quantas as quedas combinadas.',
+  'Série de aproximação': 'Uma série com carga mais leve antes da série de trabalho, só para preparar a técnica e a articulação.',
+  'Série de trabalho': 'A série que conta para o treino, feita já com a carga prescrita.',
+  'Back-off': 'Depois da série mais pesada, reduz-se a carga na percentagem combinada e faz-se mais uma série.',
+  'Até à falha': 'Repete-se até já não conseguir fazer mais nenhuma repetição com boa técnica.',
+  'Pirâmide': 'A carga sobe (ou desce) série a série, com as repetições a mudarem no sentido oposto.',
+  'Pré-exaustão': 'Um exercício de isolamento primeiro, para pré-fatigar o músculo, seguido de um composto, sem pausa entre eles.',
+  'Pós-exaustão': 'Um exercício composto primeiro, seguido de um de isolamento para o mesmo músculo, sem pausa entre eles.',
+  'Superset antagonista': 'Dois exercícios de grupos musculares opostos, seguidos sem pausa — um descansa enquanto o outro trabalha.',
+  'Série composta': 'Dois exercícios para o mesmo grupo muscular, seguidos sem pausa.',
+  'Cluster': 'A série parte-se em mini-séries curtas, com uma pausa breve entre elas, para manter a carga mais alta do início ao fim.',
+  'Contraste': 'Uma repetição pesada e lenta, seguida sem demora de um movimento rápido e explosivo com carga leve.',
+};
+
 /* ------------------------- métodos de uma combinação -------------------------
    Um método como o drop-set vive num exercício só; um bi-set vive na ligação
    entre dois. Até aqui a aplicação sabia agrupar exercícios mas a combinação
@@ -10609,21 +10639,26 @@ function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, 
         </div>
       </div>
 
-      {camposMetodo.length > 0 && (
+      {ex.metodo && (EXPLICACAO_METODO[ex.metodo] || camposMetodo.length > 0) && (
         <div className="rounded-lg border border-hair p-2.5 flex flex-col gap-2" style={{ backgroundColor: 'var(--wash)' }}>
           <span className="text-2xs uppercase tracking-wide font-mono text-faint">{ex.metodo}</span>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {camposMetodo.map(([campo, rotulo, exemplo]) => (
-              <FormField key={campo} label={rotulo}>
-                <input
-                  value={paramsMetodo[campo] || ''}
-                  onChange={(e) => onMudar({ ...ex, metodoParams: { ...paramsMetodo, [campo]: e.target.value } })}
-                  className="input-field"
-                  placeholder={exemplo}
-                />
-              </FormField>
-            ))}
-          </div>
+          {EXPLICACAO_METODO[ex.metodo] && (
+            <p className="text-xs font-body text-muted" style={{ margin: 0, lineHeight: 1.4 }}>{EXPLICACAO_METODO[ex.metodo]}</p>
+          )}
+          {camposMetodo.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {camposMetodo.map(([campo, rotulo, exemplo]) => (
+                <FormField key={campo} label={rotulo}>
+                  <input
+                    value={paramsMetodo[campo] || ''}
+                    onChange={(e) => onMudar({ ...ex, metodoParams: { ...paramsMetodo, [campo]: e.target.value } })}
+                    className="input-field"
+                    placeholder={exemplo}
+                  />
+                </FormField>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

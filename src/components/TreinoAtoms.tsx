@@ -216,7 +216,7 @@ export function ExercicioVista({ ex, biblioteca, grupoInfo, onMudar, comCabecalh
           {comCabecalho && (
             <div className="flex items-center gap-2 text-2xs font-body text-faint" style={{ paddingRight: 2 }}>
               <span className="nowrap" style={{ width: 34, flexShrink: 0 }}>Série</span>
-              <span className="flex-1 min-w-0">Prescrição</span>
+              <span className="flex-1 min-w-0">Repetições ou tempo</span>
               <span className="nowrap" style={{ width: 92, textAlign: 'right' }}>Carga</span>
               <span className="nowrap" style={{ width: 56, textAlign: 'right' }}>Descanso</span>
             </div>

@@ -8324,7 +8324,7 @@ function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSess
             return <SessionCard key={s.id} session={s} student={student} onOpen={() => onOpenSession(s)} onQuickStatus={onQuickStatus} customCategories={customCategories} compact={compact} selecao={selecao} />;
           })
           : itensDoDia(sessionsList).map((item) => (item.sessoes.length > 1 ? (
-            <GroupedSessionCard key={item.sessoes[0].groupId} sessoes={item.sessoes} students={students} onOpenSession={onOpenSession} compact={compact} customCategories={customCategories} />
+            <GroupedSessionCard key={item.sessoes[0].groupId} sessoes={item.sessoes} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} compact={compact} customCategories={customCategories} />
           ) : (
             <SessionCard
               key={item.sessoes[0].id}
@@ -8362,7 +8362,56 @@ function itensDoDia(sessionsList) {
 // tira esquerda e no fundo), mas com uma linha por aluno lá dentro em vez de
 // um cartão por aluno -- abrir um nome leva à sessão desse aluno, sozinha,
 // onde se marca presença/falta ou se apaga só a dele.
-function GroupedSessionCard({ sessoes, students, onOpenSession, compact, customCategories }) {
+// Um aluno dentro do grupo: nome + estado (abre a sessão dele) e, ao lado, os
+// mesmos três botões rápidos do SessionCard -- irmãos do botão de abrir, não
+// filhos dele, pela mesma razão de sempre (um <button> dentro de um elemento
+// com role="button" é ARIA inválido e o rótulo de cada ação entraria no nome
+// acessível do botão de abrir).
+function LinhaDoGrupo({ sessao, student, onOpenSession, onQuickStatus, compact }) {
+  const statusInfo = STATUS_OPTIONS.find((o) => o.id === sessao.status);
+  const isFalta = sessao.status === 'falta';
+  const isCancelado = sessao.status === 'cancelado';
+  const isRealizado = sessao.status === 'realizado';
+  const podeDar = !isRealizado && !isCancelado && !isFalta;
+  const podeFaltar = !isFalta && !isCancelado;
+  const tamanho = compact ? 12 : 13;
+  const acaoRapida = (estado, rotulo, Icone, fundo) => (
+    <button
+      key={estado}
+      type="button"
+      onClick={() => onQuickStatus(sessao, estado)}
+      className="rounded flex-shrink-0"
+      style={{ padding: 3, backgroundColor: fundo, lineHeight: 0 }}
+      aria-label={`${rotulo} — ${student?.name || 'aluno removido'}`}
+      title={rotulo}
+    >
+      <Icone size={tamanho} style={{ color: '#0A0A0A', display: 'block' }} />
+    </button>
+  );
+  return (
+    <div className="flex items-center gap-1 min-w-0">
+      <button
+        type="button"
+        onClick={() => onOpenSession(sessao)}
+        className="flex items-center justify-between gap-2 text-left rounded-md px-1.5 py-1 btn-surface min-w-0 flex-1"
+      >
+        <span className={`font-body text-sm text-primary truncate ${isFalta ? 'line-through' : ''}`}>{student?.name || 'Aluno removido'}</span>
+        <span className="badge flex-shrink-0" style={{ color: acentoTexto(statusInfo?.color), backgroundColor: `color-mix(in srgb, ${statusInfo?.color} 14%, transparent)` }}>
+          {statusInfo?.label}
+        </span>
+      </button>
+      {(podeDar || podeFaltar) && (
+        <span className="flex items-center gap-1 flex-shrink-0">
+          {podeDar && acaoRapida('realizado', 'Aula dada', CheckCircle2, 'var(--ok)')}
+          {podeFaltar && acaoRapida('falta', 'Falta, sem reposição', UserX, 'var(--rust)')}
+          {podeFaltar && acaoRapida('falta_reposicao', 'Falta, com direito a reposição', RotateCcw, 'var(--gold)')}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function GroupedSessionCard({ sessoes, students, onOpenSession, onQuickStatus, compact, customCategories }) {
   const first = sessoes[0];
   const type = sessionTypeFor(first.type, customCategories);
   const TypeIcon = iconOf(type.icon);
@@ -8380,23 +8429,16 @@ function GroupedSessionCard({ sessoes, students, onOpenSession, compact, customC
         <span className="text-2xs font-body text-faint truncate">{type.label} · {sessoes.length} alunos</span>
       </div>
       <div className="flex flex-col gap-1">
-        {sessoes.map((s) => {
-          const student = students.find((st) => st.id === s.studentId);
-          const statusInfo = STATUS_OPTIONS.find((o) => o.id === s.status);
-          return (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => onOpenSession(s)}
-              className="flex items-center justify-between gap-2 text-left rounded-md px-1.5 py-1 btn-surface min-w-0"
-            >
-              <span className={`font-body text-sm text-primary truncate ${s.status === 'falta' ? 'line-through' : ''}`}>{student?.name || 'Aluno removido'}</span>
-              <span className="badge flex-shrink-0" style={{ color: acentoTexto(statusInfo?.color), backgroundColor: `color-mix(in srgb, ${statusInfo?.color} 14%, transparent)` }}>
-                {statusInfo?.label}
-              </span>
-            </button>
-          );
-        })}
+        {sessoes.map((s) => (
+          <LinhaDoGrupo
+            key={s.id}
+            sessao={s}
+            student={students.find((st) => st.id === s.studentId)}
+            onOpenSession={onOpenSession}
+            onQuickStatus={onQuickStatus}
+            compact={compact}
+          />
+        ))}
       </div>
     </div>
   );

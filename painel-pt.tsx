@@ -3078,6 +3078,70 @@ async function lerFotoDoBalde(caminho) {
   return blobParaDataUri(data);
 }
 
+/* ========================= VÍDEO DOS EXERCÍCIOS =========================
+   Um vídeo por exercício (não por prescrição nem por aluno): demonstra a
+   execução, não é dado de um aluno em particular. Vive no balde privado
+   `videos`, caminho `<user_id>/<id>.<extensão>`; o exercício guarda só o
+   caminho (`videoPath`), como as fotografias guardam só o delas. Sem conta
+   ligada (modo local), o vídeo fica como `data:` URI (`videoDataUri`), tal
+   como as fotografias.
+
+   MVP: sem corte nem compressão automática -- pede-se que o ficheiro já
+   venha com 10 s ou menos, e confere-se a duração a sério antes de aceitar
+   (ver `duracaoDoVideo`), em vez de confiar que o treinador leu o aviso. */
+const BALDE_VIDEOS = 'videos';
+const DURACAO_MAXIMA_VIDEO_SEG = 10.5; // meio segundo de tolerância ao corte do ficheiro
+const VALIDADE_URL_VIDEO = 60 * 60 * 8; // mesma janela das fotografias
+
+// Lê a duração a sério (não confia na extensão nem no nome do ficheiro):
+// carrega os metadados num <video> fora do ecrã e lê `duration`.
+function duracaoDoVideo(ficheiro) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(ficheiro);
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    v.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(v.duration); };
+    v.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Não foi possível ler o vídeo.')); };
+    v.src = url;
+  });
+}
+
+function extensaoDoVideo(tipo) {
+  if (tipo === 'video/webm') return 'webm';
+  if (tipo === 'video/quicktime') return 'mov';
+  return 'mp4';
+}
+
+async function guardarVideoNoBalde(userId, id, ficheiro) {
+  const caminho = `${userId}/${id}.${extensaoDoVideo(ficheiro.type)}`;
+  const { error } = await supabase.storage
+    .from(BALDE_VIDEOS)
+    .upload(caminho, ficheiro, { contentType: ficheiro.type || 'video/mp4', upsert: true });
+  if (error) throw error;
+  return caminho;
+}
+
+async function assinarVideos(caminhos) {
+  if (!supabase || caminhos.length === 0) return {};
+  const { data, error } = await supabase.storage
+    .from(BALDE_VIDEOS)
+    .createSignedUrls(caminhos, VALIDADE_URL_VIDEO);
+  if (error || !data) return {};
+  const porCaminho = {};
+  data.forEach((r) => { if (r.signedUrl && !r.error) porCaminho[r.path] = r.signedUrl; });
+  return porCaminho;
+}
+
+async function apagarVideoDoBalde(caminhos) {
+  if (!supabase || caminhos.length === 0) return true;
+  try {
+    const { error } = await supabase.storage.from(BALDE_VIDEOS).remove(caminhos);
+    return !error;
+  } catch (e) {
+    return false;
+  }
+}
+
 // Lê um campo de dinheiro ou percentagem.
 //
 // Vazio vale zero, e não é um erro: há quem registe o aluno antes de combinar
@@ -10048,7 +10112,72 @@ function AlternativasModal({ exercicio, treinos, onTrocar, onClose }) {
   );
 }
 
-function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEditar, onApagar, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onFechar }) {
+// O vídeo de um exercício: até 10 s, 4:5 (1080×1350), para caber na vista do
+// treino sem dominar o ecrã. Só existe depois de o exercício já ter sido
+// criado -- um exercício "novo" ainda sem id não tem onde o anexar.
+function VideoDoExercicio({ exercicio, onGuardar, onApagar }) {
+  const [aEnviar, setAEnviar] = useState(false);
+  const [aApagar, setAApagar] = useState(false);
+  const temVideo = Boolean(exercicio.videoPath || exercicio.videoDataUri);
+
+  async function escolher(ficheiro) {
+    if (!ficheiro) return;
+    setAEnviar(true);
+    await onGuardar(exercicio, ficheiro);
+    setAEnviar(false);
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-xs font-body text-muted">Vídeo (opcional, até 10 s)</span>
+      {temVideo && exercicio.videoUrl && (
+        <video
+          key={exercicio.videoUrl}
+          src={exercicio.videoUrl}
+          controls
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          style={{ width: 160, aspectRatio: '4 / 5', objectFit: 'cover', borderRadius: 'var(--r-lg)', backgroundColor: '#000' }}
+        />
+      )}
+      <div className="flex items-center gap-2 flex-wrap">
+        <label className="btn btn-ghost self-start" style={{ fontSize: 12, cursor: aEnviar ? 'default' : 'pointer', opacity: aEnviar ? 0.6 : 1 }}>
+          {aEnviar ? <Loader2 size={14} className="spin" /> : <Camera size={14} />}
+          {aEnviar ? 'A enviar...' : (temVideo ? 'Trocar vídeo' : 'Carregar vídeo')}
+          <input
+            type="file"
+            accept="video/*"
+            disabled={aEnviar}
+            style={{ display: 'none' }}
+            onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; escolher(f); }}
+          />
+        </label>
+        {temVideo && (
+          <button type="button" onClick={() => setAApagar(true)} disabled={aEnviar} className="btn btn-ghost" style={{ fontSize: 12, color: 'var(--rust)' }}>
+            <Trash2 size={14} /> Remover
+          </button>
+        )}
+      </div>
+      <p className="text-2xs font-body text-faint" style={{ margin: 0 }}>
+        Fica visível na vista do treino, por cima das séries. Corte o ficheiro
+        para 10 segundos ou menos antes de enviar -- é recusado se vier mais comprido.
+      </p>
+      {aApagar && (
+        <ConfirmDialog
+          title="Remover o vídeo?"
+          message={`O vídeo de "${exercicio.nome}" deixa de aparecer na vista do treino.`}
+          confirmLabel="Remover"
+          onCancel={() => setAApagar(false)}
+          onConfirm={() => { setAApagar(false); onApagar(exercicio); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEditar, onApagar, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onGuardarVideo, onApagarVideo, onFechar }) {
   const biblioteca = treinos.biblioteca;
   const grupos = gruposDe(treinos);
   const categorias = categoriasDe(treinos);
@@ -10274,6 +10403,18 @@ function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEdi
                 onAdd={(nome) => { const nova = onCriarPasta(nome); if (nova) setForm((n) => ({ ...n, pasta: nova.id })); }}
               />
             </div>
+
+            {/* emEdicao é a cópia de quando se abriu a edição; depois de
+                guardar (ou apagar) um vídeo, só a `biblioteca` (que vem do
+                componente-pai, reativa) sabe o estado novo -- sem isto, o
+                vídeo continuava a não aparecer depois de o envio acabar. */}
+            {emEdicao !== 'novo' && (
+              <VideoDoExercicio
+                exercicio={biblioteca.find((b) => b.id === emEdicao.id) || emEdicao}
+                onGuardar={onGuardarVideo}
+                onApagar={onApagarVideo}
+              />
+            )}
 
             {emEdicao !== 'novo' && (
               <div className="flex flex-col gap-3 rounded-lg border border-hair p-3" style={{ backgroundColor: 'var(--bg-elevated)' }}>
@@ -11131,7 +11272,7 @@ function TreinoVista({ prescricao, biblioteca, onMudar, onEditar, onImprimir, on
   );
 }
 
-function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivar, onGuardarModelo, onImprimir, onEliminar, onVerTreino }) {
+function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivar, onGuardarModelo, onImprimir, onEliminar, onVerTreino, onGuardarVideoExercicio, onApagarVideoExercicio }) {
   const biblioteca = treinos.biblioteca;
   const [picker, setPicker] = useState(null); // id do treino a receber o exercicio
   const [alternativas, setAlternativas] = useState(null); // { treinoId, ex }
@@ -11434,6 +11575,8 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
           onCriarCategoria={onCriarCategoria}
           onAlternarFavorito={onAlternarFavorito}
           onCriarPasta={onCriarPasta}
+          onGuardarVideo={onGuardarVideoExercicio}
+          onApagarVideo={onApagarVideoExercicio}
           onEscolher={(exercicio) => {
             const t = prescricao.treinos.find((x) => x.id === picker);
             mudarTreino(picker, { ...t, exercicios: [...t.exercicios, novoExercicioTreino(exercicio)] });
@@ -12753,7 +12896,7 @@ function VerSessaoModal({ sessao, onGuardar, onApagar, onFechar }) {
   );
 }
 
-function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, onEliminarPrescricao, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivarPrescricao, onGuardarModelo, onCriarDeModelo, onApagarModelo, usosDoExercicio, onImprimir, onVoltar, execucoes, onCarregarExecucoes, onGuardarSessao, onCorrigirSessao, onApagarSessao, sessaoInicial, onSessaoInicialLida }) {
+function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, onEliminarPrescricao, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivarPrescricao, onGuardarModelo, onCriarDeModelo, onApagarModelo, usosDoExercicio, onImprimir, onVoltar, execucoes, onCarregarExecucoes, onGuardarSessao, onCorrigirSessao, onApagarSessao, sessaoInicial, onSessaoInicialLida, onGuardarVideoExercicio, onApagarVideoExercicio }) {
   const [abertoId, setAbertoId] = useState(null);
   // Um programa que já tem trabalho escrito abre para ser visto; um acabado de
   // criar abre no construtor, que é o que falta fazer-lhe.
@@ -12866,6 +13009,8 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
           onImprimir={() => onImprimir(aberta)}
           onArquivar={onArquivarPrescricao}
           onGuardarModelo={onGuardarModelo}
+          onGuardarVideoExercicio={onGuardarVideoExercicio}
+          onApagarVideoExercicio={onApagarVideoExercicio}
         />
       ) : (
         <>
@@ -17028,6 +17173,9 @@ function AppInner() {
   const [mfaPendente, setMfaPendente] = useState(false);
   // Endereços assinados das fotografias que estão no balde, por id.
   const [urlsDeFotos, setUrlsDeFotos] = useState({});
+  // O mesmo para os vídeos dos exercícios, mas por caminho -- um vídeo não
+  // tem um id próprio como uma fotografia, o caminho já identifica o ficheiro.
+  const [urlsDeVideos, setUrlsDeVideos] = useState({});
   const [agendaFiltro, setAgendaFiltro] = useState(FILTRO_AGENDA_VAZIO);
   const [dayCursor, setDayCursor] = useState(() => new Date());
   const [permissaoNotificacoes, setPermissaoNotificacoes] = useState(
@@ -17783,6 +17931,96 @@ function AppInner() {
   const photosById = useMemo(() => Object.fromEntries(
     photos.map((p) => [p.id, p.dataUri ? p : { ...p, dataUri: urlsDeFotos[p.id] || '' }]),
   ), [photos, urlsDeFotos]);
+
+  // Assina os vídeos que estão no balde e ainda não têm endereço -- o mesmo
+  // padrão das fotografias (um pedido só para todos os que faltam).
+  useEffect(() => {
+    if (!supabaseConfigured) return undefined;
+    const caminhos = treinos.biblioteca.filter((e) => e.videoPath && !urlsDeVideos[e.videoPath]).map((e) => e.videoPath);
+    if (caminhos.length === 0) return undefined;
+    let cancelado = false;
+    assinarVideos(caminhos).then((porCaminho) => {
+      if (cancelado || Object.keys(porCaminho).length === 0) return;
+      setUrlsDeVideos((u) => ({ ...u, ...porCaminho }));
+    });
+    return () => { cancelado = true; };
+  }, [treinos.biblioteca, urlsDeVideos]);
+
+  // A biblioteca que o resto da aplicação vê para ler: com `videoUrl` já
+  // resolvido (dataUri em modo local, endereço assinado com conta ligada),
+  // como o `photosById` faz às fotografias -- `ExercicioVista` não precisa de
+  // saber de balde nenhum, só lê o campo.
+  const bibliotecaComVideo = useMemo(() => {
+    if (!treinos.biblioteca.some((e) => e.videoPath || e.videoDataUri)) return treinos.biblioteca;
+    return treinos.biblioteca.map((e) => {
+      if (e.videoDataUri) return { ...e, videoUrl: e.videoDataUri };
+      if (e.videoPath && urlsDeVideos[e.videoPath]) return { ...e, videoUrl: urlsDeVideos[e.videoPath] };
+      return e;
+    });
+  }, [treinos.biblioteca, urlsDeVideos]);
+  const treinosParaUI = useMemo(() => ({ ...treinos, biblioteca: bibliotecaComVideo }), [treinos, bibliotecaComVideo]);
+
+  // Guarda (ou substitui) o vídeo de um exercício -- upload assíncrono, por
+  // isso vive à parte da edição de texto de editarExercicioBiblioteca, que é
+  // síncrona. Confere o tipo e a duração a sério antes de aceitar: o aviso
+  // "até 10 s" não chega sozinho a impedir um ficheiro maior.
+  async function guardarVideoDoExercicio(exercicio, ficheiro) {
+    if (!ficheiro.type.startsWith('video/')) { showToast('Escolha um ficheiro de vídeo.', 'error'); return false; }
+    let duracao;
+    try { duracao = await duracaoDoVideo(ficheiro); } catch (e) { showToast('Não foi possível ler este vídeo.', 'error'); return false; }
+    if (!(duracao > 0) || duracao > DURACAO_MAXIMA_VIDEO_SEG) {
+      showToast(`O vídeo tem de ter 10 segundos ou menos (este tem ${Math.round(duracao)} s). Corte-o antes de enviar.`, 'error');
+      return false;
+    }
+    const antigo = { path: exercicio.videoPath, dataUri: exercicio.videoDataUri };
+    let campos;
+    if (supabaseConfigured) {
+      const userId = await currentSupabaseUserId();
+      if (!userId) { showToast('Sem sessão iniciada.', 'error'); return false; }
+      try {
+        const caminho = await guardarVideoNoBalde(userId, uid(), ficheiro);
+        campos = { videoPath: caminho, videoDataUri: undefined };
+      } catch (e) {
+        showToast('Não foi possível enviar o vídeo.', 'error');
+        return false;
+      }
+    } else {
+      campos = { videoPath: undefined, videoDataUri: await blobParaDataUri(ficheiro) };
+    }
+    aplicarCamposDeVideo(exercicio.id, campos);
+    // O antigo apaga-se depois do novo já estar gravado: se o envio tivesse
+    // falhado a meio, o exercício ficava sem vídeo nenhum em vez de manter o
+    // anterior por engano.
+    if (antigo.path && antigo.path !== campos.videoPath) apagarVideoDoBalde([antigo.path]);
+    showToast('Vídeo guardado.');
+    return true;
+  }
+
+  async function apagarVideoDoExercicio(exercicio) {
+    if (exercicio.videoPath) await apagarVideoDoBalde([exercicio.videoPath]);
+    aplicarCamposDeVideo(exercicio.id, { videoPath: undefined, videoDataUri: undefined });
+    showToast('Vídeo removido.');
+  }
+
+  // Um exercício de origem nunca tem vídeo "de fábrica" -- por isso aqui
+  // grava-se ou apaga-se diretamente, sem comparar com o original, ao
+  // contrário de editarExercicioBiblioteca (que só grava o que mudou de um
+  // texto que o exercício de origem já podia ter).
+  function aplicarCamposDeVideo(idExercicio, campos) {
+    const limpos = {};
+    Object.entries(campos).forEach(([k, v]) => { if (v !== undefined) limpos[k] = v; });
+    persistTreinos((t) => {
+      if (!ehExercicioBase(idExercicio)) {
+        return { ...t, bibliotecaExtra: t.bibliotecaExtra.map((e) => (e.id === idExercicio ? { ...e, videoPath: undefined, videoDataUri: undefined, ...limpos } : e)) };
+      }
+      const edicoes = { ...t.bibliotecaEdicoes };
+      const atual = { ...edicoes[idExercicio] };
+      delete atual.videoPath; delete atual.videoDataUri;
+      const proxima = { ...atual, ...limpos };
+      if (Object.keys(proxima).length) edicoes[idExercicio] = proxima; else delete edicoes[idExercicio];
+      return { ...t, bibliotecaEdicoes: edicoes };
+    });
+  }
 
   function saveStudent(student) {
     const exists = students.some((s) => s.id === student.id);
@@ -18852,6 +19090,13 @@ function AppInner() {
       if (!(await apagarFotosDoBalde(photos.filter((p) => p.path).map((p) => p.path)))) {
         throw new Error('não foi possível apagar as fotografias do armazenamento');
       }
+      const videosAApagar = [
+        ...(treinos.bibliotecaExtra || []).map((e) => e.videoPath),
+        ...Object.values(treinos.bibliotecaEdicoes || {}).map((e) => e.videoPath),
+      ].filter(Boolean);
+      if (!(await apagarVideoDoBalde(videosAApagar))) {
+        throw new Error('não foi possível apagar os vídeos dos exercícios do armazenamento');
+      }
       await writeStoredValue('alunos', JSON.stringify([]));
       await writeStoredValue('agenda', JSON.stringify([]));
       await writeStoredValue('financas', JSON.stringify([]));
@@ -18958,13 +19203,15 @@ function AppInner() {
         ) : treinosStudentId && students.some((st) => st.id === treinosStudentId) ? (
           <TreinosView
             student={students.find((st) => st.id === treinosStudentId)}
-            treinos={treinos}
+            treinos={treinosParaUI}
             onMudarPrescricao={mudarPrescricao}
             onCriarPrescricao={criarPrescricao}
             onEliminarPrescricao={eliminarPrescricao}
             onCriarExercicio={criarExercicioBiblioteca}
             onEditarExercicio={editarExercicioBiblioteca}
             onApagarExercicio={apagarExercicioBiblioteca}
+            onGuardarVideoExercicio={guardarVideoDoExercicio}
+            onApagarVideoExercicio={apagarVideoDoExercicio}
             onCriarGrupo={criarGrupoMuscular}
             onCriarCategoria={criarCategoriaExercicio}
             onAlternarFavorito={alternarFavorito}

@@ -200,6 +200,23 @@ export function ExercicioVista({ ex, biblioteca, grupoInfo, onMudar, comCabecalh
         )}
       </div>
 
+      {daBiblioteca && daBiblioteca.videoUrl && (
+        // Em loop e sem som: lê-se como uma demonstração curta, não como um
+        // vídeo "a reproduzir" -- e o som ficaria preso num telemóvel na sala
+        // de treino. `preload="none"`: um treino com vários exercícios com
+        // vídeo não descarrega todos de uma vez, só o que se abre a tocar.
+        <video
+          src={daBiblioteca.videoUrl}
+          controls
+          muted
+          loop
+          playsInline
+          preload="none"
+          aria-label={`Vídeo de ${ex.nome || 'exercício'}`}
+          style={{ width: '100%', maxWidth: 220, aspectRatio: '4 / 5', objectFit: 'cover', borderRadius: 'var(--r-lg)', backgroundColor: '#000' }}
+        />
+      )}
+
       {numeros && (
         <NumerosDoMetodo
           campos={camposMetodo}

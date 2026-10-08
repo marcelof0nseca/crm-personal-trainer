@@ -225,6 +225,51 @@ to authenticated
 using (bucket_id <> 'fotos' or public.aal_suficiente())
 with check (bucket_id <> 'fotos' or public.aal_suficiente());
 
+/* ===========================================================================
+   VÍDEO DOS EXERCÍCIOS
+
+   Um vídeo por exercício (não por aluno nem por avaliação): demonstra a
+   execução. Guarda-se o caminho no exercício, em `treinos` (bibliotecaExtra
+   ou bibliotecaEdicoes); o ficheiro vive aqui, carregado a pedido e por URL
+   assinado com prazo -- mesmo padrão do balde `fotos`.
+
+   Balde privado, mas SEM exigir dois fatores (ao contrário de `fotos`): um
+   vídeo de exercício não é dado de saúde de um aluno em particular -- é
+   material de referência da técnica, normalmente do próprio treinador. A
+   política `fotos_exige_aal2` abaixo só olha para o balde `fotos` de
+   propósito, por isso não precisa de se mexer.
+
+   Limite de 25 MB: dá folga a um vídeo de 10 s em boa qualidade (o limite de
+   duração em si é imposto pela aplicação, não pelo Storage).
+   ========================================================================== */
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('videos', 'videos', false, 26214400, array['video/mp4', 'video/quicktime', 'video/webm'])
+on conflict (id) do update
+  set public = false,
+      file_size_limit = 26214400,
+      allowed_mime_types = array['video/mp4', 'video/quicktime', 'video/webm'];
+
+-- O primeiro segmento do caminho é o id do dono: `<user_id>/<video_id>.mp4`.
+drop policy if exists "videos_ler_proprios" on storage.objects;
+create policy "videos_ler_proprios"
+on storage.objects for select to authenticated
+using (bucket_id = 'videos' and (storage.foldername(name))[1] = (select auth.uid()::text));
+
+drop policy if exists "videos_carregar_proprios" on storage.objects;
+create policy "videos_carregar_proprios"
+on storage.objects for insert to authenticated
+with check (bucket_id = 'videos' and (storage.foldername(name))[1] = (select auth.uid()::text));
+
+drop policy if exists "videos_substituir_proprios" on storage.objects;
+create policy "videos_substituir_proprios"
+on storage.objects for update to authenticated
+using (bucket_id = 'videos' and (storage.foldername(name))[1] = (select auth.uid()::text));
+
+drop policy if exists "videos_apagar_proprios" on storage.objects;
+create policy "videos_apagar_proprios"
+on storage.objects for delete to authenticated
+using (bucket_id = 'videos' and (storage.foldername(name))[1] = (select auth.uid()::text));
+
 alter table public.personal_subscriptions enable row level security;
 
 grant select on public.personal_subscriptions to authenticated;

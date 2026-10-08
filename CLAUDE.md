@@ -201,6 +201,16 @@ Consequências que decidem quase tudo:
   ~300 kB de exercícios que já estão no *bundle*. O id de um exercício de origem
   é `'e:' + nome`, estável entre versões, para as prescrições não perderem a
   ligação.
+- **Um exercício pode ter um vídeo**, demonstração para o treinador, não para o
+  aluno (ver secção 10 — o aluno continua sem acesso à aplicação, isto não sai
+  no PDF). Como as fotografias: o exercício guarda só `videoPath`, no balde
+  privado `videos` (`<user_id>/<id>.<ext>`), lido por URL assinado de oito
+  horas; sem conta ligada fica `videoDataUri`. Vive dentro de
+  `bibliotecaExtra`/`bibliotecaEdicoes`, como qualquer outro campo do
+  exercício — não precisou de entidade própria nem de chave nova. **MVP: sem
+  corte nem compressão automática.** `duracaoDoVideo` lê a duração a sério
+  (carrega os metadados fora do ecrã, não confia na extensão) e recusa acima
+  de 10,5 s; cortar o ficheiro é o treinador que faz, antes de enviar.
 - **A biblioteca de modelos de treino também não é gravada.** As 860 fichas
   (`CATALOGO_MODELOS`) vivem no código e vêm de `scripts/gerar-modelos-treino.mjs`.
   Não são um `data_key`: gravá-las dentro de `treinos` reescrevia ~3,7 MB a
@@ -576,6 +586,16 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   dela.** No telemóvel a barra de separadores ocupa `--nav-h`;
   `.barra-sessao` sobe essa altura (mais `env(safe-area-inset-bottom)`). A 390 px
   o teste confere `fundo da barra <= topo da navegação`.
+- **Um vídeo gravado por `MediaRecorder` não é um ficheiro bem finalizado.**
+  Falta-lhe o `moov` onde o WebKit o exige — o Chromium é mais tolerante e lê
+  o mesmo ficheiro sem problema. Sem câmara real nem `ffmpeg` nesta máquina,
+  não há como fabricar um vídeo de teste que o WebKit decodifique: qualquer
+  ficheiro gerado assim é recusado por `duracaoDoVideo` (evento `error`, não
+  `loadedmetadata`), **com qualquer duração** — um vídeo de 2 s dá o mesmo
+  erro que um de 12 s, o que pareceu um bug na validação e não era. A lógica
+  em si está certa (o Chromium confirma: aceita ≤10 s, recusa >10 s); só a
+  leitura de um vídeo verdadeiro, gravado por uma câmara a sério, fica por
+  confirmar pelo dono do produto, no Safari a valer.
 
 ---
 
@@ -642,6 +662,12 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   caminho ser o id do dono, e exigem `aal2` a quem tem dois fatores. A CSP do
   `index.html` tem de aceitar `img-src https://*.supabase.co`, senão nenhuma
   fotografia aparece.
+  Balde privado `videos` (25 MB, mp4/quicktime/webm), mesmo padrão de
+  políticas por dono, mas **sem exigir `aal2`** — um vídeo de exercício não é
+  dado de saúde como as fotografias corporais, é uma demonstração de
+  execução. A CSP tem `media-src https://*.supabase.co` (e `data:`/`blob:`
+  para o modo local e para a leitura de duração antes de enviar). **Falta
+  correr o SQL** que cria o balde e as políticas — pendente, ver secção 11.
 - **Prévia social (Open Graph / Twitter Card)** — tudo estático no
   `<head>` do `index.html`: `og:title`/`description`/`image`/`url`/`type`/
   `site_name`/`locale`, `twitter:card=summary_large_image` + trio
@@ -743,6 +769,14 @@ Duas armadilhas de teste já apanhadas:
   na página. Usar `exact: true` quando o rótulo é prefixo de outro.
 - **`.first()` não chega se o primeiro estiver escondido.** A agenda desenha
   mais do que uma escala ao mesmo tempo: usar `locator('[role="button"]:visible')`.
+- **`getByText(regex)` apanha texto estático que já estava na página, não só
+  um aviso que acabou de aparecer.** Esperar por `/10 segundos ou menos/`
+  depois de um carregamento parecia confirmar a recusa de um vídeo comprido —
+  mas essa frase já estava sempre visível, numa nota de ajuda ao lado do
+  campo. O `waitFor()` resolvia-se de imediato, antes do carregamento sequer
+  acabar, e a asserção que vinha a seguir (contar `<video>`) é que estava a
+  fazer o trabalho a sério. Preferir um seletor do aviso em si (uma `toast`
+  tem geralmente uma marca própria), não uma frase que pode repetir-se.
 
 ---
 
@@ -762,7 +796,7 @@ existe de verdade.
 | **Biblioteca de modelos** | 860 fichas pré-construídas (representação A do documento de consolidação: 14 categorias, 8 objetivos, 4 níveis de experiência, 4 de condicionamento, 26 métodos) **mais 200 protocolos semanais gerados por regras** (`PTS-0001`…`PTS-0200`, sem documento de origem, 50 por cada banda de frequência: 1-2x, 2-3x, 4-5x, 5-7x por semana) — total **1060** fichas, em **Alunos → aluno → Treinos → «Biblioteca de modelos»**. Procura (traduz pt-BR e inglês, e aceita o código, `PTM-0312` ou `PTS-0047`), **filtro próprio de frequência semanal** e os outros 11 filtros combináveis · ficha com aquecimento, principal, volta à calma, critérios de entrada, progressão, regressão e o que registar · **«Usar este modelo»** cria o programa do aluno, editável como qualquer outro, e **«Guardar nos meus modelos»** guarda a ficha sem precisar de aluno; os dois registam a `origem`, e a vista do treino mostra «Modelo PTM-…» ou «Modelo PTS-…» · navegável por teclado, com o foco a seguir a vista (título ao abrir, cartão ao voltar). **«Validação clínica» e «supervisão técnica» são avisos**, com a ressalva ao lado — a aplicação não tem papéis nem forma de bloquear, e assinala, nunca diagnostica (10b). Estendeu `METODOS_COMBINACAO` com **EMOM, AMRAP e For time**, e deu **«pausa entre rondas»** ao bi-set, supersérie, trissérie… **Preservado do documento, nunca corrigido em silêncio** (26 fichas levam um aviso em `avisosEditoriais`): o RPE do complemento do «Personalizado» (4 na dose base, 5 no cronómetro), a regra de dose que deixa `pliometria técnica` e `unilateral` de fora das repetições de pliometria, e a preparação específica de uma família temporal. **A representação B não está construída** — o documento não reproduz as suas 860 prescrições |
 | **Treino realizado** | O **treinador** regista, na sala e no telemóvel, o que o aluno fez: **«Registar sessão»** na vista do treino abre um passo por exercício (uma combinação inteira num só passo), com barra de progresso, cronómetro, ✓ por série (que confirma o que a prescrição sugere) e carga, repetições, tempo, RIR ou RPE reais · «última vez» a partir do registo do próprio aluno · **rascunho no aparelho**, que sobrevive a bloquear o telemóvel ou recarregar · ao terminar, duração, esforço 0–10, **sintomas durante e depois** (ditos como o que o aluno referiu, nunca como diagnóstico), «interrompida» com motivo e notas · **«Sessões realizadas»** na lista de treinos do aluno, com selos dourados de «interrompida» e «sintomas referidos» · **ver, corrigir e apagar** uma sessão, com o prescrito ao lado do realizado · **na Ficha 360º**, «Sessões de treino» é um tipo de acontecimento com filtro e procura (por exercício, sintoma ou nota) · **a prescrição nunca é alterada**. Uma linha por aluno na base de dados — ver `execucoes:` na secção 4. **Exige correr o SQL de `supabase-schema.sql`** |
 | **Vista de treino** | O programa como se lê, e não como se escreve: um treino de cada vez, por bloco, com o resumo em números (exercícios, séries, pausa somada, volume). **A carga de cada série e os números do método editam-se ali mesmo**; o resto é no construtor. **Dois modos**: completo (tudo de uma vez) e **passo a passo** — um exercício por vez, uma combinação inteira (bi-set, trissérie…) num só passo, com setas e barra de progresso (`TreinoSegmentado`, `passosDoTreino`). Exercícios soltos também têm cor própria, mais discreta que a de uma combinação, só para se distinguirem na lista. `TreinoVista`, ao lado de `PrescricaoBuilder` |
-| **Biblioteca** | Procura que traduz o termo escrito (pt-BR e inglês de ginásio) · sinónimos por exercício · favoritos · pastas · progressões, regressões e substituições, com **troca de exercício num clique dentro do treino** |
+| **Biblioteca** | Procura que traduz o termo escrito (pt-BR e inglês de ginásio) · sinónimos por exercício · favoritos · pastas · progressões, regressões e substituições, com **troca de exercício num clique dentro do treino** · **vídeo opcional por exercício** (até 10 s, demonstração para o treinador — não sai no PDF, o aluno continua sem acesso), carregado no balde `videos`; **MVP sem corte automático**, recusa-se o que vier mais comprido |
 | **Avaliações** | Dobras, % massa gorda, perímetros, fotografias, gráfico de evolução, PDF · **rascunho e final, autosave, revisões com motivo, comparar e repor** |
 | **Documentos** | Timbre com logótipo próprio, estúdio, nº profissional e contactos · aviso de confidencialidade em todas as folhas · escolher que secções saem · **pré-visualizar antes de imprimir** · abrir o e-mail para o aluno |
 | **Finanças** | Entradas e saídas, categorias, IVA, taxa do ginásio, pendências |
@@ -784,6 +818,9 @@ existe de verdade.
 - Atalhos de teclado no construtor
 - Códigos de recuperação para os dois fatores — hoje, perder o telemóvel é
   perder o acesso, e a interface di-lo
+- Corte ou compressão automática do vídeo do exercício — o MVP só confere a
+  duração a sério e recusa o que vier mais comprido; cortar por conta própria
+  fica para quando for pedido
 
 **A linha do exercício desenha os campos a partir de `CAMPOS_BASE` e
 `CAMPOS_EXTRA`** — acrescentar um campo é estender uma lista, mais o PDF.
@@ -803,9 +840,13 @@ existe de verdade.
 Não construir sem o dono do produto voltar a pedir: nutrição (ato reservado a
 nutricionistas em Portugal), wearables, marketplace, feed social, chat (os
 clientes já usam WhatsApp), multiempresa e perfis granulares, IA (não há dados
-de treino para analisar), análise de vídeo, e **vídeo nos exercícios** — o aluno
-não tem acesso à aplicação, o que ele recebe é o PDF, e por isso os exercícios
-têm instruções em texto, que imprimem.
+de treino para analisar), análise de vídeo.
+
+**Vídeo nos exercícios já não está nesta lista** — o dono do produto voltou a
+pedir, e está construído (ver «Biblioteca», acima). A objeção original
+continua válida e decidiu a forma: o aluno continua sem acesso à aplicação e
+recebe só o PDF, por isso o vídeo é demonstração **para o treinador**, nunca
+sai impresso, e os exercícios continuam a ter instruções em texto.
 
 ---
 
@@ -893,8 +934,14 @@ Combinado por níveis, do mais barato ao mais caro:
     mesma vista, procura, filtros e PDF dos 860; só o prefixo do id e a
     versão própria (`CATALOGO_PROTOCOLOS_VERSAO`) os distinguem. Total da
     biblioteca: 1060
-23. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
-24. Decisões de produto — ver secção 10
+23. ~~Vídeo opcional por exercício~~ **feito**
+    — decisão de produto revisitada e invertida (ver secção 10): até 10 s,
+    demonstração para o treinador, nunca sai no PDF. MVP sem corte nem
+    compressão automática, `duracaoDoVideo` confere a duração a sério antes
+    de aceitar. Balde `videos` no Storage, mesmo padrão do `fotos` mas sem
+    exigir dois fatores. **Falta correr o SQL** do balde e das políticas
+24. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
+25. Decisões de produto — ver secção 10
 
 ---
 

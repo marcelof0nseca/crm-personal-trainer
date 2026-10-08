@@ -666,8 +666,8 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   políticas por dono, mas **sem exigir `aal2`** — um vídeo de exercício não é
   dado de saúde como as fotografias corporais, é uma demonstração de
   execução. A CSP tem `media-src https://*.supabase.co` (e `data:`/`blob:`
-  para o modo local e para a leitura de duração antes de enviar). **Falta
-  correr o SQL** que cria o balde e as políticas — pendente, ver secção 11.
+  para o modo local e para a leitura de duração antes de enviar). **SQL
+  corrido:** balde `videos` e as suas quatro políticas aplicados.
 - **Prévia social (Open Graph / Twitter Card)** — tudo estático no
   `<head>` do `index.html`: `og:title`/`description`/`image`/`url`/`type`/
   `site_name`/`locale`, `twitter:card=summary_large_image` + trio
@@ -939,7 +939,7 @@ Combinado por níveis, do mais barato ao mais caro:
     demonstração para o treinador, nunca sai no PDF. MVP sem corte nem
     compressão automática, `duracaoDoVideo` confere a duração a sério antes
     de aceitar. Balde `videos` no Storage, mesmo padrão do `fotos` mas sem
-    exigir dois fatores. **Falta correr o SQL** do balde e das políticas
+    exigir dois fatores. SQL corrido: balde e as quatro políticas aplicados
 24. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
 25. Decisões de produto — ver secção 10
 

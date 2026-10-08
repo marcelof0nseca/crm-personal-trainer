@@ -749,7 +749,7 @@ function FeatureSection({ heading, body, bullets, Mockup, reverse }) {
     <section className="max-w-6xl mx-auto px-4 py-12 sm:py-16">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-14 items-center">
         <div className={`flex flex-col gap-4 max-w-md order-1 ${reverse ? 'lg:order-2' : 'lg:order-1'}`}>
-          <h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary leading-snug">{heading}</h2>
+          <h2 className="font-hero text-2xl sm:text-3xl font-semibold text-primary leading-snug" style={{ letterSpacing: '-0.01em' }}>{heading}</h2>
           <p className="text-sm sm:text-base text-muted font-body">{body}</p>
           <ul className="flex flex-col gap-2.5 mt-1">
             {bullets.map((b) => (
@@ -876,7 +876,7 @@ function FeatureStoryteller() {
     <section className="max-w-6xl mx-auto px-4 py-12 sm:py-20">
       <Revelar>
         <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-14">
-          <h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary leading-snug">Assim é usar o PTMANAGER</h2>
+          <h2 className="font-hero text-2xl sm:text-3xl font-semibold text-primary leading-snug" style={{ letterSpacing: '-0.01em' }}>Assim é usar o PTMANAGER</h2>
           <p className="text-sm sm:text-base text-muted font-body mt-2">Um ecrã por tarefa, pensado para se usar com uma mão, no meio de uma aula.</p>
         </div>
       </Revelar>
@@ -923,7 +923,7 @@ function FeatureStoryteller() {
               style={{ opacity: ativo === i ? 1 : 0.32, transition: 'opacity 320ms var(--ease)' }}
             >
               <span className="text-2xs uppercase tracking-widest text-brass font-mono">{s.eyebrow}</span>
-              <h3 className="font-display text-2xl font-semibold text-primary mt-1.5 mb-2">{s.title}</h3>
+              <h3 className="font-hero text-2xl font-semibold text-primary mt-1.5 mb-2" style={{ letterSpacing: '-0.01em' }}>{s.title}</h3>
               <p className="text-base text-muted font-body max-w-sm">{s.body}</p>
             </div>
           ))}
@@ -1092,7 +1092,10 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
                 </span>
               </Revelar>
             )}
-            <h1 className="font-display text-3xl sm:text-4xl lg:text-[2.75rem] font-semibold text-primary leading-tight">
+            <h1
+              className="font-hero text-3xl sm:text-4xl lg:text-[2.9rem] text-primary"
+              style={{ fontWeight: 480, letterSpacing: '-0.01em', lineHeight: 1.06 }}
+            >
               Gestão completa para <span style={{ color: 'var(--brass)' }}>Personal Trainers</span>
             </h1>
             <p className="text-sm sm:text-base text-muted font-body max-w-lg">
@@ -1145,7 +1148,7 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
             sempre equilibrada (uma coluna, nunca duas com números
             diferentes de linhas). */}
         <section className="max-w-3xl mx-auto px-4 py-12 sm:py-16">
-          <Revelar><h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary text-center leading-snug">Isto soa-lhe familiar?</h2></Revelar>
+          <Revelar><h2 className="font-hero text-2xl sm:text-3xl font-semibold text-primary text-center leading-snug" style={{ letterSpacing: '-0.01em' }}>Isto soa-lhe familiar?</h2></Revelar>
           <Revelar atraso={90} className="mt-8 border border-hair rounded-2xl bg-surface overflow-hidden">
             {PAIN_POINTS.map((p, i) => (
               <div key={p.text} className={`px-5 py-3.5 ${i > 0 ? 'border-t border-hair' : ''}`}>
@@ -1178,7 +1181,7 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
             cinco secções demonstradas sem repetir o que elas já mostraram. */}
         <section className="max-w-6xl mx-auto px-4 py-12 sm:py-16">
           <Revelar className="flex flex-col gap-2 text-center items-center mb-10">
-            <h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary leading-snug">E tudo o resto, no mesmo sítio</h2>
+            <h2 className="font-hero text-2xl sm:text-3xl font-semibold text-primary leading-snug" style={{ letterSpacing: '-0.01em' }}>E tudo o resto, no mesmo sítio</h2>
             <p className="text-sm sm:text-base text-muted font-body max-w-xl">
               O que não tem uma demonstração própria acima, mas está lá — pronto a usar desde o primeiro dia.
             </p>
@@ -1235,7 +1238,7 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
               <Percent size={13} style={{ color: 'var(--gold)', flexShrink: 0 }} />
               <span className="text-2xs font-body font-semibold uppercase tracking-wide" style={{ color: 'var(--gold)' }}>Preços de lançamento — valor reservado para quem começar agora</span>
             </div>
-            <h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary">
+            <h2 className="font-hero text-2xl sm:text-3xl font-semibold text-primary" style={{ letterSpacing: '-0.01em' }}>
               {trialPlan ? `${trialPlan.trialDays} dias grátis, depois o plano que escolher` : 'Quanto mais tempo, mais meses grátis'}
             </h2>
             <p className="text-sm text-muted font-body max-w-xl">
@@ -1334,7 +1337,7 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
 
         {/* FAQ */}
         <section className="max-w-3xl mx-auto px-4 py-12 sm:py-16 flex flex-col gap-6">
-          <Revelar><h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary text-center">Perguntas frequentes</h2></Revelar>
+          <Revelar><h2 className="font-hero text-2xl sm:text-3xl font-semibold text-primary text-center" style={{ letterSpacing: '-0.01em' }}>Perguntas frequentes</h2></Revelar>
           <Revelar className="flex flex-col gap-2.5">
             {FAQ_ITEMS.map((item, i) => (
               <FaqItem key={item.q} item={item} index={i} open={openFaq === i} onToggle={() => setOpenFaq(openFaq === i ? null : i)} />
@@ -1345,7 +1348,7 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
         {/* Final CTA */}
         <section className="max-w-6xl mx-auto px-4 pb-16">
           <Revelar className="border border-hair rounded-2xl p-8 sm:p-12 flex flex-col items-center text-center gap-4" style={{ backgroundColor: 'rgba(30,166,180,0.08)' }}>
-            <h2 className="font-display text-2xl sm:text-3xl font-semibold text-primary">Pronto para organizar a sua rotina?</h2>
+            <h2 className="font-hero text-2xl sm:text-3xl font-semibold text-primary" style={{ letterSpacing: '-0.01em' }}>Pronto para organizar a sua rotina?</h2>
             <p className="text-sm text-muted font-body max-w-md">
               {trialPlan
                 ? `Experimente ${trialPlan.trialDays} dias grátis — sem cobrança até decidir ficar.`

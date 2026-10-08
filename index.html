@@ -5,13 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co; media-src 'self' data: blob: https://*.supabase.co; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self' https://checkout.stripe.com"
+      content="default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co; media-src 'self' data: blob: https://*.supabase.co; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self' https://checkout.stripe.com"
     />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
 
     <title>PTMANAGER — Gestão completa para Personal Trainers</title>
     <meta name="description" content="Alunos, agenda, avaliações físicas, treinos e finanças num único painel — feito para personal trainers independentes em Portugal." />
     <link rel="canonical" href="https://ptmanagerapp.com/" />
+
+    <!-- Fraunces: só para os títulos grandes da landing (.font-hero em
+         GlobalStyles) -- a interface da aplicação continua na fonte do
+         sistema, ver CLAUDE.md secção 5. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,340;9..144,480;9..144,600&display=swap" rel="stylesheet" />
 
     <!-- Open Graph (WhatsApp, Facebook, LinkedIn, Telegram, Discord…) -->
     <meta property="og:type" content="website" />

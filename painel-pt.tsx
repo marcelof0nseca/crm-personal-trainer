@@ -3697,6 +3697,12 @@ function GlobalStyles() {
            folha que se puxou. */
         --ease-folha: cubic-bezier(0.32, 0.72, 0, 1);
         --dur-folha: 340ms;
+        /* Um ligeiro ressalto -- a aproximação possível a movimento por
+           física com transition de CSS. Só em elementos que o próprio gesto
+           do utilizador despoleta (premir, arrastar o foco para um botão),
+           nunca numa entrada automática: ver apple-design, "overshoot só
+           quando o próprio gesto já trazia impulso". */
+        --ease-mola: cubic-bezier(0.34, 1.56, 0.64, 1);
 
         /* ---------- Materiais ----------
            As barras são vidro, não tapume: o conteúdo passa por baixo e
@@ -3753,6 +3759,11 @@ function GlobalStyles() {
       .font-display { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
       .font-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
       .font-mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-variant-numeric: tabular-nums; }
+      /* Só para títulos grandes de marketing (hero e secções da landing) --
+         nunca na interface da aplicação: um serif de exibição lê-se mal a
+         14-16px num título de modal ou de definições, onde .font-display
+         (system-ui) continua a ser a escolha certa. */
+      .font-hero { font-family: 'Fraunces', ui-serif, Georgia, serif; font-optical-sizing: auto; }
 
       .text-2xs { font-size: 0.6875rem; line-height: 1rem; }
 
@@ -3781,7 +3792,7 @@ function GlobalStyles() {
         border-radius: var(--r-md);
         box-shadow: var(--shadow-sm);
       }
-      .card-hover { transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease), transform 90ms ease-out; }
+      .card-hover { transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease), transform 180ms var(--ease-mola); }
       .card-hover:hover { border-color: var(--border-strong); background-color: var(--bg-elevated); }
       /* A resposta é no premir, não no largar: esperar pelo clique para dar
          sinal é o que faz uma página parecer morta ao toque. */
@@ -3816,7 +3827,7 @@ function GlobalStyles() {
         border-radius: var(--r-sm); font-size: 14px; font-weight: 500; line-height: 1;
         padding: 10px 14px; min-height: 40px; border: 1px solid transparent; cursor: pointer;
         font-family: inherit; white-space: nowrap;
-        transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease), opacity var(--dur) var(--ease), transform 90ms ease-out;
+        transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease), opacity var(--dur) var(--ease), transform 180ms var(--ease-mola);
       }
       .btn:active:not(:disabled) { transform: scale(0.97); }
       .btn:disabled { opacity: 0.55; cursor: not-allowed; }

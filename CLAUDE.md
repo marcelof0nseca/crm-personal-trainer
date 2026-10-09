@@ -596,6 +596,21 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   em si está certa (o Chromium confirma: aceita ≤10 s, recusa >10 s); só a
   leitura de um vídeo verdadeiro, gravado por uma câmara a sério, fica por
   confirmar pelo dono do produto, no Safari a valer.
+- **`filter: hue-rotate()` não dá um duotone — desbota a pele para um tom
+  estranho.** Rodar o matiz do vídeo inteiro (para aproximar a cor da marca)
+  muda todas as cores por igual, incluindo tons de pele, que ficam verdes ou
+  roxos em vez de turquesa — lê-se como um erro de cor, não como uma escolha
+  de marca. O que funciona: desaturar o vídeo a sério
+  (`grayscale(1) brightness(…) contrast(…)`) e pôr uma camada à parte, com
+  `mix-blend-mode: color` e um gradiente nas cores da marca, por cima — aí o
+  resultado lê-se como duotone a sério, não como um filtro mal regulado.
+- **Sem `ffmpeg` nesta máquina, reduzir um vídeo é desenhá-lo de novo.** Um
+  ficheiro de vídeo (de um banco de imagens, por exemplo) carregado num
+  `<video>`, desenhado num `<canvas>` mais pequeno a cada fotograma e
+  gravado outra vez com o `MediaRecorder` do próprio Chromium — a mesma
+  técnica já usada para fabricar vídeos de teste — serve também para
+  comprimir a sério: um ficheiro de 29 MB a 4K saiu com ~460 KB a 960×540,
+  sem perda visível a essa escala.
 
 ---
 

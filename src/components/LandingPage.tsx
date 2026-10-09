@@ -1262,30 +1262,33 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
               O que não tem uma demonstração própria acima, mas está lá — pronto a usar desde o primeiro dia.
             </p>
           </Revelar>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {FEATURE_INDEX.map((cat, i) => (
-              <Revelar
-                key={cat.heading}
-                atraso={(i % 2) * 60}
-                className="border border-hair rounded-2xl bg-surface px-6 py-6 flex flex-col gap-3"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="p-1.5 rounded-lg flex-shrink-0" style={{ backgroundColor: 'rgba(30,166,180,0.12)' }}>
-                    <cat.icon size={16} className="text-brass" />
+          {/* Um contentor só, com divisórias finas -- não seis cartões
+              iguais. Mesmo padrão de "Isto soa-lhe familiar?", mais acima:
+              o traço horizontal separa as linhas, o vertical separa as
+              colunas, e só a borda exterior arredonda. */}
+          <Revelar className="border border-hair rounded-2xl bg-surface overflow-hidden">
+            <div className="grid grid-cols-1 sm:grid-cols-2">
+              {FEATURE_INDEX.map((cat, i) => (
+                <div
+                  key={cat.heading}
+                  className={`px-6 py-6 flex flex-col gap-3 ${i % 2 === 0 ? 'sm:border-r sm:border-hair' : ''} ${i > 0 ? 'border-t border-hair' : ''} ${i === 1 ? 'sm:border-t-0' : ''}`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <cat.icon size={16} className="text-brass flex-shrink-0" />
+                    <h3 className="font-display text-sm font-semibold text-primary">{cat.heading}</h3>
                   </div>
-                  <h3 className="font-display text-sm font-semibold text-primary">{cat.heading}</h3>
+                  <ul className="flex flex-col gap-1.5">
+                    {cat.items.map((it) => (
+                      <li key={it} className="flex items-start gap-2 text-xs sm:text-sm font-body text-muted">
+                        <CheckCircle2 size={13} className="text-brass flex-shrink-0 mt-0.5" />
+                        <span>{it}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-                <ul className="flex flex-col gap-1.5">
-                  {cat.items.map((it) => (
-                    <li key={it} className="flex items-start gap-2 text-xs sm:text-sm font-body text-muted">
-                      <CheckCircle2 size={13} className="text-brass flex-shrink-0 mt-0.5" />
-                      <span>{it}</span>
-                    </li>
-                  ))}
-                </ul>
-              </Revelar>
-            ))}
-          </div>
+              ))}
+            </div>
+          </Revelar>
         </section>
 
         {/* CTA intermédio -- depois de ver as funcionalidades todas, antes

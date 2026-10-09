@@ -370,6 +370,25 @@ Tokens CSS em `GlobalStyles`. Regras do dono do produto:
   destaque e recompensa.
 - **Mobile-first**; validar sempre a 390 px e a 1440 px.
 
+**Os tokens, por família** (todos em `GlobalStyles`, dois temas — dark por
+omissão em `:root`, claro em `TOKENS_CLAROS`):
+
+| Família | Tokens | Para quê |
+|---|---|---|
+| Cor | `--bg-base/surface/elevated/inset`, `--border-hair/strong`, `--text-primary/muted/faint`, `--brass` (marca), `--rust` (erro), `--gold` (destaque), `--ok`, `--sky`, `--slate-acc` | Ver secção 4 do painel-pt.tsx; cada token tem a sua nota de uso ao lado da declaração |
+| Forma | `--r-xs` a `--r-xl`, `--r-pill` | Um raio por tamanho de superfície — nunca um valor novo por componente |
+| Toque | `--tap` (44px), `--nav-h`, `--topbar-h` | Alvo mínimo de toque e alturas de barra |
+| Movimento | `--dur`/`--ease` (transições gerais), `--dur-folha`/`--ease-folha` (folhas, ao estilo iOS — arranca depressa, assenta devagar, sem ressalto), `--ease-mola` (ligeiro ressalto, só em elementos que o próprio gesto do utilizador desperta — premir um botão, não uma entrada automática) | A escolha entre as três está em cada uso: uma folha nunca usa `--ease-mola`, nem um botão usa `--ease-folha` |
+| Tipografia | `.font-display` (system-ui — toda a interface da aplicação), `.font-body` (texto corrido), `.font-mono` (números, horas, IDs), `.font-hero` (Bricolage Grotesque, só títulos grandes de marketing na landing — nunca na aplicação, onde uma face de exibição a 14-16px prejudica a legibilidade) | Ver a armadilha do «overused-font», secção 6 |
+
+**Os gráficos têm a sua própria mini-paleta**, o objeto `CHART` perto do
+início de `painel-pt.tsx` (`tooltip`, `tooltipLabel`, `tooltipItem`, `cursor`,
+`legend`, `tick`, `grid`) — resolve um problema real do Recharts, que por
+omissão escreve a preto e com cursor cinzento-claro, ilegível em fundo
+escuro. `usePrefereReduzirMovimento()` (ao lado de `useTema`) liga
+`isAnimationActive` em cada `<Bar>`/`<Pie>`/`<Line>` de ecrã — nos gráficos de
+impressão a animação já estava desligada, por serem papel.
+
 ### Temas
 
 Escuro por omissão, claro completo, e um terceiro estado **Automático** que

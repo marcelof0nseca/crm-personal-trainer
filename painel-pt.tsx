@@ -3455,6 +3455,26 @@ function useTema() {
   return { tema, setTema, resolvido, alternar };
 }
 
+// Os gráficos (Recharts) animam a entrada por omissão, sem perguntar --
+// ao contrário de toda a animação CSS da aplicação, que já respeita
+// `prefers-reduced-motion` em todo o lado. `isAnimationActive={!reduzido}`
+// em cada <Bar>/<Pie>/<Line> de ecrã (nunca nos gráficos de impressão, que já
+// não animam por serem papel) fecha essa única exceção.
+function usePrefereReduzirMovimento() {
+  const [reduzido, setReduzido] = useState(
+    () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const ouvir = (e) => setReduzido(e.matches);
+    mq.addEventListener('change', ouvir);
+    return () => mq.removeEventListener('change', ouvir);
+  }, []);
+  return reduzido;
+}
+
 /* ============================== GLOBAL STYLES ============================== */
 
 // O tema claro escrito uma vez e aplicado em três sítios: quando o sistema
@@ -7906,6 +7926,7 @@ function TooltipReceitaAnual({ active, payload, label }) {
 }
 
 function Dashboard({ students, sessions, finances, customCategories, definicoes, setView, onAddSession, onOpenSession, onQuickStatus, onRelatorio }) {
+  const reduzirMovimento = usePrefereReduzirMovimento();
   const activeStudents = useMemo(() => students.filter((s) => s.active), [students]);
 
   // O mes que se esta a ver -- pode ser qualquer um, para tras ou para a
@@ -8119,9 +8140,9 @@ function Dashboard({ students, sessions, finances, customCategories, definicoes,
               <YAxis tick={CHART.tick} axisLine={false} tickLine={false} width={44} />
               <Tooltip content={<TooltipReceitaAnual />} cursor={CHART.cursor} />
               <Legend wrapperStyle={CHART.legend} formatter={(v) => ({ net: 'Líquido', tax: 'Impostos', gymFee: 'Taxa Ginásio' }[v] || v)} />
-              <Bar dataKey="net" stackId="receita" fill="var(--brass)" name="net" />
-              <Bar dataKey="tax" stackId="receita" fill="var(--rust)" name="tax" />
-              <Bar dataKey="gymFee" stackId="receita" fill="var(--slate-acc)" name="gymFee" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="net" stackId="receita" fill="var(--brass)" name="net" isAnimationActive={!reduzirMovimento} />
+              <Bar dataKey="tax" stackId="receita" fill="var(--rust)" name="tax" isAnimationActive={!reduzirMovimento} />
+              <Bar dataKey="gymFee" stackId="receita" fill="var(--slate-acc)" name="gymFee" radius={[3, 3, 0, 0]} isAnimationActive={!reduzirMovimento} />
             </BarChart>
           </ResponsiveContainer>
         </ErrorBoundary>
@@ -8145,7 +8166,7 @@ function Dashboard({ students, sessions, finances, customCategories, definicoes,
             {typeDistData.length === 0 ? <EmptyState message="Sem aulas agendadas esta semana." /> : (
               <ResponsiveContainer width="100%" height={220}>
                 <PieChart>
-                  <Pie data={typeDistData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={3}>
+                  <Pie data={typeDistData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={3} isAnimationActive={!reduzirMovimento}>
                     {typeDistData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                   </Pie>
                   <Tooltip contentStyle={CHART.tooltip} labelStyle={CHART.tooltipLabel} itemStyle={CHART.tooltipItem} cursor={CHART.cursor} />
@@ -8179,8 +8200,8 @@ function Dashboard({ students, sessions, finances, customCategories, definicoes,
                       labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName || ''}
                     />
                     <Legend wrapperStyle={CHART.legend} formatter={(v) => (v === 'bruto' ? 'Bruto' : 'Líquido')} />
-                    <Bar dataKey="bruto" fill="var(--slate-acc)" radius={[0, 3, 3, 0]} barSize={9} />
-                    <Bar dataKey="liquido" fill="var(--brass)" radius={[0, 3, 3, 0]} barSize={9} />
+                    <Bar dataKey="bruto" fill="var(--slate-acc)" radius={[0, 3, 3, 0]} barSize={9} isAnimationActive={!reduzirMovimento} />
+                    <Bar dataKey="liquido" fill="var(--brass)" radius={[0, 3, 3, 0]} barSize={9} isAnimationActive={!reduzirMovimento} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -8327,7 +8348,7 @@ function Dashboard({ students, sessions, finances, customCategories, definicoes,
               <ErrorBoundary compact>
                 <ResponsiveContainer width="100%" height={200}>
                   <PieChart>
-                    <Pie data={financeCategoryData} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75} paddingAngle={3}>
+                    <Pie data={financeCategoryData} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75} paddingAngle={3} isAnimationActive={!reduzirMovimento}>
                       {financeCategoryData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                     </Pie>
                     <Tooltip formatter={(v) => currency(v)} contentStyle={CHART.tooltip} labelStyle={CHART.tooltipLabel} itemStyle={CHART.tooltipItem} cursor={CHART.cursor} />
@@ -8355,8 +8376,8 @@ function Dashboard({ students, sessions, finances, customCategories, definicoes,
                         formatter={(v, n) => [currency(v), n === 'entradas' ? 'Entradas' : 'Saídas']}
                       />
                       <Legend wrapperStyle={CHART.legend} formatter={(v) => (v === 'entradas' ? 'Entradas' : 'Saídas')} />
-                      <Bar dataKey="entradas" fill="var(--brass)" radius={[3, 3, 0, 0]} />
-                      <Bar dataKey="saidas" fill="var(--rust)" radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="entradas" fill="var(--brass)" radius={[3, 3, 0, 0]} isAnimationActive={!reduzirMovimento} />
+                      <Bar dataKey="saidas" fill="var(--rust)" radius={[3, 3, 0, 0]} isAnimationActive={!reduzirMovimento} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -15632,6 +15653,7 @@ function PeriodoRelatorioModal({ onImprimir, onClose }) {
 }
 
 function AssessmentComparisonChart({ assessments }) {
+  const reduzirMovimento = usePrefereReduzirMovimento();
   const data = useMemo(() => [...assessments].sort((a, b) => a.date.localeCompare(b.date)).map((a) => ({
     date: fmtDateBR(new Date(`${a.date}T00:00:00`)),
     peso: parseFloat(a.assessWeight) || null,
@@ -15649,8 +15671,8 @@ function AssessmentComparisonChart({ assessments }) {
           <YAxis tick={CHART.tick} axisLine={false} tickLine={false} />
           <Tooltip contentStyle={CHART.tooltip} labelStyle={CHART.tooltipLabel} itemStyle={CHART.tooltipItem} cursor={CHART.cursor} />
           <Legend wrapperStyle={CHART.legend} />
-          <Line type="monotone" dataKey="peso" name="Peso (kg)" stroke="#1EA6B4" strokeWidth={2} dot={{ r: 3 }} connectNulls />
-          <Line type="monotone" dataKey="gordura" name="% Gordura" stroke="#D6534A" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+          <Line type="monotone" dataKey="peso" name="Peso (kg)" stroke="#1EA6B4" strokeWidth={2} dot={{ r: 3 }} connectNulls isAnimationActive={!reduzirMovimento} />
+          <Line type="monotone" dataKey="gordura" name="% Gordura" stroke="#D6534A" strokeWidth={2} dot={{ r: 3 }} connectNulls isAnimationActive={!reduzirMovimento} />
         </LineChart>
       </ResponsiveContainer>
     </ErrorBoundary>
@@ -16578,6 +16600,7 @@ function nomePlano(tier) {
 }
 
 function AdminView() {
+  const reduzirMovimento = usePrefereReduzirMovimento();
   const [secao, setSecao] = useState('visao');
   const [dados, setDados] = useState(null);
   const [erro, setErro] = useState('');
@@ -16707,7 +16730,7 @@ function AdminView() {
                     <XAxis dataKey="plano" tick={CHART.tick} axisLine={false} tickLine={false} tickFormatter={nomePlano} />
                     <YAxis tick={CHART.tick} axisLine={false} tickLine={false} width={36} allowDecimals={false} />
                     <Tooltip contentStyle={CHART.tooltip} labelStyle={CHART.tooltipLabel} itemStyle={CHART.tooltipItem} cursor={CHART.cursor} formatter={(v) => [v, 'Contas']} />
-                    <Bar dataKey="contas" fill="var(--brass)" radius={[3, 3, 0, 0]} maxBarSize={72} />
+                    <Bar dataKey="contas" fill="var(--brass)" radius={[3, 3, 0, 0]} maxBarSize={72} isAnimationActive={!reduzirMovimento} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -17024,6 +17047,7 @@ function TransactionFormModal({ tx, defaultType, customCategories, onAddCategory
 }
 
 function FinancesView({ finances, students, monthCursor, setMonthCursor, onOpenTransaction, onNewTransaction, onQuickComplete, customCategories }) {
+  const reduzirMovimento = usePrefereReduzirMovimento();
   const year = monthCursor.getFullYear();
   const month = monthCursor.getMonth();
   const monthTx = useMemo(
@@ -17090,7 +17114,7 @@ function FinancesView({ finances, students, monthCursor, setMonthCursor, onOpenT
           <ErrorBoundary compact>
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
-                <Pie data={categoryData} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75} paddingAngle={3}>
+                <Pie data={categoryData} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75} paddingAngle={3} isAnimationActive={!reduzirMovimento}>
                   {categoryData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                 </Pie>
                 <Tooltip formatter={(v) => currency(v)} contentStyle={CHART.tooltip} labelStyle={CHART.tooltipLabel} itemStyle={CHART.tooltipItem} cursor={CHART.cursor} />

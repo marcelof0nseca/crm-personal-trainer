@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, Fragment } from 'react';
 import {
   MessageCircle, CalendarDays, RotateCcw, ClipboardCheck, Images, Wallet, TrendingDown,
   ShieldCheck, ChevronDown, CheckCircle2, TrendingUp, UserPlus, Gift, Mail,
@@ -458,7 +458,7 @@ function AgendaMockup({ chromeless } = {}) {
             student={AGENDA_DEMO_STUDENTS.find((st) => st.id === s.studentId)}
             onOpen={() => {}}
             onQuickStatus={() => {}}
-            compact={false}
+            compact
           />
         ))}
       </div>
@@ -1225,19 +1225,30 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
             diferentes de linhas). */}
         <section className="max-w-3xl mx-auto px-4 py-12 sm:py-16">
           <Revelar><h2 className="font-hero text-2xl sm:text-3xl font-semibold text-primary text-center leading-snug" style={{ letterSpacing: '-0.01em' }}>Isto soa-lhe familiar?</h2></Revelar>
+          {/* Tabela de comparação, não uma lista de pares empilhados -- duas
+              colunas com cabeçalho e divisórias, como um antes/depois a
+              sério, em vez do mesmo bloco ícone+texto repetido sete vezes. */}
           <Revelar atraso={90} className="mt-8 border border-hair rounded-2xl bg-surface overflow-hidden">
-            {PAIN_POINTS.map((p, i) => (
-              <div key={p.text} className={`px-5 py-3.5 ${i > 0 ? 'border-t border-hair' : ''}`}>
-                <div className="flex items-center gap-2.5">
-                  <p.icon size={14} style={{ color: 'var(--rust)', flexShrink: 0 }} />
-                  <span className="text-sm font-body text-muted">{p.text}</span>
-                </div>
-                <div className="flex items-center gap-2.5 mt-1.5" style={{ paddingLeft: 22 }}>
-                  <CheckCircle2 size={14} style={{ color: 'var(--gold)', flexShrink: 0 }} />
-                  <span className="text-sm font-body text-primary" style={{ fontWeight: 500 }}>{p.depois}</span>
-                </div>
+            <div className="grid grid-cols-2">
+              <div className="px-4 sm:px-5 py-2.5 border-b border-r border-hair" style={{ backgroundColor: 'var(--bg-inset)' }}>
+                <span className="text-2xs uppercase tracking-wide font-body font-semibold" style={{ color: 'var(--rust)' }}>Hoje</span>
               </div>
-            ))}
+              <div className="px-4 sm:px-5 py-2.5 border-b border-hair" style={{ backgroundColor: 'var(--bg-inset)' }}>
+                <span className="text-2xs uppercase tracking-wide font-body font-semibold" style={{ color: 'var(--brass)' }}>Com o PTMANAGER</span>
+              </div>
+              {PAIN_POINTS.map((p, i) => (
+                <Fragment key={p.text}>
+                  <div className={`px-4 sm:px-5 py-3 sm:py-3.5 border-r border-hair flex items-start sm:items-center gap-2 sm:gap-2.5 ${i > 0 ? 'border-t' : ''}`}>
+                    <p.icon size={14} style={{ color: 'var(--rust)', flexShrink: 0, marginTop: 2 }} />
+                    <span className="text-xs sm:text-sm font-body text-muted">{p.text}</span>
+                  </div>
+                  <div className={`px-4 sm:px-5 py-3 sm:py-3.5 flex items-start sm:items-center gap-2 sm:gap-2.5 ${i > 0 ? 'border-t border-hair' : ''}`}>
+                    <CheckCircle2 size={14} style={{ color: 'var(--brass)', flexShrink: 0, marginTop: 2 }} />
+                    <span className="text-xs sm:text-sm font-body text-primary" style={{ fontWeight: 500 }}>{p.depois}</span>
+                  </div>
+                </Fragment>
+              ))}
+            </div>
           </Revelar>
         </section>
 

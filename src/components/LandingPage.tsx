@@ -271,6 +271,48 @@ function Revelar({ children, className = '', atraso = 0, style }) {
   );
 }
 
+// O vídeo de fundo da hero -- ver a explicação completa junto da secção
+// que o usa. `mostrar` decide-se de uma vez, antes da primeira pintura
+// (não em useEffect), para nunca pedir o vídeo a quem não o vai ver: só
+// isso já poupa a descarga a quem tem "Reduzir movimento" ou dados
+// limitados ligados -- não é só uma troca de CSS depois de o ficheiro já
+// ter chegado.
+function decidirMostrarVideo() {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  const reduzido = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const ligacao = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  const dadosLimitados = ligacao && (ligacao.saveData || /^(slow-2g|2g)$/.test(ligacao.effectiveType || ''));
+  return !reduzido && !dadosLimitados;
+}
+
+function HeroVideoFundo() {
+  const [mostrar] = useState(decidirMostrarVideo);
+  const estiloCamada = { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' };
+  return (
+    <>
+      {mostrar ? (
+        <video
+          autoPlay muted loop playsInline preload="auto"
+          poster="/landing-hero-poster.jpg"
+          aria-hidden="true"
+          style={{ ...estiloCamada, filter: 'grayscale(1) brightness(0.8) contrast(1.08)' }}
+        >
+          <source src="/landing-hero.mp4" type="video/mp4" />
+        </video>
+      ) : (
+        <img
+          src="/landing-hero-poster.jpg"
+          alt=""
+          aria-hidden="true"
+          style={{ ...estiloCamada, filter: 'grayscale(1) brightness(0.8) contrast(1.08)' }}
+        />
+      )}
+      <div className="hero-duotone" style={estiloCamada} />
+      <div className="hero-escurecer" style={estiloCamada} />
+    </>
+  );
+}
+
 /* ============================== MOCKUP ATOMS ============================== */
 
 // `chromeless` despe a moldura de janela (os tres pontos fazem sentido numa
@@ -697,22 +739,22 @@ function FinanceMockup({ chromeless } = {}) {
 
 /* ============================== UI ATOMS ============================== */
 
-function PrimaryButton({ children, onClick, className = '' }) {
+function PrimaryButton({ children, onClick, className = '', style }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={`btn btn-primary ${className}`}
-      style={{ padding: '13px 22px', fontSize: 14, fontWeight: 600 }}
+      style={{ padding: '13px 22px', fontSize: 14, fontWeight: 600, ...style }}
     >
       {children}
     </button>
   );
 }
 
-function SecondaryButton({ children, onClick, className = '' }) {
+function SecondaryButton({ children, onClick, className = '', style }) {
   return (
-    <button type="button" onClick={onClick} className={`btn btn-ghost ${className}`} style={{ padding: '13px 22px', fontSize: 14 }}>
+    <button type="button" onClick={onClick} className={`btn btn-ghost ${className}`} style={{ padding: '13px 22px', fontSize: 14, ...style }}>
       {children}
     </button>
   );
@@ -969,16 +1011,18 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
           .revelar { transition: opacity 200ms ease; transform: none; }
         }
 
-        @keyframes heroDeriva1 {
-          0%, 100% { transform: translate(-4%, -6%) scale(1); }
-          50% { transform: translate(6%, 4%) scale(1.1); }
+        /* Camada de cor por cima do vídeo (a preto e branco) -- mix-blend-mode,
+           não filter: hue-rotate, que desbota a pele para um verde estranho
+           em vez de ler como uma escolha de marca. */
+        .hero-duotone {
+          background: linear-gradient(135deg, #0A3238 0%, #1EA6B4 50%, #0A0B0D 100%);
+          mix-blend-mode: color; opacity: 0.85; pointer-events: none;
         }
-        @keyframes heroDeriva2 {
-          0%, 100% { transform: translate(5%, 6%) scale(1.05); }
-          50% { transform: translate(-6%, -4%) scale(0.95); }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .hero-mancha { animation: none !important; }
+        /* Mais escuro à esquerda, onde fica o texto -- a mesma função de um
+           overlay discreto, só que a gradiente em vez de um preto plano. */
+        .hero-escurecer {
+          background: linear-gradient(90deg, rgba(10,11,13,0.92) 0%, rgba(10,11,13,0.72) 32%, rgba(10,11,13,0.2) 62%, rgba(10,11,13,0.5) 100%);
+          pointer-events: none;
         }
 
         .faq-colapso {
@@ -1093,60 +1137,57 @@ export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted
       </header>
 
       <main className="flex-1">
-        {/* Hero -- sem vídeo de fundo: filmagem de banco de imagens não
-            combina com a paleta nem deixa espaço limpo para o texto (ver
-            candidatos testados). O movimento é gerado: duas manchas a
-            derivar muito devagar, nas cores da marca, atrás do conteúdo. */}
+        {/* Hero, com vídeo de fundo -- um treinador a acompanhar um aluno
+            num alongamento, câmara aérea parada, quase sem corte (plano
+            único). Pexels, licença gratuita, sem atribuição exigida
+            (vídeo 6892077, Kampus Production) -- testei vários antes
+            deste: a maioria tinha logótipos de marca na roupa/equipamento
+            ou um ginásio cheio a disputar atenção com o texto. Este tem
+            parede lisa e chão escuro à esquerda, espaço de propósito.
+            Preto e branco + camada turquesa (mix-blend-mode, não
+            hue-rotate -- isso desbota as cores da pele para um verde
+            estranho) em vez da cor original, que não combinava com a
+            paleta. Reduzido de 29 MB/4K para ~460 KB/960×540 sem ffmpeg
+            nesta máquina -- canvas + MediaRecorder do próprio Chromium. */}
         <div style={{ position: 'relative', overflow: 'hidden' }}>
-          <div
-            className="hero-mancha"
-            style={{
-              position: 'absolute', top: '-16%', left: '-8%', width: '52vw', height: '52vw',
-              minWidth: 420, minHeight: 420, maxWidth: 640, maxHeight: 640, borderRadius: '50%',
-              background: 'radial-gradient(circle at 40% 40%, color-mix(in srgb, var(--brass) 22%, transparent), transparent 70%)',
-              filter: 'blur(40px)', animation: 'heroDeriva1 28s ease-in-out infinite', pointerEvents: 'none',
-            }}
-          />
-          <div
-            className="hero-mancha"
-            style={{
-              position: 'absolute', top: '4%', right: '-10%', width: '40vw', height: '40vw',
-              minWidth: 320, minHeight: 320, maxWidth: 520, maxHeight: 520, borderRadius: '50%',
-              background: 'radial-gradient(circle at 60% 60%, color-mix(in srgb, var(--gold) 16%, transparent), transparent 70%)',
-              filter: 'blur(46px)', animation: 'heroDeriva2 34s ease-in-out infinite', pointerEvents: 'none',
-            }}
-          />
+          <HeroVideoFundo />
         <section className="max-w-6xl mx-auto px-4 pt-12 pb-16 sm:pt-16 sm:pb-24 grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-14 items-center" style={{ position: 'relative' }}>
+          {/* Cores fixas nesta coluna, de propósito: o fundo é sempre o
+              vídeo escurecido, nos dois temas -- os tokens de texto (que
+              invertem no tema claro) ficariam ilegíveis em cima dele.
+              Mesmo princípio do papel timbrado, que também sai sempre a
+              preto sobre branco seja qual for o tema (ver CLAUDE.md,
+              armadilha "impressão"). */}
           <div className="flex flex-col gap-5 order-1">
             {trialPlan && (
               <Revelar className="inline-flex w-fit items-center gap-2">
-                <Clock size={13} style={{ color: 'var(--gold)', flexShrink: 0 }} />
-                <span className="text-2xs sm:text-xs font-body font-semibold uppercase tracking-wide" style={{ color: 'var(--gold)' }}>
+                <Clock size={13} style={{ color: '#F5B44C', flexShrink: 0 }} />
+                <span className="text-2xs sm:text-xs font-body font-semibold uppercase tracking-wide" style={{ color: '#F5B44C' }}>
                   {trialPlan.trialDays} dias grátis, sem cobrança agora
                 </span>
               </Revelar>
             )}
             <h1
-              className="font-hero text-3xl sm:text-4xl lg:text-[2.9rem] text-primary"
-              style={{ fontWeight: 650, letterSpacing: '-0.02em', lineHeight: 1.04 }}
+              className="font-hero text-3xl sm:text-4xl lg:text-[2.9rem]"
+              style={{ fontWeight: 650, letterSpacing: '-0.02em', lineHeight: 1.04, color: '#F2F4F7' }}
             >
-              Gestão completa para <span style={{ color: 'var(--brass)' }}>Personal Trainers</span>
+              Gestão completa para <span style={{ color: '#1EA6B4' }}>Personal Trainers</span>
             </h1>
-            <p className="text-sm sm:text-base text-muted font-body max-w-lg">
+            <p className="text-sm sm:text-base font-body max-w-lg" style={{ color: '#A0A6B0' }}>
               Um único painel para gerir alunos, agenda, avaliações físicas, fotos de progresso e finanças — sem folhas de cálculo, sem informação perdida no WhatsApp.
               {trialPlan && ` Experimente ${trialPlan.trialDays} dias sem custo antes de decidir.`}
             </p>
             <div className="flex flex-col sm:flex-row gap-3 pt-1">
               <PrimaryButton onClick={onGetStarted}>{trialPlan ? 'Começar grátis' : 'Começar agora'}</PrimaryButton>
-              <SecondaryButton onClick={() => scrollTo(plansRef)}>Ver planos</SecondaryButton>
+              <SecondaryButton onClick={() => scrollTo(plansRef)} style={{ borderColor: 'rgba(242,244,247,0.28)', color: '#F2F4F7' }}>Ver planos</SecondaryButton>
             </div>
             {trialPlan && (
-              <span className="text-2xs sm:text-xs font-body text-faint -mt-2">
+              <span className="text-2xs sm:text-xs font-body -mt-2" style={{ color: '#7C838F' }}>
                 {trialPlan.trialDays} dias grátis · depois {trialPlan.perMonth} · cancele quando quiser
               </span>
             )}
             {supportEmail && (
-              <a href={mailto('Quero saber mais sobre o PTMANAGER')} className="inline-flex items-center gap-1.5 text-xs font-body link-sky w-fit">
+              <a href={mailto('Quero saber mais sobre o PTMANAGER')} className="inline-flex items-center gap-1.5 text-xs font-body link-sky w-fit" style={{ color: '#1EA6B4' }}>
                 <Mail size={14} /> Falar com o suporte
               </a>
             )}

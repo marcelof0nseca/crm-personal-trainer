@@ -345,3 +345,79 @@ create table if not exists public.welcome_email_log (
 alter table public.welcome_email_log enable row level security;
 revoke all on public.welcome_email_log from anon, authenticated;
 grant select, insert on public.welcome_email_log to service_role;
+
+/* ============================= ÁREA DO ALUNO ===============================
+   O aluno entra por um link pessoal com token, nunca por conta Supabase
+   própria -- sem fluxo de registo, sem recuperação de password a gerir, sem
+   mudar de alojamento por aluno. Esta tabela guarda só o bilhete de acesso,
+   não dados de treino: a mesma categoria de `personal_subscriptions`/
+   `app_admins` ao lado de `app_data`, não uma tabela relacional nova para
+   `treinos`/`execucoes` -- essas continuam exatamente onde estavam.
+
+   Só o hash do token fica gravado, nunca o token em si; o token só existe no
+   link que o treinador copia, mostrado uma vez. As duas Edge Functions
+   (`aluno-view`, `aluno-registar-sessao`) calculam o mesmo hash do que
+   recebem na chamada e comparam -- o mesmo princípio de um link de
+   recuperação de password.
+   ========================================================================== */
+create table if not exists public.aluno_acessos (
+  token_hash text primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  aluno_id text not null,
+  criado_em timestamptz not null default now(),
+  revogado_em timestamptz
+);
+
+create index if not exists aluno_acessos_aluno_idx
+  on public.aluno_acessos (user_id, aluno_id);
+
+alter table public.aluno_acessos enable row level security;
+
+-- O treinador gere os links dos seus próprios alunos a partir da ficha --
+-- mesma regra do resto dos dados da conta (`has_personal_app_access`, que já
+-- exige subscrição ativa ou conta de criador).
+drop policy if exists "Users can read own aluno_acessos" on public.aluno_acessos;
+create policy "Users can read own aluno_acessos"
+on public.aluno_acessos
+for select
+to authenticated
+using (public.has_personal_app_access(user_id));
+
+drop policy if exists "Users can insert own aluno_acessos" on public.aluno_acessos;
+create policy "Users can insert own aluno_acessos"
+on public.aluno_acessos
+for insert
+to authenticated
+with check (public.has_personal_app_access(user_id));
+
+drop policy if exists "Users can update own aluno_acessos" on public.aluno_acessos;
+create policy "Users can update own aluno_acessos"
+on public.aluno_acessos
+for update
+to authenticated
+using (public.has_personal_app_access(user_id))
+with check (public.has_personal_app_access(user_id));
+
+drop policy if exists "Users can delete own aluno_acessos" on public.aluno_acessos;
+create policy "Users can delete own aluno_acessos"
+on public.aluno_acessos
+for delete
+to authenticated
+using (public.has_personal_app_access(user_id));
+
+-- O token dá acesso aos treinos e ao registo de um aluno -- a mesma
+-- sensibilidade das fotografias, por isso o mesmo gatilho de dois fatores.
+drop policy if exists "aluno_acessos_exige_aal2" on public.aluno_acessos;
+create policy "aluno_acessos_exige_aal2"
+on public.aluno_acessos
+as restrictive
+to authenticated
+using (public.aal_suficiente())
+with check (public.aal_suficiente());
+
+grant select, insert, update, delete on public.aluno_acessos to authenticated;
+
+-- As duas Edge Functions (`aluno-view`, `aluno-registar-sessao`) procuram
+-- pelo hash do token com a service_role key, sem sessão de treinador nenhuma
+-- -- é assim que um aluno sem conta chega aos dados dele.
+grant select on public.aluno_acessos to service_role;

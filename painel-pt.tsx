@@ -8,7 +8,7 @@ import {
   Camera, ArrowLeft, LineChart as LineChartIcon,
   Coffee, Dumbbell, Gift, CreditCard, Mail, CircleUser, KeyRound, ShieldCheck,
   RefreshCcw, Printer, Pencil, Copy, GripVertical, Bell, Archive, BookMarked,
-  Sun, Moon, Monitor, Send, ImagePlus, Eye, EyeOff, History, Star, Clock, Lock,
+  Sun, Moon, Monitor, Send, ImagePlus, Eye, EyeOff, History, Star, Clock, Lock, Link2,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
@@ -28,6 +28,7 @@ import {
   CargaDaSerie, NumerosDoMetodo, ExercicioVista,
 } from './src/components/TreinoAtoms';
 import Turnstile from './src/components/Turnstile';
+import { gerarTokenAcesso, hashTokenAcesso, linkDeAcesso, tokenDaUrl } from './src/data/acessoAluno';
 import LegalModal from './src/components/LegalDocs';
 import {
   GRUPOS_BASE, CATEGORIAS_BASE, EXERCICIOS_BASE, NOMES_LEGADO,
@@ -3492,6 +3493,84 @@ async function apagarStoredValue(key) {
   const customStorage = typeof window !== 'undefined' ? (window as any).storage : null;
   if (customStorage) { if (customStorage.delete) await customStorage.delete(key, false); return; }
   window.localStorage.removeItem(key);
+}
+
+/* ============================= Acesso do aluno =============================
+   `aluno_acessos` (supabase-schema.sql) é uma tabela relacional normal, sem
+   o carimbo de versão de `app_data` -- não guarda dados de treino, só o hash
+   do bilhete. Sem conta ligada não há segundo dispositivo nenhum a dar
+   acesso, por isso estas funções não fazem nada em modo local.
+   ========================================================================== */
+
+// O token só existe aqui, no instante em que se gera -- devolve-se para a
+// interface o mostrar uma vez; só o hash fica gravado.
+async function gerarAcessoAluno(idAluno) {
+  if (!(supabaseConfigured && supabase)) return null;
+  const userId = await currentSupabaseUserId();
+  if (!userId) return null;
+  const token = gerarTokenAcesso();
+  const tokenHash = await hashTokenAcesso(token);
+  // Revoga qualquer acesso anterior deste aluno antes de criar o novo -- só
+  // um link ativo de cada vez: "gerar de novo" tem de significar que o link
+  // antigo morre mesmo, não que passam a existir dois válidos.
+  await supabase
+    .from('aluno_acessos')
+    .update({ revogado_em: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('aluno_id', idAluno)
+    .is('revogado_em', null);
+  const { error } = await supabase
+    .from('aluno_acessos')
+    .insert({ token_hash: tokenHash, user_id: userId, aluno_id: idAluno });
+  if (error) throw error;
+  return token;
+}
+
+// O que a ficha do aluno mostra: há um acesso ativo, e desde quando -- nunca
+// o token em si, que já não se pode reconstruir a partir do hash.
+async function acessoAtivoDoAluno(idAluno) {
+  if (!(supabaseConfigured && supabase)) return null;
+  const userId = await currentSupabaseUserId();
+  if (!userId) return null;
+  const { data, error } = await supabase
+    .from('aluno_acessos')
+    .select('criado_em')
+    .eq('user_id', userId)
+    .eq('aluno_id', idAluno)
+    .is('revogado_em', null)
+    .order('criado_em', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? { criadoEm: data.criado_em } : null;
+}
+
+async function revogarAcessoAluno(idAluno) {
+  if (!(supabaseConfigured && supabase)) return true;
+  const userId = await currentSupabaseUserId();
+  if (!userId) return false;
+  const { error } = await supabase
+    .from('aluno_acessos')
+    .update({ revogado_em: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('aluno_id', idAluno)
+    .is('revogado_em', null);
+  return !error;
+}
+
+// Ao eliminar o aluno: apaga de vez, não só revoga -- o mesmo esforço do
+// resto da eliminação (src/data/eliminar.ts), tolerante a falhar (não
+// bloqueia o resto: um acesso órfão sem aluno nenhum por trás é inofensivo).
+async function apagarAcessosDoAluno(idAluno) {
+  if (!(supabaseConfigured && supabase)) return true;
+  const userId = await currentSupabaseUserId();
+  if (!userId) return false;
+  const { error } = await supabase
+    .from('aluno_acessos')
+    .delete()
+    .eq('user_id', userId)
+    .eq('aluno_id', idAluno);
+  return !error;
 }
 
 // Todas as linhas `execucoes:*` desta conta, incluindo as de alunos que já não
@@ -14506,7 +14585,124 @@ const PERIODOS_FICHA = [
   { id: '365', label: 'Último ano', dias: 365 },
 ];
 
+// Gerar/revogar o link de acesso do aluno. O token só existe em memória no
+// instante em que se gera (`gerarAcessoAluno` devolve-o uma vez só); fechar
+// a folha sem copiar não é destrutivo como o rascunho de uma sessão --
+// "gerar novo link" está sempre ali, só revoga o anterior.
+function AcessoAlunoFolha({ student, onClose }) {
+  const [estado, setEstado] = useState('a-carregar'); // a-carregar | sem-acesso | ativo | erro
+  const [criadoEm, setCriadoEm] = useState(null);
+  const [tokenNovo, setTokenNovo] = useState(null);
+  const [aGerar, setAGerar] = useState(false);
+  const [aRevogar, setARevogar] = useState(false);
+  const [copiado, setCopiado] = useState(false);
+
+  useEffect(() => {
+    if (!supabaseConfigured) { setEstado('sem-conta'); return undefined; }
+    let vivo = true;
+    acessoAtivoDoAluno(student.id)
+      .then((a) => { if (vivo) { setCriadoEm(a ? a.criadoEm : null); setEstado(a ? 'ativo' : 'sem-acesso'); } })
+      .catch(() => { if (vivo) setEstado('erro'); });
+    return () => { vivo = false; };
+  }, [student.id]);
+
+  async function gerar() {
+    setAGerar(true);
+    try {
+      const token = await gerarAcessoAluno(student.id);
+      if (!token) { setEstado('erro'); return; }
+      setTokenNovo(token);
+      setCriadoEm(new Date().toISOString());
+      setEstado('ativo');
+      setCopiado(false);
+    } catch {
+      setEstado('erro');
+    } finally {
+      setAGerar(false);
+    }
+  }
+
+  async function revogar() {
+    setARevogar(true);
+    const ok = await revogarAcessoAluno(student.id);
+    setARevogar(false);
+    if (ok) { setEstado('sem-acesso'); setCriadoEm(null); setTokenNovo(null); }
+  }
+
+  function copiar() {
+    if (!tokenNovo || typeof window === 'undefined') return;
+    const link = linkDeAcesso(window.location.origin, tokenNovo);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(link).then(() => setCopiado(true)).catch(() => {});
+    }
+  }
+
+  return (
+    <Modal title="Acesso do aluno" onClose={onClose}>
+      <div className="flex flex-col gap-3">
+        <p className="text-xs font-body text-faint">
+          {student.name} entra pelo link, sem conta nem password. Pode ver o programa de treino e registar o que fez — nunca mudar a prescrição.
+        </p>
+
+        {estado === 'a-carregar' && <p className="text-xs font-body text-faint">A verificar...</p>}
+        {estado === 'erro' && (
+          <p className="text-xs font-body" style={{ color: 'var(--rust)' }}>
+            Não foi possível ligar ao servidor. Tente outra vez.
+          </p>
+        )}
+        {estado === 'sem-conta' && (
+          <p className="text-xs font-body text-faint">
+            Isto só funciona com uma conta ligada — em modo local não há outro aparelho a quem dar acesso.
+          </p>
+        )}
+
+        {tokenNovo && (
+          <div className="rounded-xl border p-3 flex flex-col gap-2" style={{ borderColor: 'var(--gold)', backgroundColor: 'var(--gold-soft)' }}>
+            <span className="text-xs font-body font-semibold" style={{ color: acentoTexto('#F5B44C') }}>
+              Este link só aparece uma vez — copie-o agora
+            </span>
+            <input
+              readOnly
+              value={linkDeAcesso(typeof window !== 'undefined' ? window.location.origin : '', tokenNovo)}
+              className="input-field font-mono"
+              style={{ fontSize: 12 }}
+              aria-label="Link de acesso do aluno"
+              onFocus={(e) => e.target.select()}
+            />
+            <button type="button" onClick={copiar} className="btn btn-primary">
+              <Copy size={14} /> {copiado ? 'Copiado' : 'Copiar link'}
+            </button>
+          </div>
+        )}
+
+        {estado === 'ativo' && !tokenNovo && (
+          <p className="text-xs font-body text-muted">
+            Acesso ativo{criadoEm ? ` desde ${fmtDateLong(criadoEm)}` : ''}. Gerar um novo link revoga este de imediato.
+          </p>
+        )}
+        {estado === 'sem-acesso' && (
+          <p className="text-xs font-body text-muted">Este aluno ainda não tem link de acesso.</p>
+        )}
+
+        {estado !== 'sem-conta' && (
+          <div className="flex gap-2 flex-wrap">
+            <button type="button" onClick={gerar} disabled={aGerar || estado === 'a-carregar'} className="btn btn-primary">
+              <Link2 size={14} /> {estado === 'ativo' ? 'Gerar novo link' : 'Gerar link de acesso'}
+            </button>
+            {estado === 'ativo' && (
+              <button type="button" onClick={revogar} disabled={aRevogar} className="btn btn-ghost">
+                Revogar acesso
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 function FichaView({ student, sessions, treinos, formularios, execucao, onCarregarExecucoes, onOpenSession, onGoToAssessments, onGoToTreinos, onGoToSessaoRealizada, onGoToFormularios, onProgresso, onVoltar }) {
+  const [acessoAberto, setAcessoAberto] = useState(false);
   const [procura, setProcura] = useState('');
   const [tipos, setTipos] = useState([]);   // vazio = todos
   const [periodo, setPeriodo] = useState('todos');
@@ -14561,12 +14757,22 @@ function FichaView({ student, sessions, treinos, formularios, execucao, onCarreg
           <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: student.color }} />
           <h1 className="font-display font-semibold text-xl text-primary tracking-wide truncate">{student.name}</h1>
         </div>
+        <button
+          type="button"
+          onClick={() => setAcessoAberto(true)}
+          className="btn btn-ghost flex-shrink-0"
+          style={{ fontSize: 12, marginLeft: onProgresso ? 0 : 'auto' }}
+        >
+          <Link2 size={14} /> Acesso do aluno
+        </button>
         {onProgresso && (
-          <button type="button" onClick={() => onProgresso(student)} className="btn btn-ghost flex-shrink-0" style={{ fontSize: 12, marginLeft: 'auto' }}>
+          <button type="button" onClick={() => onProgresso(student)} className="btn btn-ghost flex-shrink-0" style={{ fontSize: 12 }}>
             <Printer size={14} /> Progresso
           </button>
         )}
       </div>
+
+      {acessoAberto && <AcessoAlunoFolha student={student} onClose={() => setAcessoAberto(false)} />}
 
       {resumo.alertas.length > 0 && (
         <div className="rounded-xl border p-3 flex flex-col gap-1" style={{ borderColor: 'var(--gold)', backgroundColor: 'var(--gold-soft)' }}>
@@ -18328,7 +18534,7 @@ function AppInner() {
       return;
     }
     setShowStudentModal(false);
-    const gravados = [persistStudents(plano.alunos), persistSessions(plano.sessoes), limparExecucoes(id)];
+    const gravados = [persistStudents(plano.alunos), persistSessions(plano.sessoes), limparExecucoes(id), apagarAcessosDoAluno(id)];
     if (plano.tem.programas > 0) gravados.push(persistTreinos((t) => ({ ...t, prescricoes: t.prescricoes.filter((p) => p.studentId !== id) })));
     if (plano.tem.respostas > 0) gravados.push(persistFormularios({ ...formularios, respostas: plano.respostas }));
     if (plano.soltas.length > 0) gravados.push(persistPhotos(plano.fotos));

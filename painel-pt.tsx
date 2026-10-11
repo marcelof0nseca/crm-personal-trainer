@@ -22,7 +22,9 @@ import {
 } from './src/components/AgendaAtoms';
 import {
   CAMPO_SERIE, TIPOS_SERIE, TIPO_SERIE_OMISSAO, CAMPOS_POR_METODO, CAMPOS_EXTRA,
+  METODOS_COM_SUBETAPAS,
   tipoDeSerie, camposDoMetodo, extrasPreenchidos, descreverLinha,
+  rotuloDePapel, rotuloCurtoDePapel,
   CargaDaSerie, NumerosDoMetodo, ExercicioVista,
 } from './src/components/TreinoAtoms';
 import Turnstile from './src/components/Turnstile';
@@ -2162,6 +2164,66 @@ function novaLinhaSerie(anterior) {
   // primeira, e quando é, muda-se um campo em vez de escrever tudo.
   if (anterior) return { ...anterior, id: uid() };
   return { id: uid(), tipo: TIPO_SERIE_OMISSAO, reps: '10', carga: '', descanso: '90', rpe: '' };
+}
+
+// Drop-set, rest-pause e cluster: cada queda/retomada/mini-bloco vira a sua
+// própria linha, marcada com `papel` -- nunca uma entidade nova. É o que já
+// liga os exercícios de uma supersérie (`ex.linhas`), só que dentro de um
+// exercício só, e o registo do realizado (que já funciona série a série)
+// passa a marcar ✓ cada uma à parte sem precisar de saber que são "sub-etapas".
+// `descanso` de cada linha é sempre "a pausa depois desta, antes da seguinte":
+// 0 entre quedas, a pausa curta entre retomadas/blocos, e o descanso a sério
+// só na última de cada sequência -- herdado da linha-base (o que lá estava
+// antes de gerar).
+function gerarSubEtapas(metodo, params, linhaBase) {
+  const base = linhaBase || novaLinhaSerie(null);
+  const descansoFinal = base.descanso || '90';
+  const p = params || {};
+
+  if (metodo === 'Drop-set') {
+    const quedas = Math.max(1, Math.min(8, parseInt(p.quedas, 10) || 2));
+    const reducaoPct = parseFloat(p.reducao) || 0;
+    let cargaAtual = parseFloat(base.carga) || 0;
+    const linhas = [{ ...base, id: uid(), papel: 'inicial', papelIndice: 0, descanso: '0' }];
+    for (let i = 1; i <= quedas; i += 1) {
+      if (reducaoPct > 0 && cargaAtual) cargaAtual = Math.round(cargaAtual * (1 - reducaoPct / 100) * 10) / 10;
+      linhas.push({
+        ...base, id: uid(), papel: 'queda', papelIndice: i,
+        carga: cargaAtual ? String(cargaAtual) : '',
+        descanso: i === quedas ? descansoFinal : '0',
+      });
+    }
+    return linhas;
+  }
+
+  if (metodo === 'Rest-pause') {
+    const pausas = Math.max(1, Math.min(6, parseInt(p.pausas, 10) || 2));
+    const pausaSeg = p.pausaSeg || '15';
+    const linhas = [{ ...base, id: uid(), papel: 'inicial', papelIndice: 0, descanso: pausaSeg }];
+    for (let i = 1; i <= pausas; i += 1) {
+      linhas.push({ ...base, id: uid(), papel: 'retomada', papelIndice: i, descanso: i === pausas ? descansoFinal : pausaSeg });
+    }
+    return linhas;
+  }
+
+  if (metodo === 'Cluster') {
+    const series = Math.max(1, Math.min(10, parseInt(p.seriesCompletas, 10) || 3));
+    const blocos = Math.max(1, Math.min(10, parseInt(p.miniBlocosPorSerie, 10) || 3));
+    const pausaIntra = p.pausaIntra || '20';
+    const pausaEntre = p.pausaEntreSeries || descansoFinal;
+    const linhas = [];
+    for (let s = 1; s <= series; s += 1) {
+      for (let b = 1; b <= blocos; b += 1) {
+        linhas.push({
+          ...base, id: uid(), papel: 'miniBloco', papelSerie: s, papelIndice: b,
+          descanso: b === blocos ? pausaEntre : pausaIntra,
+        });
+      }
+    }
+    return linhas;
+  }
+
+  return [{ ...base, id: uid() }];
 }
 
 // Exercícios de antes das linhas: "3 séries de 10" vira três linhas iguais.
@@ -10499,11 +10561,23 @@ function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEdi
 // Uma linha de série. O tipo manda nos campos: mudar para "Corrida" troca
 // repetições e carga por distância, tempo e ritmo, sem perder o que já lá
 // estava — quem volta atrás encontra os valores como os deixou.
-function LinhaSerie({ linha, numero, onMudar, onRemover, onNovaLinha, unica }) {
+function LinhaSerie({ linha, numero, onMudar, onRemover, onNovaLinha, unica, separador }) {
   const tipo = tipoDeSerie(linha.tipo);
+  const curto = rotuloCurtoDePapel(linha);
   return (
-    <div className="flex items-end gap-2 flex-wrap" style={{ paddingBottom: 2 }}>
-      <span className="font-mono text-2xs text-faint nowrap" style={{ width: 18, paddingBottom: 9 }}>{numero}</span>
+    <div
+      className="flex items-end gap-2 flex-wrap"
+      style={separador
+        ? { paddingBottom: 2, paddingTop: 8, marginTop: 4, borderTop: '1px solid var(--border-hair)' }
+        : { paddingBottom: 2 }}
+    >
+      <span
+        className="font-mono text-2xs text-faint nowrap"
+        style={{ width: 24, paddingBottom: 9 }}
+        title={curto ? rotuloDePapel(linha) : undefined}
+      >
+        {curto || numero}
+      </span>
 
       <div className="flex flex-col gap-1" style={{ minWidth: 132, flex: '1 1 132px' }}>
         {numero === 1 && <span className="text-2xs font-body text-faint">Tipo</span>}
@@ -10675,10 +10749,17 @@ function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, 
   // escreveu não pode devolvê-lo à lista a meio da escrita.
   const [metodoLivre, setMetodoLivre] = useState(Boolean(ex.metodo) && !naLista);
   const [maisCampos, setMaisCampos] = useState(false);
+  const [aConfirmarGeracao, setAConfirmarGeracao] = useState(false);
   const extras = extrasPreenchidos(ex);
   const linhas = Array.isArray(ex.linhas) && ex.linhas.length ? ex.linhas : [novaLinhaSerie(null)];
   const camposMetodo = camposDoMetodo(ex.metodo);
   const paramsMetodo = ex.metodoParams || {};
+  const temSubEtapas = METODOS_COM_SUBETAPAS.includes(ex.metodo);
+
+  function gerarEAplicar() {
+    onMudar({ ...ex, linhas: gerarSubEtapas(ex.metodo, paramsMetodo, linhas[0]) });
+    setAConfirmarGeracao(false);
+  }
 
   // Entrar numa linha acrescenta outra por baixo, com os mesmos valores.
   // Escrever um treino é repetir a mesma série a mudar um número.
@@ -10766,6 +10847,9 @@ function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, 
             linha={linha}
             numero={i + 1}
             unica={linhas.length === 1}
+            // Separador visual entre séries completas de um cluster -- a
+            // primeira linha de cada série a partir da segunda, só.
+            separador={linha.papel === 'miniBloco' && linha.papelIndice === 1 && linha.papelSerie > 1}
             onMudar={(nova) => onMudar({ ...ex, linhas: linhas.map((l) => (l.id === linha.id ? nova : l)) })}
             onRemover={() => onMudar({ ...ex, linhas: linhas.filter((l) => l.id !== linha.id) })}
             onNovaLinha={() => acrescentarLinha(i)}
@@ -10831,6 +10915,31 @@ function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, 
                 </FormField>
               ))}
             </div>
+          )}
+          {temSubEtapas && (
+            <>
+              <button
+                type="button"
+                onClick={() => (linhas.length > 1 ? setAConfirmarGeracao(true) : gerarEAplicar())}
+                className="btn btn-ghost self-start"
+                style={{ fontSize: 11 }}
+              >
+                <Repeat size={13} /> Gerar {ex.metodo === 'Cluster' ? 'séries e blocos' : ex.metodo === 'Drop-set' ? 'quedas' : 'retomadas'}
+              </button>
+              <p className="text-2xs font-body text-faint" style={{ margin: 0 }}>
+                Escreve uma linha por {ex.metodo === 'Cluster' ? 'mini-bloco' : ex.metodo === 'Drop-set' ? 'queda' : 'retomada'}, a partir dos números acima e da primeira série — depois edita-se cada uma à mão, como qualquer série.
+              </p>
+              {aConfirmarGeracao && (
+                <ConfirmDialog
+                  title="Substituir as séries deste exercício?"
+                  message="Gerar de novo apaga as séries atuais e escreve-as outra vez a partir dos números do método. O que já tiver editado à mão perde-se."
+                  confirmLabel="Gerar"
+                  tone="rust"
+                  onCancel={() => setAConfirmarGeracao(false)}
+                  onConfirm={gerarEAplicar}
+                />
+              )}
+            </>
           )}
         </div>
       )}

@@ -44,7 +44,41 @@ export const CAMPOS_POR_METODO = {
   'Rest-pause': [['pausas', 'Pausas', '3'], ['pausaSeg', 'Pausa (s)', '15']],
   'Back-off': [['reducao', 'Redução (%)', '15']],
   'Pirâmide': [['sentido', 'Sentido', 'crescente']],
+  'Cluster': [
+    ['seriesCompletas', 'Séries completas', '3'],
+    ['miniBlocosPorSerie', 'Blocos por série', '3'],
+    ['pausaIntra', 'Pausa entre blocos (s)', '20'],
+    ['pausaEntreSeries', 'Pausa entre séries (s)', '180'],
+  ],
 };
+
+// Drop-set, rest-pause e cluster não vivem bem como "uma série com um
+// parâmetro ao lado" -- cada queda, retomada ou mini-bloco é a sua própria
+// linha, com a sua própria carga/repetições, e é isso que o registo do
+// realizado depois marca ✓ uma a uma. `gerarSubEtapas` (em painel-pt.tsx,
+// que tem o `uid()`) constrói essas linhas; isto só diz quais métodos o
+// pedem.
+export const METODOS_COM_SUBETAPAS = ['Drop-set', 'Rest-pause', 'Cluster'];
+
+// O nome completo de uma sub-etapa, para o texto da série e o tooltip da
+// coluna do número. `rotuloCurtoDePapel` é a mesma informação a caber numa
+// coluna de duas ou três letras.
+export function rotuloDePapel(linha) {
+  if (!linha || !linha.papel) return '';
+  if (linha.papel === 'inicial') return 'Inicial';
+  if (linha.papel === 'queda') return `Queda ${linha.papelIndice}`;
+  if (linha.papel === 'retomada') return `Retomada ${linha.papelIndice}`;
+  if (linha.papel === 'miniBloco') return `Série ${linha.papelSerie} · bloco ${linha.papelIndice}`;
+  return '';
+}
+export function rotuloCurtoDePapel(linha) {
+  if (!linha || !linha.papel) return '';
+  if (linha.papel === 'inicial') return 'Ini';
+  if (linha.papel === 'queda') return `Q${linha.papelIndice}`;
+  if (linha.papel === 'retomada') return `R${linha.papelIndice}`;
+  if (linha.papel === 'miniBloco') return `${linha.papelSerie}.${linha.papelIndice}`;
+  return '';
+}
 
 // O que é do exercício e não de cada série. Carga, repetições, tempo, RPE e
 // companhia mudam de série para série e por isso vivem nas linhas — tê-los
@@ -87,7 +121,9 @@ export function descreverLinha(linha, opcoes) {
     .filter(Boolean);
   if (linha.rpe) partes.push(`RPE ${linha.rpe}`);
   if (linha.rir) partes.push(`RIR ${linha.rir}`);
-  return partes.join(' · ');
+  const descricao = partes.join(' · ');
+  const rotulo = rotuloDePapel(linha);
+  return rotulo ? `${rotulo}: ${descricao}` : descricao;
 }
 
 // Mesma função que em AgendaAtoms.tsx -- duplicada de propósito, para cada

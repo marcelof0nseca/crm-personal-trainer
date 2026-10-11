@@ -29,6 +29,7 @@ import {
 } from './src/components/TreinoAtoms';
 import Turnstile from './src/components/Turnstile';
 import { gerarTokenAcesso, hashTokenAcesso, linkDeAcesso, tokenDaUrl } from './src/data/acessoAluno';
+import AreaDoAluno from './src/components/AreaDoAluno';
 import LegalModal from './src/components/LegalDocs';
 import {
   GRUPOS_BASE, CATEGORIAS_BASE, EXERCICIOS_BASE, NOMES_LEGADO,
@@ -20006,11 +20007,16 @@ function AppInner() {
 }
 
 export default function App() {
+  // O link do aluno (`?a=<token>`) decide tudo antes de qualquer outra coisa
+  // montar -- nenhum hook de autenticação do treinador chega a correr neste
+  // caminho. `AreaDoAluno` nunca importa de `painel-pt.tsx`; só partilha
+  // `GlobalStyles`, aqui em cima dos dois.
+  const tokenAluno = typeof window !== 'undefined' ? tokenDaUrl(window.location.href) : null;
   return (
     <>
       <GlobalStyles />
       <ErrorBoundary>
-        <AppInner />
+        {tokenAluno ? <AreaDoAluno token={tokenAluno} /> : <AppInner />}
       </ErrorBoundary>
     </>
   );

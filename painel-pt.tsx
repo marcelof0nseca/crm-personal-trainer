@@ -2036,6 +2036,9 @@ const METODOS_TREINO = [
   'Drop-set', 'Série de aproximação', 'Série de trabalho', 'Back-off',
   'Até à falha', 'Pirâmide', 'Pré-exaustão', 'Pós-exaustão',
   'Superset antagonista', 'Série composta', 'Cluster', 'Contraste',
+  'Strip Set', 'Myo-reps', 'Método 21', 'Ladder', 'Wave loading',
+  'Mechanical Drop-set', 'Repetições 1½', 'Paused Reps', 'Repetições parciais',
+  'Ênfase excêntrica', 'Super Slow', 'Isometria', 'Repetições forçadas', 'Isodinâmico',
 ];
 
 // Como se executa a série com cada método -- uma frase, para o treinador ler
@@ -2066,6 +2069,20 @@ const EXPLICACAO_METODO = {
   'Série composta': 'Dois exercícios para o mesmo grupo muscular, seguidos sem pausa.',
   'Cluster': 'A série parte-se em mini-séries curtas, com uma pausa breve entre elas, para manter a carga mais alta do início ao fim.',
   'Contraste': 'Uma repetição pesada e lenta, seguida sem demora de um movimento rápido e explosivo com carga leve.',
+  'Strip Set': 'Como o drop-set, mas a redução é um peso fixo (ex.: tirar um disco), não uma percentagem.',
+  'Myo-reps': 'Uma série de ativação perto da falha, seguida de várias mini-séries curtas com poucas repetições e pausas muito breves.',
+  'Método 21': 'A série parte-se em três blocos de sete: metade inferior da amplitude, metade superior, e por fim a amplitude completa.',
+  'Ladder': 'As repetições sobem (ou descem) degrau a degrau, com uma pausa curta entre cada um.',
+  'Wave loading': 'A carga sobe em ondas repetidas — cada onda chega um pouco mais pesada do que a anterior no mesmo ponto da sequência.',
+  'Mechanical Drop-set': 'Ao chegar à falha, troca-se para uma variante mecanicamente mais fácil do mesmo exercício, sem baixar a carga.',
+  'Repetições 1½': 'Uma repetição completa seguida de meia repetição na parte mais difícil do movimento, antes de subir — conta como uma.',
+  'Paused Reps': 'Uma pausa curta numa posição do movimento (normalmente em baixo) antes de continuar a repetição.',
+  'Repetições parciais': 'Repetições numa amplitude reduzida do movimento, não na amplitude completa.',
+  'Ênfase excêntrica': 'A fase de descida é deliberadamente mais lenta e controlada do que a de subida.',
+  'Super Slow': 'Cadência muito lenta nas duas fases do movimento, sem momento nenhum.',
+  'Isometria': 'Sustenta-se uma posição sem movimento, pelo tempo prescrito.',
+  'Repetições forçadas': 'Depois da falha, um parceiro ou o próprio treinador ajuda a completar mais algumas repetições.',
+  'Isodinâmico': 'Alterna fases dinâmicas (com movimento) e isométricas (sem movimento) dentro da mesma série.',
 };
 
 /* ------------------------- métodos de uma combinação -------------------------
@@ -2086,6 +2103,7 @@ const METODOS_COMBINACAO = [
   { id: 'trisserie', nome: 'Trissérie', minimo: 3, maximo: 3, ajuda: 'Três exercícios seguidos, sem pausa.' },
   { id: 'giant_set', nome: 'Giant set', minimo: 4, maximo: null, ajuda: 'Quatro ou mais exercícios seguidos.' },
   { id: 'circuito', nome: 'Circuito', minimo: 2, maximo: null, ajuda: 'Volta completa por todos, e repete.' },
+  { id: 'pha', nome: 'PHA', minimo: 3, maximo: null, ajuda: 'Como o circuito, mas alternando sempre a região do corpo — mantém o sangue a circular entre membros superiores e inferiores.' },
   { id: 'contraste', nome: 'Contraste', minimo: 2, maximo: 2, ajuda: 'Carga pesada seguida de movimento rápido.' },
   { id: 'complexo', nome: 'Complexo', minimo: 2, maximo: null, ajuda: 'Vários movimentos sem largar a barra.' },
   // Blocos temporizados de vários exercícios (a biblioteca de modelos usa-os).
@@ -2109,6 +2127,7 @@ const CAMPOS_POR_COMBINACAO = {
   serie_composta: PAUSA_ENTRE_RONDAS,
   trisserie: PAUSA_ENTRE_RONDAS,
   circuito: [['voltas', 'Voltas', '3'], ['pausaVolta', 'Pausa entre voltas (s)', '90']],
+  pha: [['voltas', 'Voltas', '3'], ['pausaVolta', 'Pausa entre voltas (s)', '60']],
   giant_set: [['pausaRonda', 'Pausa entre rondas (s)', '120']],
   contraste: [['pausaEntre', 'Pausa entre os dois (s)', '15'], ['pausaRonda', 'Pausa entre rondas (s)', '180']],
   complexo: [['voltas', 'Voltas', '3']],
@@ -2223,8 +2242,122 @@ function gerarSubEtapas(metodo, params, linhaBase) {
     return linhas;
   }
 
+  // Redução em kg, não em percentagem -- a diferença do Drop-set que o
+  // prompt mestre pede para não se perder. Reaproveita o papel 'queda': é a
+  // mesma ideia (carga a cair série a série sem descanso), só muda a conta.
+  if (metodo === 'Strip Set') {
+    const quedas = Math.max(1, Math.min(8, parseInt(p.quedas, 10) || 2));
+    const reducaoKg = parseFloat(p.reducaoAbsoluta) || 0;
+    let cargaAtual = parseFloat(base.carga) || 0;
+    const linhas = [{ ...base, id: uid(), papel: 'inicial', papelIndice: 0, descanso: '0' }];
+    for (let i = 1; i <= quedas; i += 1) {
+      cargaAtual = Math.max(0, cargaAtual - reducaoKg);
+      linhas.push({
+        ...base, id: uid(), papel: 'queda', papelIndice: i,
+        carga: cargaAtual ? String(cargaAtual) : '',
+        descanso: i === quedas ? descansoFinal : '0',
+      });
+    }
+    return linhas;
+  }
+
+  // Ao contrário do drop-set e do cluster, a pirâmide não é uma única série
+  // partida em bocados -- são séries completas, com o descanso a sério entre
+  // cada uma, só a carga (e por vezes as reps) é que mudam de etapa a etapa.
+  if (metodo === 'Pirâmide') {
+    const etapas = Math.max(2, Math.min(10, parseInt(p.etapas, 10) || 4));
+    const sentido = String(p.sentido || 'crescente').trim().toLowerCase();
+    const incPct = parseFloat(p.incrementoPct) || 10;
+    const cargaBase = parseFloat(base.carga) || 0;
+    const metade = Math.ceil(etapas / 2);
+    const linhas = [];
+    for (let i = 1; i <= etapas; i += 1) {
+      let passo;
+      if (sentido === 'decrescente') passo = -(i - 1);
+      else if (sentido === 'completa') passo = (i <= metade ? i : etapas - i + 1) - 1;
+      else passo = i - 1; // crescente
+      const mult = 1 + (passo * incPct) / 100;
+      const carga = cargaBase ? Math.round(cargaBase * mult * 10) / 10 : '';
+      linhas.push({
+        ...base, id: uid(), papel: 'etapaPiramide', papelIndice: i,
+        carga: carga === '' ? '' : String(carga),
+        descanso: descansoFinal,
+      });
+    }
+    return linhas;
+  }
+
+  // Série de ativação até perto da falha, depois mini-séries curtas com
+  // poucas repetições cada -- parece rest-pause, mas as mini-séries têm o
+  // seu próprio alvo de reps (normalmente bem menor), não "o que der".
+  if (metodo === 'Myo-reps') {
+    const maxMini = Math.max(1, Math.min(10, parseInt(p.maxMiniseries, 10) || 4));
+    const repsMini = p.repsMini || '3';
+    const pausaSeg = p.pausaSeg || '15';
+    const linhas = [{ ...base, id: uid(), papel: 'ativacao', papelIndice: 0, descanso: pausaSeg }];
+    for (let i = 1; i <= maxMini; i += 1) {
+      linhas.push({
+        ...base, id: uid(), papel: 'miniserie', papelIndice: i,
+        reps: repsMini,
+        descanso: i === maxMini ? descansoFinal : pausaSeg,
+      });
+    }
+    return linhas;
+  }
+
+  // Três segmentos fixos, sempre pela mesma ordem -- não é "três séries
+  // quaisquer", é a amplitude que muda, por isso cada um leva o seu próprio
+  // número de reps, não o da linha-base.
+  if (metodo === 'Método 21') {
+    const segmentos = [
+      { papelIndice: 1, reps: p.repsInferior || '7' },
+      { papelIndice: 2, reps: p.repsSuperior || '7' },
+      { papelIndice: 3, reps: p.repsCompletas || '7' },
+    ];
+    return segmentos.map((s, i) => ({
+      ...base, id: uid(), papel: 'segmento21', papelIndice: s.papelIndice,
+      reps: s.reps,
+      descanso: i === segmentos.length - 1 ? descansoFinal : '0',
+    }));
+  }
+
+  // Escada: as reps mudam degrau a degrau (a carga fica como está, editável
+  // depois); a pausa entre degraus é curta, nunca o descanso a sério, que só
+  // vem no fim da escada toda.
+  if (metodo === 'Ladder') {
+    const degraus = Math.max(2, Math.min(12, parseInt(p.degraus, 10) || 5));
+    const sentido = String(p.sentido || 'crescente').trim().toLowerCase();
+    const incremento = parseInt(p.incrementoReps, 10) || 1;
+    const repsBase = parseInt(base.reps, 10) || 1;
+    const pausaEntre = p.pausaEntreDegraus || '10';
+    const linhas = [];
+    for (let i = 1; i <= degraus; i += 1) {
+      const delta = sentido === 'decrescente' ? -(i - 1) * incremento : (i - 1) * incremento;
+      const reps = Math.max(1, repsBase + delta);
+      linhas.push({
+        ...base, id: uid(), papel: 'degrau', papelIndice: i,
+        reps: String(reps),
+        descanso: i === degraus ? descansoFinal : pausaEntre,
+      });
+    }
+    return linhas;
+  }
+
   return [{ ...base, id: uid() }];
 }
+
+// O nome das sub-etapas de cada método com `gerarSubEtapas`, para o botão e
+// a nota de ajuda -- plural para "Gerar X" e singular para "uma linha por X".
+const UNIDADE_SUBETAPAS = {
+  'Drop-set': 'quedas', 'Strip Set': 'quedas', 'Rest-pause': 'retomadas',
+  'Cluster': 'séries e blocos', 'Pirâmide': 'etapas', 'Myo-reps': 'mini-séries',
+  'Método 21': 'segmentos', 'Ladder': 'degraus',
+};
+const UNIDADE_SUBETAPAS_SINGULAR = {
+  'Drop-set': 'queda', 'Strip Set': 'queda', 'Rest-pause': 'retomada',
+  'Cluster': 'mini-bloco', 'Pirâmide': 'etapa', 'Myo-reps': 'mini-série',
+  'Método 21': 'segmento', 'Ladder': 'degrau',
+};
 
 // Exercícios de antes das linhas: "3 séries de 10" vira três linhas iguais.
 // Idempotente — quem já tem `linhas` passa ao lado.
@@ -10924,10 +11057,10 @@ function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, 
                 className="btn btn-ghost self-start"
                 style={{ fontSize: 11 }}
               >
-                <Repeat size={13} /> Gerar {ex.metodo === 'Cluster' ? 'séries e blocos' : ex.metodo === 'Drop-set' ? 'quedas' : 'retomadas'}
+                <Repeat size={13} /> Gerar {UNIDADE_SUBETAPAS[ex.metodo] || 'séries'}
               </button>
               <p className="text-2xs font-body text-faint" style={{ margin: 0 }}>
-                Escreve uma linha por {ex.metodo === 'Cluster' ? 'mini-bloco' : ex.metodo === 'Drop-set' ? 'queda' : 'retomada'}, a partir dos números acima e da primeira série — depois edita-se cada uma à mão, como qualquer série.
+                Escreve uma linha por {UNIDADE_SUBETAPAS_SINGULAR[ex.metodo] || 'etapa'}, a partir dos números acima e da primeira série — depois edita-se cada uma à mão, como qualquer série.
               </p>
               {aConfirmarGeracao && (
                 <ConfirmDialog

@@ -34,22 +34,50 @@ export const TIPO_SERIE_OMISSAO = 'reps_carga';
 // Os métodos que precisam de números próprios. Escolher EMOM e não haver onde
 // pôr os minutos deixava o método a valer só como etiqueta.
 export const CAMPOS_POR_METODO = {
-  'EMOM': [['minutos', 'Minutos', '12']],
+  'EMOM': [['minutos', 'Minutos', '12'], ['janela', 'Minutos por janela', '1']],
   'AMRAP': [['minutos', 'Minutos', '15']],
   'Tabata': [['rondas', 'Rondas', '8'], ['trabalho', 'Trabalho (s)', '20'], ['pausa', 'Pausa (s)', '10']],
   'Circuito': [['voltas', 'Voltas', '3'], ['pausaVolta', 'Pausa entre voltas (s)', '90']],
-  'Intervalado': [['esforco', 'Esforço (s)', '30'], ['recuperacao', 'Recuperação (s)', '60']],
+  'Intervalado': [
+    ['esforco', 'Esforço (s)', '30'], ['recuperacao', 'Recuperação (s)', '60'],
+    ['blocos', 'Blocos', '1'], ['pausaBloco', 'Pausa entre blocos (s)', '120'],
+    ['preparacao', 'Preparação inicial (s)', '10'],
+  ],
   'For time': [['limite', 'Tempo limite', '10 min']],
   'Drop-set': [['quedas', 'Quedas', '2'], ['reducao', 'Redução por queda (%)', '20']],
+  'Strip Set': [['quedas', 'Quedas', '2'], ['reducaoAbsoluta', 'Redução por queda (kg)', '5']],
   'Rest-pause': [['pausas', 'Pausas', '3'], ['pausaSeg', 'Pausa (s)', '15']],
   'Back-off': [['reducao', 'Redução (%)', '15']],
-  'Pirâmide': [['sentido', 'Sentido', 'crescente']],
+  'Pirâmide': [
+    ['etapas', 'Etapas', '4'],
+    ['sentido', 'Sentido (crescente, decrescente, completa)', 'crescente'],
+    ['incrementoPct', 'Variação de carga por etapa (%)', '10'],
+  ],
   'Cluster': [
     ['seriesCompletas', 'Séries completas', '3'],
     ['miniBlocosPorSerie', 'Blocos por série', '3'],
     ['pausaIntra', 'Pausa entre blocos (s)', '20'],
     ['pausaEntreSeries', 'Pausa entre séries (s)', '180'],
   ],
+  'Myo-reps': [
+    ['repsMini', 'Reps por mini-série', '3'],
+    ['maxMiniseries', 'Máximo de mini-séries', '4'],
+    ['pausaSeg', 'Pausa entre mini-séries (s)', '15'],
+  ],
+  'Método 21': [
+    ['repsInferior', 'Reps — parcial inferior', '7'],
+    ['repsSuperior', 'Reps — parcial superior', '7'],
+    ['repsCompletas', 'Reps — completas', '7'],
+  ],
+  'Ladder': [
+    ['degraus', 'Degraus', '5'],
+    ['sentido', 'Sentido (crescente, decrescente)', 'crescente'],
+    ['incrementoReps', 'Reps por degrau', '1'],
+    ['pausaEntreDegraus', 'Pausa entre degraus (s)', '10'],
+  ],
+  'Paused Reps': [['pausaSeg', 'Pausa na posição (s)', '2']],
+  'Repetições forçadas': [['repsAssistidas', 'Reps assistidas', '2']],
+  'Repetições parciais': [['amplitude', 'Amplitude', 'Metade inferior']],
 };
 
 // Drop-set, rest-pause e cluster não vivem bem como "uma série com um
@@ -57,8 +85,16 @@ export const CAMPOS_POR_METODO = {
 // linha, com a sua própria carga/repetições, e é isso que o registo do
 // realizado depois marca ✓ uma a uma. `gerarSubEtapas` (em painel-pt.tsx,
 // que tem o `uid()`) constrói essas linhas; isto só diz quais métodos o
-// pedem.
-export const METODOS_COM_SUBETAPAS = ['Drop-set', 'Rest-pause', 'Cluster'];
+// pedem. Strip Set reaproveita o `papel` do Drop-set (só muda a matemática
+// da carga, de percentagem para kg absolutos); por isso não está na lista de
+// rótulos abaixo com um nome próprio.
+export const METODOS_COM_SUBETAPAS = [
+  'Drop-set', 'Strip Set', 'Rest-pause', 'Cluster', 'Pirâmide', 'Myo-reps', 'Método 21', 'Ladder',
+];
+
+// Método 21 tem sempre as mesmas três etapas, nunca "Segmento 1/2/3" -- o
+// nome diz o que se faz, não o número da vez.
+const ROTULOS_21 = { 1: 'Parcial inferior', 2: 'Parcial superior', 3: 'Completo' };
 
 // O nome completo de uma sub-etapa, para o texto da série e o tooltip da
 // coluna do número. `rotuloCurtoDePapel` é a mesma informação a caber numa
@@ -69,6 +105,11 @@ export function rotuloDePapel(linha) {
   if (linha.papel === 'queda') return `Queda ${linha.papelIndice}`;
   if (linha.papel === 'retomada') return `Retomada ${linha.papelIndice}`;
   if (linha.papel === 'miniBloco') return `Série ${linha.papelSerie} · bloco ${linha.papelIndice}`;
+  if (linha.papel === 'etapaPiramide') return `Etapa ${linha.papelIndice}`;
+  if (linha.papel === 'ativacao') return 'Ativação';
+  if (linha.papel === 'miniserie') return `Mini-série ${linha.papelIndice}`;
+  if (linha.papel === 'segmento21') return ROTULOS_21[linha.papelIndice] || `Segmento ${linha.papelIndice}`;
+  if (linha.papel === 'degrau') return `Degrau ${linha.papelIndice}`;
   return '';
 }
 export function rotuloCurtoDePapel(linha) {
@@ -77,6 +118,11 @@ export function rotuloCurtoDePapel(linha) {
   if (linha.papel === 'queda') return `Q${linha.papelIndice}`;
   if (linha.papel === 'retomada') return `R${linha.papelIndice}`;
   if (linha.papel === 'miniBloco') return `${linha.papelSerie}.${linha.papelIndice}`;
+  if (linha.papel === 'etapaPiramide') return `E${linha.papelIndice}`;
+  if (linha.papel === 'ativacao') return 'Ativ';
+  if (linha.papel === 'miniserie') return `M${linha.papelIndice}`;
+  if (linha.papel === 'segmento21') return `21.${linha.papelIndice}`;
+  if (linha.papel === 'degrau') return `D${linha.papelIndice}`;
   return '';
 }
 

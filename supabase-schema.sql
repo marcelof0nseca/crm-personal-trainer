@@ -421,3 +421,12 @@ grant select, insert, update, delete on public.aluno_acessos to authenticated;
 -- pelo hash do token com a service_role key, sem sessão de treinador nenhuma
 -- -- é assim que um aluno sem conta chega aos dados dele.
 grant select on public.aluno_acessos to service_role;
+
+-- A service_role ignora RLS (bypassrls, nível da conta Supabase), mas isso
+-- não dispensa a GRANT -- são duas camadas diferentes, e `app_data` nunca
+-- tinha dado nenhuma a `service_role` porque nada, até agora, precisava de a
+-- ler fora da própria sessão do treinador. Sem isto, as duas Edge Functions
+-- acima recebiam "permission denied for table app_data" (42501) ao tentar
+-- ler o programa ou gravar a sessão do aluno -- apanhado ao testar esta
+-- fatia a sério, não ao planeá-la.
+grant select, insert, update on public.app_data to service_role;

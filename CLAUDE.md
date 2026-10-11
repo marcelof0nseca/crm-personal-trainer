@@ -150,19 +150,25 @@ Consequências que decidem quase tudo:
   corre em `normalizarTreinos`. O método pode levar números próprios em
   `ex.metodoParams` (`CAMPOS_POR_METODO`), e `ex.grupo` liga os exercícios de
   uma supersérie, que ganham etiqueta A1/A2 por `etiquetasDeGrupo`.
-- **As sub-etapas de Drop-set, Rest-pause e Cluster também são linhas**, nunca
-  uma entidade nova — o mesmo padrão da supersérie, só que dentro de um
-  exercício só. `gerarSubEtapas` escreve-as a partir dos números do método
+- **As sub-etapas de 8 métodos também são linhas**, nunca uma entidade nova —
+  o mesmo padrão da supersérie, só que dentro de um exercício só.
+  `gerarSubEtapas` escreve-as a partir dos números do método
   (`ex.metodoParams`) e da primeira linha: cada uma leva `papel` (`inicial`,
-  `queda`, `retomada`, ou `miniBloco` com `papelSerie`+`papelIndice` para o
-  Cluster, que tem dois níveis — série × bloco). `descanso` é sempre "a pausa
-  depois desta": 0 entre quedas, a pausa curta entre retomadas/blocos, e só a
-  última de cada sequência herda o descanso a sério que lá estava antes de
-  gerar. Gerar de novo com linhas já escritas à mão pede confirmação
+  `queda` — Drop-set e Strip Set, só muda a conta da carga —, `retomada`,
+  `miniBloco` com `papelSerie`+`papelIndice` para o Cluster, `etapaPiramide`,
+  `ativacao`/`miniserie` para o Myo-reps, `segmento21` para o Método 21, ou
+  `degrau` para o Ladder). `descanso` é sempre "a pausa depois desta", mas o
+  valor por omissão depende do método: 0 entre quedas/segmentos do Método 21,
+  a pausa curta entre retomadas/blocos/degraus/mini-séries, o descanso a
+  sério em **todas** as etapas da Pirâmide (não é cascata como os outros —
+  são séries completas, só a carga muda), e só a última de cada sequência
+  herda o descanso a sério que lá estava antes de gerar, nos métodos em
+  cascata. Gerar de novo com linhas já escritas à mão pede confirmação
   (`ConfirmDialog`); com uma linha só, gera direto. Como são linhas normais,
   o registo do realizado, a descrição na vista de treino (`descreverLinha`,
   com `rotuloDePapel`/`rotuloCurtoDePapel` de `TreinoAtoms.tsx`) e o cálculo
-  de volume funcionam sem saber que são "sub-etapas".
+  de volume (`resumoDoTreino`, soma simples de reps×carga por linha)
+  funcionam sem saber que são "sub-etapas".
 - **Um horário livre é um evento**, `kind: 'evento'` com `type: 'horario_livre'`.
   `type: 'bloqueado'` é o mesmo espaço marcado como indisponível — apagar não
   chegava, porque «Libertar horários da semana» voltava a encher o buraco. A
@@ -839,7 +845,7 @@ existe de verdade.
 |---|---|
 | **Agenda** | Dia, semana, mês, lista · procura e filtros · **botão de horários na própria agenda**, com horário por dia, **exceções por data** e pré-visualização da semana · horários livres em lote · **selecionar várias e mover, mudar a duração, bloquear ou apagar de uma vez** · recorrência com "só esta / toda a série" · **replicar uma marcação por X semanas** · **três botões de confirmação com cor cheia: dada, falta, e falta com direito a reposição**, coloridos pelo **tipo da marcação** (`SESSION_TYPES`/`EVENT_TYPES`, agora em `AgendaAtoms.tsx`, sem cores repetidas dentro da mesma lista), não pelo aluno · **aviso de conflito** (nunca bloqueia — alguns treinadores atendem dois alunos ao mesmo tempo de propósito) · **o cartão ocupa o espaço proporcional à duração real** (uma sessão de 2h fica visivelmente mais alta que uma de 30 min) e mostra "09:00–11:00", não só a hora de início · **reservar por cima de um Horário Livre remove-o** (`semLivresCobertosPor`) — antes ficava por baixo, a dizer que aquele tempo continuava livre · **vários alunos no mesmo horário**, um cartão só (`GroupedSessionCard`), **cada aluno com os seus três botões de confirmação** — eram só um emblema com o estado, sem forma de marcar dada/falta/falta-com-reposição sem abrir a sessão; ver `groupId` na secção 4. **Sem arrastar o cartão para outro dia, nem copiar/colar** — os dois existiram, mediam todos os testes automatizados, mas o arrastar não funcionava em telemóvel real e o copiar/colar foi removido por decisão de produto; mover uma sessão é pelo formulário (mudar a data) ou por "Selecionar várias" |
 | **Faltas** | Estados, direito a reposição, crédito ligado à aula de origem · **validade do crédito, estado "Expirada" e registo de auditoria** (quem concedeu, quando, o que aconteceu desde então) |
-| **Prescrição** | Treinos A/B/C, 2 076 exercícios, modelos, arquivo, PDF timbrado agrupado por bloco. Blocos, métodos como lista, 15 campos por exercício, duplicar, arrastar para reordenar · **14 combinações com nome e cor** (`METODOS_COMBINACAO`: bi-set, supersérie, superset antagonista, pré-exaustão, pós-exaustão, série composta, trissérie, giant set, circuito, contraste, complexo, EMOM, AMRAP, For time), cada membro num tom da cor do grupo · cada um dos **24 métodos de um exercício só** (`METODOS_TREINO`) já mudava os campos a preencher quando precisa de números próprios (`CAMPOS_POR_METODO`: minutos do EMOM, quedas do drop-set…) e agora também mostra **uma frase de como se executa a série com aquele método** (`EXPLICACAO_METODO`), mesmo quando não há números nenhuns (ex.: "Até à falha") · na vista do treino, a coluna com o texto da série (tudo menos a carga) chama-se **"Repetições ou tempo"**, não "Prescrição" — a prescrição é o exercício inteiro, essa coluna só dizia o lado que não é peso · **Drop-set, Rest-pause e Cluster geram as suas sub-etapas como linhas a sério** (`gerarSubEtapas`, `METODOS_COM_SUBETAPAS`) — um botão escreve as quedas, as retomadas, ou a grelha série × bloco a partir dos números do método, cada uma editável depois como qualquer série, com rótulo próprio ("Queda 1", "Retomada 2", "1.1"…) |
+| **Prescrição** | Treinos A/B/C, 2 076 exercícios, modelos, arquivo, PDF timbrado agrupado por bloco. Blocos, métodos como lista, 15 campos por exercício, duplicar, arrastar para reordenar · **15 combinações com nome e cor** (`METODOS_COMBINACAO`: bi-set, supersérie, superset antagonista, pré-exaustão, pós-exaustão, série composta, trissérie, giant set, circuito, PHA, contraste, complexo, EMOM, AMRAP, For time), cada membro num tom da cor do grupo · cada um dos **38 métodos de um exercício só** (`METODOS_TREINO`) já mudava os campos a preencher quando precisa de números próprios (`CAMPOS_POR_METODO`: minutos do EMOM, quedas do drop-set…) e agora também mostra **uma frase de como se executa a série com aquele método** (`EXPLICACAO_METODO`), mesmo quando não há números nenhuns (ex.: "Até à falha") · na vista do treino, a coluna com o texto da série (tudo menos a carga) chama-se **"Repetições ou tempo"**, não "Prescrição" — a prescrição é o exercício inteiro, essa coluna só dizia o lado que não é peso · **8 métodos geram as suas sub-etapas como linhas a sério** (`gerarSubEtapas`, `METODOS_COM_SUBETAPAS`: Drop-set, Strip Set, Rest-pause, Cluster, Pirâmide, Myo-reps, Método 21, Ladder) — um botão escreve as quedas, as retomadas, a grelha série × bloco ou os degraus a partir dos números do método, cada uma editável depois como qualquer série, com rótulo próprio ("Queda 1", "Retomada 2", "1.1", "Etapa 3"…) |
 | **Biblioteca de modelos** | 860 fichas pré-construídas (representação A do documento de consolidação: 14 categorias, 8 objetivos, 4 níveis de experiência, 4 de condicionamento, 26 métodos) **mais 200 protocolos semanais gerados por regras** (`PTS-0001`…`PTS-0200`, sem documento de origem, 50 por cada banda de frequência: 1-2x, 2-3x, 4-5x, 5-7x por semana) — total **1060** fichas, em **Alunos → aluno → Treinos → «Biblioteca de modelos»**. Procura (traduz pt-BR e inglês, e aceita o código, `PTM-0312` ou `PTS-0047`), **filtro próprio de frequência semanal** e os outros 11 filtros combináveis · ficha com aquecimento, principal, volta à calma, critérios de entrada, progressão, regressão e o que registar · **«Usar este modelo»** cria o programa do aluno, editável como qualquer outro, e **«Guardar nos meus modelos»** guarda a ficha sem precisar de aluno; os dois registam a `origem`, e a vista do treino mostra «Modelo PTM-…» ou «Modelo PTS-…» · navegável por teclado, com o foco a seguir a vista (título ao abrir, cartão ao voltar). **«Validação clínica» e «supervisão técnica» são avisos**, com a ressalva ao lado — a aplicação não tem papéis nem forma de bloquear, e assinala, nunca diagnostica (10b). Estendeu `METODOS_COMBINACAO` com **EMOM, AMRAP e For time**, e deu **«pausa entre rondas»** ao bi-set, supersérie, trissérie… **Preservado do documento, nunca corrigido em silêncio** (26 fichas levam um aviso em `avisosEditoriais`): o RPE do complemento do «Personalizado» (4 na dose base, 5 no cronómetro), a regra de dose que deixa `pliometria técnica` e `unilateral` de fora das repetições de pliometria, e a preparação específica de uma família temporal. **A representação B não está construída** — o documento não reproduz as suas 860 prescrições |
 | **Treino realizado** | O **treinador** regista, na sala e no telemóvel, o que o aluno fez: **«Registar sessão»** na vista do treino abre um passo por exercício (uma combinação inteira num só passo), com barra de progresso, cronómetro, ✓ por série (que confirma o que a prescrição sugere) e carga, repetições, tempo, RIR ou RPE reais · «última vez» a partir do registo do próprio aluno · **rascunho no aparelho**, que sobrevive a bloquear o telemóvel ou recarregar · ao terminar, duração, esforço 0–10, **sintomas durante e depois** (ditos como o que o aluno referiu, nunca como diagnóstico), «interrompida» com motivo e notas · **«Sessões realizadas»** na lista de treinos do aluno, com selos dourados de «interrompida» e «sintomas referidos» · **ver, corrigir e apagar** uma sessão, com o prescrito ao lado do realizado · **na Ficha 360º**, «Sessões de treino» é um tipo de acontecimento com filtro e procura (por exercício, sintoma ou nota) · **a prescrição nunca é alterada**. Uma linha por aluno na base de dados — ver `execucoes:` na secção 4. **Exige correr o SQL de `supabase-schema.sql`** |
 | **Vista de treino** | O programa como se lê, e não como se escreve: um treino de cada vez, por bloco, com o resumo em números (exercícios, séries, pausa somada, volume). **A carga de cada série e os números do método editam-se ali mesmo**; o resto é no construtor. **Dois modos**: completo (tudo de uma vez) e **passo a passo** — um exercício por vez, uma combinação inteira (bi-set, trissérie…) num só passo, com setas e barra de progresso (`TreinoSegmentado`, `passosDoTreino`). Exercícios soltos também têm cor própria, mais discreta que a de uma combinação, só para se distinguirem na lista. `TreinoVista`, ao lado de `PrescricaoBuilder` |
@@ -993,12 +999,32 @@ Combinado por níveis, do mais barato ao mais caro:
     número de parâmetro. Reaproveita a edição de série, a descrição na vista
     de treino e o registo do realizado sem mexer em nenhum dos três — o
     mesmo padrão que já liga os exercícios de uma supersérie, aplicado
-    dentro de um exercício só. Ficaram de fora os outros ~21 métodos sem
-    sub-etapas estruturadas do "Prompt mestre" pedido (fica para quando o
-    dono do produto pedir um de cada vez) e a arquitetura relacional que o
-    mesmo prompt sugeria — o modelo de dados não muda (secção 4)
-25. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
-26. Decisões de produto — ver secção 10
+    dentro de um exercício só
+25. ~~Resto do "Prompt mestre" compatível com a arquitetura atual~~ **feito**
+    — mais 5 métodos com sub-etapas geradas (Pirâmide a sério — crescente,
+    decrescente, completa, com descanso a sério entre etapas, ao contrário
+    do drop-set/cluster que são cascata; Myo-reps; Método 21; Ladder; Strip
+    Set, que reaproveita o `papel` do drop-set e só muda a redução de
+    percentagem para kg), a combinação PHA, EMOM com "minutos por janela"
+    (cobre E2MOM/E3MOM sem método novo), Intervalado com blocos/pausa entre
+    blocos/preparação (cobre HIIT), e mais 9 métodos só com rótulo e
+    explicação, reaproveitando campos que já existiam na linha (Wave
+    loading, Mechanical Drop-set, Repetições 1½, Paused Reps, Repetições
+    parciais, Ênfase excêntrica, Super Slow, Isometria, Repetições
+    forçadas, Isodinâmico). Auditado contra o exemplo do próprio prompt: o
+    cálculo de volume (`resumoDoTreino`) já soma reps × carga por linha sem
+    duplicar — confirmado com 12×50+8×40+6×32=1112 kg.
+    **Ficou de fora, por decisão do dono do produto** (ver secção 10 e a
+    nota no início deste item): o modelo de dados relacional, um ecrã de
+    execução para o aluno, testes automatizados, e permissões de equipa —
+    quatro secções do prompt que contrariam decisões já tomadas, não
+    lacunas técnicas. **Ficou de fora por não valer o investimento agora**:
+    5×5/German Volume/FST-7/SST (são antes fichas da biblioteca de modelos
+    do que métodos por exercício), Density Training e "No repeat" (regras
+    de sessão, não de série) — nenhum perdeu dados nem foi substituído,
+    simplesmente não existiam antes
+26. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
+27. Decisões de produto — ver secção 10
 
 ---
 

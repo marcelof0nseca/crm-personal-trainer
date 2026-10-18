@@ -9,7 +9,12 @@
 const ALLOWED_ORIGIN = Deno.env.get('APP_ORIGIN') || '*';
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
-  'Access-Control-Allow-Headers': 'content-type',
+  // Tem de bater com o que `admin-overview` já usa: `supabase.functions.invoke`
+  // manda sempre `apikey`/`authorization` também, mesmo sem sessão nenhuma --
+  // faltar um destes aqui faz o browser recusar o pedido no pré-voo (CORS),
+  // antes sequer de chegar ao servidor. `curl` não reproduz isto (não faz
+  // pré-voo), por isso testar só por `curl` escondeu este bug uma semana.
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   Vary: 'Origin',
 };
 

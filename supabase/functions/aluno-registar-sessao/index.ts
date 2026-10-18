@@ -7,7 +7,9 @@
 const ALLOWED_ORIGIN = Deno.env.get('APP_ORIGIN') || '*';
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
-  'Access-Control-Allow-Headers': 'content-type',
+  // Ver aluno-view/index.ts: `apikey`/`authorization` têm de estar aqui, ou o
+  // browser recusa o pedido no pré-voo CORS antes de chegar ao servidor.
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   Vary: 'Origin',
 };
 

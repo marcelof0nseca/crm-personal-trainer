@@ -51,14 +51,16 @@ O que ele faz na aplicação, todos os dias:
 
 Mais um separador **Admin**, só visível ao dono da aplicação.
 
-O aluno **não tem conta** — continua sem login, sem password, sem app própria
-para instalar — mas, desde que o dono do produto pediu, tem uma **área própria
-por link pessoal**: vê o seu programa de treino e regista lá mesmo o que fez,
-sem o treinador ter de o fazer por ele. É tudo o que o aluno vê: nada de
-avaliações, agenda nem finanças. O PDF continua a ser o que ele recebe para
-imprimir/guardar; a área do aluno é um extra, não substitui o documento. Ver
-secção 4 ("Área do aluno") para o desenho, e secção 10 para o que ficou de
-fora desta primeira fatia.
+O aluno, desde que o dono do produto pediu, tem uma **área própria**: vê o
+seu programa de treino e regista lá mesmo o que fez, sem o treinador ter de o
+fazer por ele. Dois caminhos para lá chegar — **um link pessoal, sem conta
+nenhuma** (o original), ou uma **conta a sério, com email e password**
+(pedida depois, para o aluno poder entrar sempre que quiser sem depender de
+um link) — o treinador escolhe qual oferecer, e os dois convivem. É tudo o
+que o aluno vê: nada de avaliações, agenda nem finanças. O PDF continua a ser
+o que ele recebe para imprimir/guardar; a área do aluno é um extra, não
+substitui o documento. Ver secção 4 ("Área do aluno") para o desenho, e
+secção 10 para o que ficou de fora.
 
 ---
 
@@ -90,7 +92,7 @@ fora desta primeira fatia.
 | `scripts/validar-horas-pagas.mjs` | `node scripts/validar-horas-pagas.mjs`. Confere `horasPagasDoAluno` e os ajudantes de que depende — funções pequenas de mais para um módulo próprio, extraídas do `painel-pt.tsx` por texto, como o resto desta lista faz às que só correm contra o Supabase |
 | `scripts/gerar-exercicios.mjs` | Gera o ficheiro acima a partir do catálogo MFIT (que não está no repositório) |
 | `scripts/exercicios-legado.json` | Os 202 exercícios que a aplicação tinha antes do catálogo |
-| `supabase/functions/` | 8 Edge Functions: `admin-overview`, `create-checkout-session`, `create-mbway-checkout-session`, `create-portal-session`, `stripe-webhook`, `send-welcome-email`, `aluno-view`, `aluno-registar-sessao` |
+| `supabase/functions/` | 9 Edge Functions: `admin-overview`, `create-checkout-session`, `create-mbway-checkout-session`, `create-portal-session`, `stripe-webhook`, `send-welcome-email`, `aluno-view`, `aluno-registar-sessao`, `aluno-convidar` |
 | `supabase-schema.sql` | Schema completo e idempotente |
 | `public/` | Ficheiros estáticos que o Vite copia tal e qual para a raiz do build (ao contrário de `src/assets/`, que leva hash) — `og-image.png`, `favicon.png`, `apple-touch-icon.png`, `icon-512.png`, `robots.txt` |
 
@@ -304,11 +306,16 @@ Consequências que decidem quase tudo:
     aparelho (`limparExecucoes`) e o acesso dele (`apagarAcessosDoAluno`).
   - **Ficam de fora**: PDF ou relatório das sessões, recordes/1RM/gráficos,
     esquerdo e direito por série, e ligar «Aula dada» da agenda ao registo.
-- **Área do aluno: acesso por link pessoal com token, nunca conta Supabase
-  própria.** Sem fluxo de registo, sem password, sem email a confirmar, sem o
-  alojamento/suporte escalar com o número de alunos — a mesma objeção que
-  mantinha isto de fora durante meses (ver secção 10). O aluno vê o programa
-  ativo e regista lá mesmo o que fez; nada de avaliações, agenda ou finanças.
+- **Área do aluno: dois caminhos de acesso, não um.** O original — link
+  pessoal com token, sem conta nenhuma (sem fluxo de registo, sem password,
+  sem email a confirmar) — e, por pedido explícito e informado do dono do
+  produto (reversão da decisão "sem conta" de secção 10, semanas depois de
+  estar em produção), uma **conta a sério do aluno** (email + password), para
+  entrar sempre que quiser sem depender de receber um link. Os dois convivem
+  — o treinador escolhe qual oferecer a cada aluno, na mesma folha
+  (`AcessoAlunoFolha`, Ficha 360º) — e o que já existia para o token não
+  mudou nada. O aluno vê o programa ativo e regista lá mesmo o que fez; nada
+  de avaliações, agenda ou finanças, em qualquer dos dois caminhos.
   - **`aluno_acessos`** (tabela relacional normal, `supabase-schema.sql`, **não**
     uma chave nova de `app_data`) guarda só o hash SHA-256 do token — nunca o
     token em si, mostrado uma vez só ao treinador ao gerar o link
@@ -335,16 +342,50 @@ Consequências que decidem quase tudo:
     só escreve na linha `execucoes:<id>` dele, pelo mesmo princípio de
     ler-antes-de-gravar com carimbo de versão que `writeStoredValue` já impõe
     do lado do treinador. A prescrição nunca é tocada por este caminho.
+  - **A conta própria é uma segunda forma de autorização, nunca um segundo
+    modelo de dados.** `aluno_contas` (tabela nova, mesma categoria de
+    `aluno_acessos`: um bilhete, não dados de domínio) liga
+    `auth_user_id` (a conta Supabase do aluno) a `(user_id do treinador,
+    aluno_id)`. O treinador escreve o email na Ficha 360º → Edge Function
+    nova `aluno-convidar` (autenticada pela sessão real do treinador, mesmo
+    princípio do `admin-overview`) confirma que o aluno é dele, cria a conta
+    com `auth.admin.generateLink({type: 'invite'})` (sem o Supabase mandar o
+    email genérico dele — a casa envia o próprio, com `_shared/email.ts`),
+    grava a linha em `aluno_contas` e devolve o `action_link`. Reenviar para
+    quem já tem conta liga o `type` a `'recovery'`, e só é aceite se a conta
+    já estiver ligada a ESTE aluno — nunca se rouba uma conta de outra
+    pessoa. `aluno-view`/`aluno-registar-sessao` ganharam um segundo caminho:
+    sem `token` no corpo, resolvem quem está a pedir pela sessão real
+    (`GET /auth/v1/user`) e procuram em `aluno_contas` — a partir daí é
+    exatamente a mesma lógica de sempre. O aluno **nunca** lê `aluno_contas`
+    nem `app_data` diretamente, só por Edge Function, como já era com o
+    token. `src/supabaseClientAluno.ts` dá ao aluno um cliente Supabase
+    **próprio**, com `storageKey` diferente do do treinador — sem isto, as
+    duas sessões no mesmo browser (o treinador a testar como aluno, um
+    computador partilhado) se substituíam uma à outra em silêncio.
+  - **Dois parâmetros de URL, não um caminho novo** — mesmo princípio do
+    `?a=<token>` (`src/data/acessoAluno.ts`, `quiserAreaDoAluno`):
+    `?aluno-convite=1` é o regresso de um convite ou de uma recuperação de
+    password (uso único, mostra `DefinirPasswordAluno`); `?aluno=1` é o link
+    fixo e permanente, para o aluno marcar/guardar e voltar a entrar sem
+    depender de outro email — depois de autenticar por qualquer via, a barra
+    do endereço assenta nele (`history.replaceState`), para que "adicionar
+    aos marcadores" guarde sempre o certo. **A ordem importa dentro de
+    `AreaDoAluno.tsx`:** a decisão de mostrar `DefinirPasswordAluno` lê-se
+    uma vez só, numa `ref`, no primeiro render — nunca se recalcula a partir
+    da URL dentro do efeito que verifica a sessão, porque esse `replaceState`
+    já reescreveu essa mesma URL; recalcular ali perdia o modo sempre que o
+    React re-invoca efeitos (`StrictMode`, em desenvolvimento).
   - **`AreaDoAluno.tsx`** (`src/components/`) é um "shell" próprio: `App()`
-    testa `?a=<token>` na URL **antes** de `AppInner` montar — nenhum hook de
-    autenticação do treinador chega a correr neste caminho, e
-    `AreaDoAluno.tsx` nunca importa de `painel-pt.tsx` (mesma direção dos
-    outros `*Atoms.tsx`). Reaproveita `ExercicioVista` (`TreinoAtoms.tsx`) em
-    modo só de leitura (`onMudar={() => {}}`, o mesmo padrão já usado na
-    landing) e a lógica pura de `src/data/sessoes.ts` para o registo — por
-    isso uma sessão gravada pelo aluno tem exatamente a forma de uma gravada
-    pelo treinador, e o histórico/resumo do treinador lê as duas sem saber
-    quem escreveu cada uma.
+    testa `?a=<token>` OU `quiserAreaDoAluno()` na URL **antes** de `AppInner`
+    montar — nenhum hook de autenticação do treinador chega a correr neste
+    caminho, e `AreaDoAluno.tsx` nunca importa de `painel-pt.tsx` (mesma
+    direção dos outros `*Atoms.tsx`). Reaproveita `ExercicioVista`
+    (`TreinoAtoms.tsx`) em modo só de leitura (`onMudar={() => {}}`, o mesmo
+    padrão já usado na landing) e a lógica pura de `src/data/sessoes.ts` para
+    o registo — por isso uma sessão gravada pelo aluno tem exatamente a forma
+    de uma gravada pelo treinador, e o histórico/resumo do treinador lê as
+    duas sem saber quem escreveu cada uma, seja por token ou por conta.
   - **O registo da sessão NÃO reaproveita o `RegistarSessao` do treinador.**
     Tentou extrair-se — tinha uma dúzia de dependências entrelaçadas
     (`SerieRegisto`, `CamposDaSerie`, `FormField`, `agruparPorBloco`…), algumas
@@ -353,11 +394,12 @@ Consequências que decidem quase tudo:
     formulário próprio, mais simples (sem o assistente passo-a-passo com
     cronómetro), que reaproveita só a lógica pura testada, não o componente.
     `RegistarSessao` continua exatamente como estava.
-  - **Ficam de fora desta fatia** (decisão, não esquecimento): editar ou
-    apagar uma sessão já registada pelo próprio aluno (o treinador continua a
-    ser quem corrige), avaliações/agenda/finanças do lado do aluno, e um
-    caminho bonito (`/a/<token>` em vez de `?a=`, que pediria uma reescrita no
-    Vercel).
+  - **Ficam de fora** (decisão, não esquecimento): editar ou apagar uma
+    sessão já registada pelo próprio aluno (o treinador continua a ser quem
+    corrige), avaliações/agenda/finanças do lado do aluno, um caminho bonito
+    (`/a/<token>` em vez de `?a=`, que pediria uma reescrita no Vercel), e
+    códigos de recuperação de conta além do email (perder o acesso ao email
+    é perder a conta, tal como já é para o treinador).
 - **A cópia de segurança, o restauro e o «Apagar todos os dados» cobrem tudo o
   que a conta guarda.** Estiveram meses a cobrir 5 das 8 chaves (faltavam
   `treinos`, `formularios` e `definicoes`) enquanto a política de privacidade
@@ -710,6 +752,21 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   técnica já usada para fabricar vídeos de teste — serve também para
   comprimir a sério: um ficheiro de 29 MB a 4K saiu com ~460 KB a 960×540,
   sem perda visível a essa escala.
+- **Um efeito que reescreve a URL e outro que a lê de novo competem em
+  `StrictMode`.** A área do aluno tem um efeito que normaliza a barra do
+  endereço para `?aluno=1` (`history.replaceState`) e outro que decide, a
+  partir dessa mesma URL, se deve mostrar o ecrã de "defina a sua password"
+  (`?aluno-convite=1`). Em desenvolvimento, o React invoca cada efeito do
+  mount duas vezes de seguida (`<StrictMode>`, para apanhar falta de
+  limpeza) — e, à segunda invocação, a URL já tinha sido reescrita pelo
+  OUTRO efeito na primeira passagem, por isso recalcular a decisão a partir
+  de `window.location` lia a versão já normalizada e perdia sempre o modo
+  "defina a password" (caía direto no ecrã de login). Sintoma: funcionava
+  no build de produção (sem o duplo-invoke) e falhava sempre em
+  desenvolvimento — o inverso do habitual, por isso custou a suspeitar do
+  `StrictMode`. A correção: a decisão lê-se da URL uma vez só, num `useRef`
+  inicializado no primeiro render, nunca recalculada dentro de um efeito que
+  outro efeito pode ter invalidado.
 
 ---
 
@@ -909,7 +966,7 @@ existe de verdade.
 | **Prescrição** | Treinos A/B/C, 2 076 exercícios, modelos, arquivo, PDF timbrado agrupado por bloco. Blocos, métodos como lista, 15 campos por exercício, duplicar, arrastar para reordenar · **15 combinações com nome e cor** (`METODOS_COMBINACAO`: bi-set, supersérie, superset antagonista, pré-exaustão, pós-exaustão, série composta, trissérie, giant set, circuito, PHA, contraste, complexo, EMOM, AMRAP, For time), cada membro num tom da cor do grupo · cada um dos **38 métodos de um exercício só** (`METODOS_TREINO`) já mudava os campos a preencher quando precisa de números próprios (`CAMPOS_POR_METODO`: minutos do EMOM, quedas do drop-set…) e agora também mostra **uma frase de como se executa a série com aquele método** (`EXPLICACAO_METODO`), mesmo quando não há números nenhuns (ex.: "Até à falha") · na vista do treino, a coluna com o texto da série (tudo menos a carga) chama-se **"Repetições ou tempo"**, não "Prescrição" — a prescrição é o exercício inteiro, essa coluna só dizia o lado que não é peso · **8 métodos geram as suas sub-etapas como linhas a sério** (`gerarSubEtapas`, `METODOS_COM_SUBETAPAS`: Drop-set, Strip Set, Rest-pause, Cluster, Pirâmide, Myo-reps, Método 21, Ladder) — um botão escreve as quedas, as retomadas, a grelha série × bloco ou os degraus a partir dos números do método, cada uma editável depois como qualquer série, com rótulo próprio ("Queda 1", "Retomada 2", "1.1", "Etapa 3"…) |
 | **Biblioteca de modelos** | 860 fichas pré-construídas (representação A do documento de consolidação: 14 categorias, 8 objetivos, 4 níveis de experiência, 4 de condicionamento, 26 métodos) **mais 200 protocolos semanais gerados por regras** (`PTS-0001`…`PTS-0200`, sem documento de origem, 50 por cada banda de frequência: 1-2x, 2-3x, 4-5x, 5-7x por semana) — total **1060** fichas, em **Alunos → aluno → Treinos → «Biblioteca de modelos»**. Procura (traduz pt-BR e inglês, e aceita o código, `PTM-0312` ou `PTS-0047`), **filtro próprio de frequência semanal** e os outros 11 filtros combináveis · ficha com aquecimento, principal, volta à calma, critérios de entrada, progressão, regressão e o que registar · **«Usar este modelo»** cria o programa do aluno, editável como qualquer outro, e **«Guardar nos meus modelos»** guarda a ficha sem precisar de aluno; os dois registam a `origem`, e a vista do treino mostra «Modelo PTM-…» ou «Modelo PTS-…» · navegável por teclado, com o foco a seguir a vista (título ao abrir, cartão ao voltar). **«Validação clínica» e «supervisão técnica» são avisos**, com a ressalva ao lado — a aplicação não tem papéis nem forma de bloquear, e assinala, nunca diagnostica (10b). Estendeu `METODOS_COMBINACAO` com **EMOM, AMRAP e For time**, e deu **«pausa entre rondas»** ao bi-set, supersérie, trissérie… **Preservado do documento, nunca corrigido em silêncio** (26 fichas levam um aviso em `avisosEditoriais`): o RPE do complemento do «Personalizado» (4 na dose base, 5 no cronómetro), a regra de dose que deixa `pliometria técnica` e `unilateral` de fora das repetições de pliometria, e a preparação específica de uma família temporal. **A representação B não está construída** — o documento não reproduz as suas 860 prescrições |
 | **Treino realizado** | O **treinador** regista, na sala e no telemóvel, o que o aluno fez: **«Registar sessão»** na vista do treino abre um passo por exercício (uma combinação inteira num só passo), com barra de progresso, cronómetro, ✓ por série (que confirma o que a prescrição sugere) e carga, repetições, tempo, RIR ou RPE reais · «última vez» a partir do registo do próprio aluno · **rascunho no aparelho**, que sobrevive a bloquear o telemóvel ou recarregar · ao terminar, duração, esforço 0–10, **sintomas durante e depois** (ditos como o que o aluno referiu, nunca como diagnóstico), «interrompida» com motivo e notas · **«Sessões realizadas»** na lista de treinos do aluno, com selos dourados de «interrompida» e «sintomas referidos» · **ver, corrigir e apagar** uma sessão, com o prescrito ao lado do realizado · **na Ficha 360º**, «Sessões de treino» é um tipo de acontecimento com filtro e procura (por exercício, sintoma ou nota) · **a prescrição nunca é alterada**. Uma linha por aluno na base de dados — ver `execucoes:` na secção 4. **Exige correr o SQL de `supabase-schema.sql`** |
-| **Área do aluno** | O aluno abre um **link pessoal com token** (gerado/revogado na Ficha 360º, «Acesso do aluno») — sem conta, sem password. Vê o programa ativo (só de leitura) e **regista a própria sessão**, com formulário próprio (não o assistente do treinador — ver secção 4), ✓ por série a confirmar o prescrito, «última vez», rascunho que sobrevive a bloquear o telemóvel, e fecho com duração/esforço/sintomas/interrompida, exatamente como o treinador. **«Sessões registadas»** mostra o histórico do programa aberto, só de leitura (ver, não editar/apagar — isso continua a ser do treinador). Nada de avaliações, agenda nem finanças do lado do aluno. Duas Edge Functions novas (`aluno-view`, `aluno-registar-sessao`) — **exige correr o SQL de `supabase-schema.sql`** (tabela `aluno_acessos`) e publicar as duas funções |
+| **Área do aluno** | Dois caminhos para entrar: um **link pessoal com token** (gerado/revogado na Ficha 360º, sem conta nem password — o original), ou uma **conta própria** (email + password, convidada por email na mesma folha, `?aluno=1` para voltar sempre que quiser sem depender de link nenhum). Em qualquer dos dois, vê o programa ativo (só de leitura) e **regista a própria sessão**, com formulário próprio (não o assistente do treinador — ver secção 4), ✓ por série a confirmar o prescrito, «última vez», rascunho que sobrevive a bloquear o telemóvel, e fecho com duração/esforço/sintomas/interrompida, exatamente como o treinador. **«Sessões registadas»** mostra o histórico do programa aberto, só de leitura (ver, não editar/apagar — isso continua a ser do treinador). Nada de avaliações, agenda nem finanças do lado do aluno. Três Edge Functions (`aluno-view`, `aluno-registar-sessao`, `aluno-convidar`) — **exige correr o SQL de `supabase-schema.sql`** (tabelas `aluno_acessos` e `aluno_contas`) e publicar as três funções |
 | **Vista de treino** | O programa como se lê, e não como se escreve: um treino de cada vez, por bloco, com o resumo em números (exercícios, séries, pausa somada, volume). **A carga de cada série e os números do método editam-se ali mesmo**; o resto é no construtor. **Dois modos**: completo (tudo de uma vez) e **passo a passo** — um exercício por vez, uma combinação inteira (bi-set, trissérie…) num só passo, com setas e barra de progresso (`TreinoSegmentado`, `passosDoTreino`). Exercícios soltos também têm cor própria, mais discreta que a de uma combinação, só para se distinguirem na lista. `TreinoVista`, ao lado de `PrescricaoBuilder` |
 | **Biblioteca** | Procura que traduz o termo escrito (pt-BR e inglês de ginásio) · sinónimos por exercício · favoritos · pastas · progressões, regressões e substituições, com **troca de exercício num clique dentro do treino** · **vídeo opcional por exercício** (até 10 s, demonstração para o treinador — não sai no PDF, o aluno continua sem acesso), carregado no balde `videos`; **MVP sem corte automático**, recusa-se o que vier mais comprido |
 | **Avaliações** | Dobras, % massa gorda, perímetros, fotografias, gráfico de evolução, PDF · **rascunho e final, autosave, revisões com motivo, comparar e repor** |
@@ -1103,8 +1160,30 @@ Combinado por níveis, do mais barato ao mais caro:
     direto do aluno (o mesmo "por fazer" que já existia desde o registo do
     treino, item 21 acima, agora maior: o aluno passa a interagir com o
     sistema diretamente, não só através do treinador)
-27. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
-28. Decisões de produto — ver secção 10
+27. ~~Área do aluno: conta própria (email + password), redesenho~~ **feito**
+    — segunda reversão explícita e informada do dono do produto: depois do
+    link pessoal (item 26) já em produção, pediu para o aluno poder "entrar
+    sempre que quiser", com login a sério. `aluno_contas` (tabela nova, mesma
+    categoria de `aluno_acessos`, nunca dados de domínio) liga a conta
+    Supabase do aluno ao `(treinador, aluno_id)`; `aluno-convidar` (Edge
+    Function nova, autenticada pela sessão real do treinador) gera o convite
+    e envia o email da casa; `aluno-view`/`aluno-registar-sessao` ganharam um
+    segundo caminho de autorização (sessão, a par do token que já existia,
+    sem o alterar). `src/supabaseClientAluno.ts` dá ao aluno um cliente
+    Supabase com `storageKey` própria, para a sessão dele nunca se substituir
+    à do treinador no mesmo browser. Dois parâmetros novos de URL
+    (`?aluno-convite=1`, `?aluno=1` — ver secção 4) em vez de um caminho
+    bonito, pela mesma razão do `?a=`. A Ficha 360º troca o botão escondido
+    por um cartão de estado (`AcessoAlunoCard`) e a folha (`AcessoAlunoFolha`)
+    passa a ter o convite por email em destaque, com o link direto dobrado
+    por baixo, secundário. **Ficou de fora desta fatia**: editar/apagar uma
+    sessão do aluno, avaliações/agenda/finanças do lado dele (herdado do item
+    26), e códigos de recuperação de conta além do email. **Falta a revisão
+    legal**, agora mais urgente — já não é só um link, é uma conta a sério
+    com password e sessão, o que muda os deveres (ex.: eliminação de conta a
+    pedido do próprio aluno)
+28. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
+29. Decisões de produto — ver secção 10
 
 ---
 

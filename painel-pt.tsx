@@ -14597,6 +14597,7 @@ function AcessoAlunoFolha({ student, onClose }) {
   const [aGerar, setAGerar] = useState(false);
   const [aRevogar, setARevogar] = useState(false);
   const [copiado, setCopiado] = useState(false);
+  const [aConfirmarGeracao, setAConfirmarGeracao] = useState(false);
 
   useEffect(() => {
     if (!supabaseConfigured) { setEstado('sem-conta'); return undefined; }
@@ -14608,6 +14609,7 @@ function AcessoAlunoFolha({ student, onClose }) {
   }, [student.id]);
 
   async function gerar() {
+    setAConfirmarGeracao(false);
     setAGerar(true);
     try {
       const token = await gerarAcessoAluno(student.id);
@@ -14687,7 +14689,12 @@ function AcessoAlunoFolha({ student, onClose }) {
 
         {estado !== 'sem-conta' && (
           <div className="flex gap-2 flex-wrap">
-            <button type="button" onClick={gerar} disabled={aGerar || estado === 'a-carregar'} className="btn btn-primary">
+            <button
+              type="button"
+              onClick={() => (estado === 'ativo' ? setAConfirmarGeracao(true) : gerar())}
+              disabled={aGerar || estado === 'a-carregar'}
+              className="btn btn-primary"
+            >
               <Link2 size={14} /> {estado === 'ativo' ? 'Gerar novo link' : 'Gerar link de acesso'}
             </button>
             {estado === 'ativo' && (
@@ -14696,6 +14703,17 @@ function AcessoAlunoFolha({ student, onClose }) {
               </button>
             )}
           </div>
+        )}
+
+        {aConfirmarGeracao && (
+          <ConfirmDialog
+            title="Gerar um novo link?"
+            message="O link atual deixa de funcionar imediatamente — se o aluno ainda não o copiou ou já está a usá-lo, perde o acesso até lhe dar o novo."
+            confirmLabel="Gerar novo link"
+            tone="rust"
+            onCancel={() => setAConfirmarGeracao(false)}
+            onConfirm={gerar}
+          />
         )}
       </div>
     </Modal>

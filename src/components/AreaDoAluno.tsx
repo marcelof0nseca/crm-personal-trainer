@@ -23,13 +23,16 @@
 // usa) e a mesma forma de sessão gravada, por isso o histórico e o resumo do
 // treinador leem as sessões do aluno exatamente como as dele próprias.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Loader2, LogOut, Mail } from 'lucide-react';
+import {
+  CalendarDays, Check, Clock, Flame, History as HistoryIcon, Home, Loader2, LogOut, Mail,
+} from 'lucide-react';
 import { supabase, supabaseConfigured } from '../supabaseClient';
 import { supabaseAluno } from '../supabaseClientAluno';
 import { CAMPO_SERIE, ExercicioVista, descreverLinha, tipoDeSerie } from './TreinoAtoms';
+import { StatCard } from './DashboardAtoms';
 import {
-  VERSAO_RASCUNHO, camposRealizaveis, chaveRascunho, construirItens,
-  lerRascunho, normalizarSessaoRealizada, ordenarSessoes, resumoDaSessao, temSintomas,
+  VERSAO_RASCUNHO, camposRealizaveis, chaveRascunho, construirItens, estatisticasDoAluno,
+  lerRascunho, normalizarSessaoRealizada, ordenarSessoes, proximoTreino, resumoDaSessao, temSintomas,
   ultimaVezDoExercicio, valoresSugeridos,
 } from '../data/sessoes';
 import { PARAM_AREA_ALUNO, PARAM_CONVITE_ALUNO } from '../data/acessoAluno';
@@ -90,10 +93,13 @@ async function mensagemDeErro(error, data, omissao) {
   return (data && data.error) || omissao;
 }
 
-function Ecra({ children }) {
+// `padNav` reserva o espaço da barra inferior fixa (`.pb-nav`, já definida em
+// GlobalStyles para a navegação do treinador) -- só faz falta quando a barra
+// está mesmo visível, isto é, fora de um programa aberto.
+function Ecra({ children, padNav = false }) {
   return (
     <div
-      className="px-4 py-4 max-w-3xl mx-auto flex flex-col gap-4"
+      className={`px-4 py-4 max-w-3xl mx-auto flex flex-col gap-4${padNav ? ' pb-nav' : ''}`}
       style={{ minHeight: '100dvh' }}
     >
       {children}
@@ -111,7 +117,7 @@ function EcraCentrado({ children }) {
   );
 }
 
-function ListaDeProgramas({ prescricoes, onAbrir }) {
+function ListaDeProgramas({ prescricoes, onAbrir, titulo = 'Os seus programas' }) {
   if (prescricoes.length === 0) {
     return (
       <p className="text-sm font-body text-faint">
@@ -121,13 +127,13 @@ function ListaDeProgramas({ prescricoes, onAbrir }) {
   }
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="text-2xs uppercase tracking-wide text-faint font-mono">Os seus programas</h2>
+      <h2 className="text-2xs uppercase tracking-wide text-faint font-mono">{titulo}</h2>
       {prescricoes.map((p) => (
         <button
           key={p.id}
           type="button"
           onClick={() => onAbrir(p.id)}
-          className="card text-left btn-surface flex flex-col gap-0.5"
+          className="card text-left btn-surface flex flex-col gap-0.5 p-4"
         >
           <span className="text-sm font-body text-primary" style={{ fontWeight: 600 }}>
             {p.nome || 'Programa de treino'}
@@ -135,6 +141,80 @@ function ListaDeProgramas({ prescricoes, onAbrir }) {
           {p.objetivo && <span className="text-2xs font-body text-faint">{p.objetivo}</span>}
         </button>
       ))}
+    </div>
+  );
+}
+
+/* ============================== início (dashboard) ============================== */
+
+function CartaoProximoTreino({ treino, prescricaoNome, onComecar }) {
+  if (!treino) return null;
+  const nExercicios = (treino.exercicios || []).length;
+  return (
+    <div className="card flex flex-col gap-3 p-4" style={{ borderLeft: '3px solid var(--brass)' }}>
+      <div className="flex flex-col gap-0.5 min-w-0">
+        <span className="text-2xs uppercase tracking-wide font-mono" style={{ color: 'var(--brass)' }}>
+          Próximo treino
+        </span>
+        <span className="font-display font-semibold text-lg text-primary tracking-wide truncate">
+          {treino.nome || 'Treino'}
+        </span>
+        <span className="text-xs font-body text-faint truncate">
+          {prescricaoNome}{nExercicios ? ` · ${nExercicios} ${nExercicios === 1 ? 'exercício' : 'exercícios'}` : ''}
+        </span>
+      </div>
+      {nExercicios > 0 && (
+        <button type="button" onClick={onComecar} className="btn btn-primary self-start">
+          Começar treino
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Três números simples, lado a lado -- flex, não `grid grid-cols-3` (essa
+// classe cai para 2 colunas no telemóvel por regra global, o que deixaria
+// uma das três numa linha órfã; CLAUDE.md secção 6). Só aparece depois da
+// primeira sessão registada -- "0 · 0 · —" não ajuda ninguém a começar.
+function LinhaEstatisticas({ stats }) {
+  return (
+    <div className="flex gap-2">
+      <div className="flex-1 min-w-0"><StatCard label="Semana" value={String(stats.estaSemana)} icon={Flame} accent="brass" /></div>
+      <div className="flex-1 min-w-0"><StatCard label="Mês" value={String(stats.esteMes)} icon={CalendarDays} accent="sky" /></div>
+      <div className="flex-1 min-w-0"><StatCard label="Última vez" value={stats.ultimaData ? dataCurta(stats.ultimaData) : '—'} icon={Clock} accent="slate" /></div>
+    </div>
+  );
+}
+
+function InicioDoAluno({ prescricoes, sessoesAnteriores, onAbrir }) {
+  const primaria = prescricoes[0] || null;
+  const outras = prescricoes.slice(1);
+  const hojeISO = useMemo(() => dataDeHoje(), []);
+  const stats = useMemo(() => estatisticasDoAluno(sessoesAnteriores, hojeISO), [sessoesAnteriores, hojeISO]);
+  const treinoSugerido = useMemo(
+    () => (primaria ? proximoTreino(primaria.treinos, sessoesAnteriores) : null),
+    [primaria, sessoesAnteriores],
+  );
+
+  if (!primaria) {
+    return (
+      <p className="text-sm font-body text-faint">
+        Ainda não há nenhum programa de treino atribuído. Fale com o seu treinador.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <CartaoProximoTreino
+        treino={treinoSugerido}
+        prescricaoNome={primaria.nome || 'Programa de treino'}
+        onComecar={() => onAbrir(primaria.id, treinoSugerido && treinoSugerido.id, 'registar')}
+      />
+      {stats.total > 0 && <LinhaEstatisticas stats={stats} />}
+      {outras.length > 0 && (
+        <ListaDeProgramas prescricoes={outras} onAbrir={onAbrir} titulo="Outros programas" />
+      )}
     </div>
   );
 }
@@ -309,6 +389,21 @@ function FechoDaSessao({ duracaoSugerida, aGuardar, erro, onGuardar, onVoltar })
   );
 }
 
+function BarraDeProgresso({ feitos, total }) {
+  const pct = total > 0 ? Math.round((feitos / total) * 100) : 0;
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <span className="text-2xs font-body text-faint">{feitos} de {total} exercícios</span>
+        <span className="text-2xs font-mono text-faint">{pct}%</span>
+      </div>
+      <div className="w-full rounded-full overflow-hidden" style={{ height: 6, backgroundColor: 'var(--bg-inset)' }}>
+        <div style={{ width: `${pct}%`, height: '100%', backgroundColor: 'var(--brass)', transition: 'width var(--dur) var(--ease)' }} />
+      </div>
+    </div>
+  );
+}
+
 function RegistoSessaoAluno({ cliente, token, student, prescricao, treino, sessoesAnteriores, onConcluido, onVoltar }) {
   const dep = useMemo(() => ({ descreverLinha, camposDoTipo: (l) => tipoDeSerie(l.tipo).campos }), []);
   const chave = useMemo(() => chaveRascunho(student.id, treino.id), [student.id, treino.id]);
@@ -343,6 +438,14 @@ function RegistoSessaoAluno({ cliente, token, student, prescricao, treino, sesso
 
   const itensConstruidos = useMemo(() => construirItens(treino, itens, dep), [treino, itens, dep]);
   const minutosDecorridos = Math.max(1, Math.round((Date.now() - (inicioMsRef.current || Date.now())) / 60000));
+  const exerciciosTotal = (treino.exercicios || []).length;
+  const exerciciosTocados = useMemo(
+    () => (treino.exercicios || []).filter((ex) => {
+      const it = itens[ex.id];
+      return Boolean(it && (it.saltado || Object.values(it.series || {}).some((s) => s && s.feito)));
+    }).length,
+    [itens, treino],
+  );
 
   async function guardar(f) {
     setAGuardar(true);
@@ -398,6 +501,7 @@ function RegistoSessaoAluno({ cliente, token, student, prescricao, treino, sesso
     <div className="flex flex-col gap-3" style={{ paddingBottom: 96 }}>
       <button type="button" onClick={onVoltar} className="btn btn-ghost self-start" style={{ fontSize: 12 }}>← {prescricao.nome || 'Programa'}</button>
       <h2 className="font-display font-semibold text-lg text-primary tracking-wide">{treino.nome || 'Treino'}</h2>
+      <BarraDeProgresso feitos={exerciciosTocados} total={exerciciosTotal} />
       <p className="text-2xs font-body text-faint" style={{ margin: 0 }}>
         Marque ✓ em cada série que fizer. O que não tocar fica por fazer -- não há problema em saltar um exercício.
       </p>
@@ -434,24 +538,33 @@ function SessaoConcluida({ onVoltar }) {
 
 // "9 de 12 séries" -- igual ao que o treinador vê, não editável nem
 // apagável aqui: isso continua a ser autoridade do treinador (secção 10 do
-// plano). Mostra só as sessões DESTE programa, mais recentes primeiro.
-function HistoricoDeSessoes({ sessoes, prescricaoId }) {
-  const doPrograma = useMemo(
-    () => ordenarSessoes(sessoes.filter((s) => s.prescricaoId === prescricaoId)),
-    [sessoes, prescricaoId],
-  );
+// plano). Mostra TODAS as sessões do aluno, de qualquer programa, mais
+// recentes primeiro -- é o ecrã próprio "Histórico" da barra inferior, não
+// um apêndice dentro de um programa aberto.
+function HistoricoGeral({ sessoes }) {
+  const ordenadas = useMemo(() => ordenarSessoes(sessoes), [sessoes]);
   const [abertaId, setAbertaId] = useState(null);
+  // Só se mostra a que programa pertence cada sessão quando há mais de um --
+  // com um só, seria sempre a mesma etiqueta repetida, sem dizer nada.
+  const mostrarPrograma = useMemo(
+    () => new Set(ordenadas.map((s) => s.prescricaoNome).filter(Boolean)).size > 1,
+    [ordenadas],
+  );
 
-  if (doPrograma.length === 0) return null;
+  if (ordenadas.length === 0) {
+    return <p className="text-sm font-body text-faint">Ainda não registou nenhuma sessão.</p>;
+  }
 
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-2xs uppercase tracking-wide text-faint font-mono">Sessões registadas</h3>
-      {doPrograma.map((s) => {
+      <h2 className="text-2xs uppercase tracking-wide text-faint font-mono">
+        {ordenadas.length} {ordenadas.length === 1 ? 'sessão registada' : 'sessões registadas'}
+      </h2>
+      {ordenadas.map((s) => {
         const resumo = resumoDaSessao(s);
         const aberta = abertaId === s.id;
         return (
-          <div key={s.id} className="card flex flex-col gap-2 min-w-0">
+          <div key={s.id} className="card flex flex-col gap-2 min-w-0 p-4">
             <button
               type="button"
               onClick={() => setAbertaId(aberta ? null : s.id)}
@@ -462,6 +575,7 @@ function HistoricoDeSessoes({ sessoes, prescricaoId }) {
                   {dataCurta(s.data)} · {s.treinoNome || 'Treino'}
                 </span>
                 <span className="block text-2xs font-body text-faint">
+                  {mostrarPrograma && s.prescricaoNome ? `${s.prescricaoNome} · ` : ''}
                   {resumo.feitas} de {resumo.series} séries
                   {s.esforco !== '' && s.esforco != null ? ` · esforço ${s.esforco}` : ''}
                 </span>
@@ -501,10 +615,10 @@ function HistoricoDeSessoes({ sessoes, prescricaoId }) {
 
 /* ============================== programa (vista) ============================== */
 
-function ProgramaDoAluno({ student, prescricao, sessoesAnteriores, onVoltar, token, cliente }) {
+function ProgramaDoAluno({ student, prescricao, sessoesAnteriores, onVoltar, token, cliente, treinoInicialId, modoInicial = 'ver' }) {
   const treinos = Array.isArray(prescricao.treinos) ? prescricao.treinos : [];
-  const [treinoId, setTreinoId] = useState(treinos[0]?.id || null);
-  const [modo, setModo] = useState('ver'); // ver | registar | concluido
+  const [treinoId, setTreinoId] = useState(treinoInicialId || treinos[0]?.id || null);
+  const [modo, setModo] = useState(modoInicial); // ver | registar | concluido
   const treino = treinos.find((t) => t.id === treinoId) || treinos[0] || null;
 
   if (treino && modo === 'registar') {
@@ -528,7 +642,7 @@ function ProgramaDoAluno({ student, prescricao, sessoesAnteriores, onVoltar, tok
   return (
     <div className="flex flex-col gap-3">
       <button type="button" onClick={onVoltar} className="btn btn-ghost self-start" style={{ fontSize: 12 }}>
-        ← Os seus programas
+        ← Início
       </button>
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h2 className="font-display font-semibold text-lg text-primary tracking-wide">
@@ -575,8 +689,6 @@ function ProgramaDoAluno({ student, prescricao, sessoesAnteriores, onVoltar, tok
       ) : (
         <p className="text-xs font-body text-faint">Este programa ainda não tem treinos.</p>
       )}
-
-      <HistoricoDeSessoes sessoes={sessoesAnteriores} prescricaoId={prescricao.id} />
     </div>
   );
 }
@@ -735,6 +847,56 @@ function DefinirPasswordAluno({ onDefinida }) {
   );
 }
 
+/* ============================== navegação ============================== */
+
+const ABAS = [
+  { id: 'inicio', label: 'Início', icon: Home },
+  { id: 'historico', label: 'Histórico', icon: HistoryIcon },
+];
+
+// Mesma estrutura e classes (`vidro`, `tab-fundo`, `tab-icone`, `--nav-h`) da
+// barra de separadores do treinador em painel-pt.tsx -- já vêm do
+// `GlobalStyles` partilhado (ver cabeçalho deste ficheiro), por isso não
+// precisam de CSS novo nenhum aqui. Só visível fora de um programa aberto
+// (ver `AreaDoAluno`, mais abaixo) -- uma sub-vista tapa a navegação,
+// CLAUDE.md secção 6.
+function BarraInferior({ aba, onMudar }) {
+  return (
+    <nav
+      className="fixed bottom-0 left-0 right-0 border-t border-hair vidro"
+      style={{ zIndex: 30, paddingBottom: 'env(safe-area-inset-bottom)' }}
+      aria-label="Navegação da área do aluno"
+    >
+      <div
+        className="flex max-w-3xl mx-auto"
+        style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}
+      >
+        {ABAS.map((t) => {
+          const Icon = t.icon;
+          const active = aba === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => onMudar(t.id)}
+              aria-current={active ? 'page' : undefined}
+              className="flex-1 flex flex-col items-center justify-center gap-1 min-w-0 tab-fundo"
+              style={{ height: 'var(--nav-h)', color: active ? 'var(--brass)' : 'var(--text-faint)' }}
+            >
+              <span className="tab-icone" style={{ backgroundColor: active ? 'var(--brass-soft)' : 'transparent' }}>
+                <Icon size={19} style={{ display: 'block' }} />
+              </span>
+              <span className="font-body truncate w-full text-center px-0.5" style={{ fontSize: '0.625rem', lineHeight: 1, fontWeight: active ? 600 : 400 }}>
+                {t.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
 // Três caminhos para chegar aqui: `?a=<token>` (link direto, sem conta --
 // cliente é sempre `supabase`, o `aluno-view`/`aluno-registar-sessao` nem
 // olham para sessão nenhuma quando há token); `?aluno-convite=1` (acabou de
@@ -753,8 +915,22 @@ export default function AreaDoAluno({ token }) {
   const [fase, setFase] = useState(() => fasesDeArranque(token));
   const [erro, setErro] = useState('');
   const [dados, setDados] = useState(null);
+  const [aba, setAba] = useState('inicio');
   const [abertoId, setAbertoId] = useState(null);
+  const [treinoInicialId, setTreinoInicialId] = useState(null);
+  const [modoInicial, setModoInicial] = useState('ver');
   const cliente = token ? supabase : supabaseAluno;
+
+  function abrirPrograma(id, treinoId, modo) {
+    setTreinoInicialId(treinoId || null);
+    setModoInicial(modo === 'registar' ? 'registar' : 'ver');
+    setAbertoId(id);
+  }
+  function voltarAoInicio() {
+    setAbertoId(null);
+    setTreinoInicialId(null);
+    setModoInicial('ver');
+  }
   // Capturado uma vez só, da URL original -- não se recalcula a partir de
   // `fasesDeArranque` dentro do efeito abaixo, que já reescreve essa mesma
   // URL para "?aluno=1". Em StrictMode (dev), o React invoca o efeito duas
@@ -859,33 +1035,40 @@ export default function AreaDoAluno({ token }) {
   const primeiro = primeiroNome(aluno.name);
 
   return (
-    <Ecra>
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: aluno.color || 'var(--brass)' }} />
-          <h1 className="font-display font-semibold text-xl text-primary tracking-wide truncate" style={{ margin: 0 }}>
-            {saudacao()}{primeiro ? `, ${primeiro}` : ''}
-          </h1>
+    <>
+      <Ecra padNav={!aberto}>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: aluno.color || 'var(--brass)' }} />
+            <h1 className="font-display font-semibold text-xl text-primary tracking-wide truncate" style={{ margin: 0 }}>
+              {saudacao()}{primeiro ? `, ${primeiro}` : ''}
+            </h1>
+          </div>
+          {!token && (
+            <button type="button" onClick={sair} className="btn btn-ghost flex-shrink-0" style={{ fontSize: 12 }} aria-label="Sair da conta">
+              <LogOut size={14} /> Sair
+            </button>
+          )}
         </div>
-        {!token && (
-          <button type="button" onClick={sair} className="btn btn-ghost flex-shrink-0" style={{ fontSize: 12 }} aria-label="Sair da conta">
-            <LogOut size={14} /> Sair
-          </button>
-        )}
-      </div>
 
-      {aberto ? (
-        <ProgramaDoAluno
-          student={aluno}
-          prescricao={aberto}
-          sessoesAnteriores={sessoesAnteriores}
-          onVoltar={() => setAbertoId(null)}
-          token={token}
-          cliente={cliente}
-        />
-      ) : (
-        <ListaDeProgramas prescricoes={prescricoes} onAbrir={setAbertoId} />
-      )}
-    </Ecra>
+        {aberto ? (
+          <ProgramaDoAluno
+            student={aluno}
+            prescricao={aberto}
+            sessoesAnteriores={sessoesAnteriores}
+            onVoltar={voltarAoInicio}
+            token={token}
+            cliente={cliente}
+            treinoInicialId={treinoInicialId}
+            modoInicial={modoInicial}
+          />
+        ) : aba === 'historico' ? (
+          <HistoricoGeral sessoes={sessoesAnteriores} />
+        ) : (
+          <InicioDoAluno prescricoes={prescricoes} sessoesAnteriores={sessoesAnteriores} onAbrir={abrirPrograma} />
+        )}
+      </Ecra>
+      {!aberto && <BarraInferior aba={aba} onMudar={setAba} />}
+    </>
   );
 }

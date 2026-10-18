@@ -197,5 +197,45 @@ function armazenamentoFalso() {
 }
 esperar(S.podeGravarExecucoes({ estado: 'ok', sessoes: [] }) && !S.podeGravarExecucoes({ estado: 'a-carregar' }) && !S.podeGravarExecucoes({ estado: 'erro' }) && !S.podeGravarExecucoes(undefined), 'só se grava depois de o registo do aluno ter sido lido');
 
+// ---------- estatísticas do ecrã de início do aluno ----------
+const sessaoEm = (data, treinoId) => S.normalizarSessaoRealizada({ id: 'x-' + data + '-' + (treinoId || ''), data, treinoId: treinoId || 't1', itens: [] });
+{
+  const vazio = S.estatisticasDoAluno([], '2026-10-18');
+  esperar(igual(vazio, { total: 0, estaSemana: 0, esteMes: 0, ultimaData: null }), 'sem sessões nenhumas, tudo a zero e sem última data');
+}
+{
+  const sessoes = [sessaoEm('2026-10-18'), sessaoEm('2026-10-15'), sessaoEm('2026-10-01'), sessaoEm('2026-09-20')];
+  const r = S.estatisticasDoAluno(sessoes, '2026-10-18');
+  esperar(r.total === 4, `conta todas (tem ${r.total})`);
+  esperar(r.estaSemana === 2, `só as dos últimos 7 dias, hoje incluído (tem ${r.estaSemana})`);
+  esperar(r.esteMes === 3, `só as do mês corrente (tem ${r.esteMes})`);
+  esperar(r.ultimaData === '2026-10-18', `a última data é a mais recente (tem ${r.ultimaData})`);
+}
+{
+  // Viragem de mês: "esta semana" pode atravessar dois meses, "este mês" não.
+  const r = S.estatisticasDoAluno([sessaoEm('2026-09-30')], '2026-10-02');
+  esperar(r.estaSemana === 1, 'uma sessão de há 2 dias conta em "esta semana" mesmo no mês anterior');
+  esperar(r.esteMes === 0, 'mas não conta em "este mês", que já virou');
+}
+esperar(S.estatisticasDoAluno([{ id: 'x', data: '' }], '2026-10-18').total === 0, 'uma sessão sem data não entra em nenhuma contagem');
+
+// ---------- qual treino sugerir a seguir ----------
+const treinoDeId = (id) => ({ id, nome: id });
+esperar(S.proximoTreino([], []) === null, 'sem treinos nenhuns, não há o que sugerir');
+{
+  const t = S.proximoTreino([treinoDeId('a'), treinoDeId('b')], []);
+  esperar(t.id === 'a', 'sem nenhuma sessão, sugere o primeiro do programa');
+}
+{
+  const sessoes = [sessaoEm('2026-10-18', 'a'), sessaoEm('2026-10-01', 'b')];
+  const t = S.proximoTreino([treinoDeId('a'), treinoDeId('b')], sessoes);
+  esperar(t.id === 'b', 'sugere o treino que há mais tempo não se faz');
+}
+{
+  const sessoes = [sessaoEm('2026-10-18', 'a')];
+  const t = S.proximoTreino([treinoDeId('a'), treinoDeId('b'), treinoDeId('c')], sessoes);
+  esperar(t.id === 'b', 'um treino nunca feito ganha a um já feito, mesmo que outro também nunca feito venha depois no programa');
+}
+
 console.log(falhas === 0 ? '\nTUDO OK' : `\n${falhas} falha(s)`);
 process.exit(falhas === 0 ? 0 : 1);

@@ -180,6 +180,44 @@ export function ultimaVezDoExercicio(sessoes, exercicioId, ignorarSessaoId) {
   return null;
 }
 
+function diasAntes(hojeISO, n) {
+  const d = new Date(`${hojeISO}T00:00:00`);
+  d.setDate(d.getDate() - n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Números simples do que já está gravado, para o ecrã de início do aluno --
+// nenhum dado novo, só contagens (gráficos/1RM continuam fora de âmbito,
+// CLAUDE.md secção 10). "Esta semana" são os últimos 7 dias, não a semana
+// ISO -- evita o caso de segunda-feira mostrar sempre zero.
+export function estatisticasDoAluno(sessoes, hojeISO) {
+  const comData = sessoes.filter((s) => s.data);
+  const corte7 = diasAntes(hojeISO, 6);
+  const prefixoMes = hojeISO.slice(0, 7);
+  return {
+    total: comData.length,
+    estaSemana: comData.filter((s) => s.data >= corte7).length,
+    esteMes: comData.filter((s) => s.data.slice(0, 7) === prefixoMes).length,
+    ultimaData: ordenarSessoes(comData)[0]?.data || null,
+  };
+}
+
+// Qual treino sugerir no ecrã de início: o que há mais tempo não se faz (ou
+// nunca se fez), para rodar pelos treinos do programa sem obrigar o aluno a
+// escolher. Não é agendamento nenhum -- só desempate pela data da última vez,
+// com os nunca feitos primeiro (ordenação estável preserva a ordem do
+// programa entre eles).
+export function proximoTreino(treinos, sessoes) {
+  const lista = Array.isArray(treinos) ? treinos : [];
+  if (lista.length === 0) return null;
+  const ordenadas = ordenarSessoes(sessoes);
+  const ultimaPorTreino = new Map(lista.map((t) => {
+    const s = ordenadas.find((x) => x.treinoId === t.id);
+    return [t.id, s ? s.data : ''];
+  }));
+  return lista.slice().sort((a, b) => (ultimaPorTreino.get(a.id) || '').localeCompare(ultimaPorTreino.get(b.id) || ''))[0];
+}
+
 /* ============================== registar ============================== */
 
 // Que campos pede a série. Os da prescrição, menos os que só servem para

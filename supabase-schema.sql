@@ -430,3 +430,48 @@ grant select on public.aluno_acessos to service_role;
 -- ler o programa ou gravar a sessão do aluno -- apanhado ao testar esta
 -- fatia a sério, não ao planeá-la.
 grant select, insert, update on public.app_data to service_role;
+
+/* ============================= CONTA DO ALUNO ==============================
+   A par do link com token (acima), o aluno pode agora ter uma conta Supabase
+   a sério -- email e password, convidado pelo treinador. Esta tabela só liga
+   essa conta ao aluno certo; não é dados de treino, é a mesma categoria de
+   `aluno_acessos`/`personal_subscriptions`.
+
+   O aluno nunca lê esta tabela diretamente -- só a Edge Function
+   (`aluno-view`/`aluno-registar-sessao`, `service_role`) a consulta, pelo
+   mesmo princípio do token: o aluno nunca fala com tabelas de bilhetes,
+   só com as Edge Functions.
+   ========================================================================== */
+create table if not exists public.aluno_contas (
+  auth_user_id uuid primary key references auth.users(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  aluno_id text not null,
+  criado_em timestamptz not null default now()
+);
+
+create index if not exists aluno_contas_aluno_idx
+  on public.aluno_contas (user_id, aluno_id);
+
+alter table public.aluno_contas enable row level security;
+
+-- Só o treinador lê as contas dos seus próprios alunos (para a Ficha 360º
+-- mostrar "convite pendente" / "conta ativa") -- mesma regra do resto da
+-- conta. Nunca insert/update/delete para `authenticated`: só a Edge Function
+-- (`service_role`) escreve aqui, no momento do convite.
+drop policy if exists "Users can read own aluno_contas" on public.aluno_contas;
+create policy "Users can read own aluno_contas"
+on public.aluno_contas
+for select
+to authenticated
+using (public.has_personal_app_access(user_id));
+
+drop policy if exists "aluno_contas_exige_aal2" on public.aluno_contas;
+create policy "aluno_contas_exige_aal2"
+on public.aluno_contas
+as restrictive
+to authenticated
+using (public.aal_suficiente())
+with check (public.aal_suficiente());
+
+grant select on public.aluno_contas to authenticated;
+grant select, insert on public.aluno_contas to service_role;

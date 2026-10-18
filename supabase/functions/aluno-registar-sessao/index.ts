@@ -27,37 +27,65 @@ Deno.serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    if (!supabaseUrl || !serviceRoleKey) {
+    if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
       return json({ error: 'Variáveis de ambiente em falta.' }, 500);
     }
 
-    const body = await req.json().catch(() => ({}));
-    const token = typeof body?.token === 'string' ? body.token.trim() : '';
-    const sessao = body?.sessao;
-    if (!token || token.length < 20) return json({ error: 'Link inválido.' }, 401);
-    if (!sessao || typeof sessao !== 'object' || !Array.isArray(sessao.itens)) {
-      return json({ error: 'Sessão inválida.' }, 400);
-    }
-
-    const tokenHash = await hashToken(token);
     const admin = { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` };
     const rest = (path: string, init?: RequestInit) => fetch(`${supabaseUrl}/rest/v1/${path}`, {
       ...init,
       headers: { ...admin, ...(init?.headers || {}) },
     });
 
-    const acessoRes = await rest(
-      `aluno_acessos?token_hash=eq.${tokenHash}&revogado_em=is.null&select=user_id,aluno_id&limit=1`,
-    );
-    if (!acessoRes.ok) return json({ error: 'Não foi possível confirmar o acesso.' }, 500);
-    const acessos = await acessoRes.json();
-    const acesso = acessos[0];
-    if (!acesso || !ID_VALIDO.test(String(acesso.aluno_id))) {
-      return json({ error: 'Link inválido ou revogado.' }, 401);
+    const body = await req.json().catch(() => ({}));
+    const token = typeof body?.token === 'string' ? body.token.trim() : '';
+    const sessao = body?.sessao;
+    if (!sessao || typeof sessao !== 'object' || !Array.isArray(sessao.itens)) {
+      return json({ error: 'Sessão inválida.' }, 400);
     }
-    const userId = acesso.user_id as string;
-    const alunoId = acesso.aluno_id as string;
+
+    let userId: string | null = null;
+    let alunoId: string | null = null;
+
+    if (token) {
+      if (token.length < 20) return json({ error: 'Link inválido.' }, 401);
+      const tokenHash = await hashToken(token);
+      const acessoRes = await rest(
+        `aluno_acessos?token_hash=eq.${tokenHash}&revogado_em=is.null&select=user_id,aluno_id&limit=1`,
+      );
+      if (!acessoRes.ok) return json({ error: 'Não foi possível confirmar o acesso.' }, 500);
+      const acessos = await acessoRes.json();
+      const acesso = acessos[0];
+      if (acesso && ID_VALIDO.test(String(acesso.aluno_id))) {
+        userId = acesso.user_id as string;
+        alunoId = acesso.aluno_id as string;
+      }
+    } else {
+      // Conta própria: resolve-se quem está a pedir pela sessão real (o
+      // mesmo truque do admin-overview/aluno-view), nunca por algo vindo do corpo.
+      const authHeader = req.headers.get('Authorization');
+      if (!authHeader) return json({ error: 'Sessão em falta.' }, 401);
+      const userRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
+        headers: { Authorization: authHeader, apikey: supabaseAnonKey },
+      });
+      if (userRes.ok) {
+        const callerUser = await userRes.json();
+        const authUserId = callerUser?.id as string | undefined;
+        if (authUserId) {
+          const contaRes = await rest(`aluno_contas?auth_user_id=eq.${authUserId}&select=user_id,aluno_id&limit=1`);
+          const contas = contaRes.ok ? await contaRes.json() : [];
+          const conta = contas[0];
+          if (conta && ID_VALIDO.test(String(conta.aluno_id))) {
+            userId = conta.user_id as string;
+            alunoId = conta.aluno_id as string;
+          }
+        }
+      }
+    }
+
+    if (!userId || !alunoId) return json({ error: 'Link inválido ou revogado.' }, 401);
     const dataKey = `execucoes:${alunoId}`;
 
     // O aluno pode ter sido eliminado depois do link ser gerado -- confirma-se

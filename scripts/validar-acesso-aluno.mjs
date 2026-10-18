@@ -1,6 +1,7 @@
 /*
  * Confere a logica pura do acesso do aluno (src/data/acessoAluno.ts): geracao
- * do token, o hash, o link e a leitura do token a partir da URL.
+ * do token, o hash, o link, a leitura do token a partir da URL, e os dois
+ * parametros da conta propria (?aluno=1 / ?aluno-convite=1).
  *
  * Uso: node scripts/validar-acesso-aluno.mjs
  */
@@ -51,6 +52,13 @@ esperar(
   A.tokenDaUrl(`https://ptmanagerapp.com/?outro=1&a=${t1}&mais=2`) === t1,
   'encontra o token mesmo com outros parametros antes e depois',
 );
+
+// --- quiserAreaDoAluno (conta própria, a par do token) ---
+esperar(A.quiserAreaDoAluno('https://ptmanagerapp.com/?aluno=1') === true, '"?aluno=1" pede a área do aluno');
+esperar(A.quiserAreaDoAluno('https://ptmanagerapp.com/?aluno-convite=1') === true, '"?aluno-convite=1" pede a área do aluno');
+esperar(A.quiserAreaDoAluno('https://ptmanagerapp.com/') === false, 'sem parâmetro nenhum, não pede a área do aluno');
+esperar(A.quiserAreaDoAluno('https://ptmanagerapp.com/?outro=1') === false, 'um parâmetro qualquer não confunde com o do aluno');
+esperar(A.quiserAreaDoAluno('isto nao e uma URL') === false, 'uma URL inválida não rebenta, devolve false');
 
 console.log(falhas === 0 ? '\nTUDO OK' : `\n${falhas} falha(s)`);
 process.exit(falhas === 0 ? 0 : 1);

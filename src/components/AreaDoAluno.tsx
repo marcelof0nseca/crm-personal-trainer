@@ -1,8 +1,12 @@
 // A área do aluno: um shell próprio, fora da app do treinador -- ver
-// CLAUDE.md, secção 4 ("Área do aluno"). O aluno entra por um link com
-// token (`?a=...`), nunca por conta Supabase própria; `App()` (painel-pt.tsx)
-// renderiza isto EM VEZ de `AppInner` quando a URL tem o token, antes de
-// qualquer hook de autenticação do treinador sequer montar.
+// CLAUDE.md, secção 4 ("Área do aluno"). Dois caminhos para entrar: o link
+// pessoal com token (`?a=...`, sem conta nenhuma -- o original) ou uma conta
+// própria do aluno (email + password, convidada pelo treinador na Ficha
+// 360º), que persiste a sessão e deixa o aluno entrar sempre que quiser sem
+// link nenhum. `App()` (painel-pt.tsx) renderiza isto EM VEZ de `AppInner`
+// sempre que há token OU a URL pede explicitamente a área do aluno (ver
+// `querAreaDoAluno`), antes de qualquer hook de autenticação do treinador
+// sequer montar.
 //
 // Nunca importa nada de painel-pt.tsx (a direção é sempre a mesma dos outros
 // `*Atoms.tsx`: painel-pt.tsx importa daqui, nunca o contrário) -- só de
@@ -19,14 +23,35 @@
 // usa) e a mesma forma de sessão gravada, por isso o histórico e o resumo do
 // treinador leem as sessões do aluno exatamente como as dele próprias.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Loader2 } from 'lucide-react';
+import { Check, Loader2, LogOut, Mail } from 'lucide-react';
 import { supabase, supabaseConfigured } from '../supabaseClient';
+import { supabaseAluno } from '../supabaseClientAluno';
 import { CAMPO_SERIE, ExercicioVista, descreverLinha, tipoDeSerie } from './TreinoAtoms';
 import {
   VERSAO_RASCUNHO, camposRealizaveis, chaveRascunho, construirItens,
   lerRascunho, normalizarSessaoRealizada, ordenarSessoes, resumoDaSessao, temSintomas,
   ultimaVezDoExercicio, valoresSugeridos,
 } from '../data/sessoes';
+import { PARAM_AREA_ALUNO, PARAM_CONVITE_ALUNO } from '../data/acessoAluno';
+
+// `supabase`/`supabaseConfigured` (de `../supabaseClient`) só serve para a
+// leitura inicial do token (`aluno-view` não exige sessão nenhuma para um
+// link válido, por isso usar o cliente do treinador para essa UMA chamada
+// é inofensivo -- nunca grava nada, nunca lê uma sessão de ninguém). Tudo o
+// que é sessão a sério do aluno (login, definir password, registar sessão
+// autenticado) usa sempre `supabaseAluno`, nunca este -- ver
+// `src/supabaseClientAluno.ts` para o porquê.
+
+function saudacao() {
+  const h = new Date().getHours();
+  if (h < 6) return 'Boa noite';
+  if (h < 12) return 'Bom dia';
+  if (h < 20) return 'Boa tarde';
+  return 'Boa noite';
+}
+function primeiroNome(nomeCompleto) {
+  return String(nomeCompleto || '').trim().split(/\s+/)[0] || '';
+}
 
 function horaDeMs(ms) {
   const d = new Date(ms);
@@ -284,7 +309,7 @@ function FechoDaSessao({ duracaoSugerida, aGuardar, erro, onGuardar, onVoltar })
   );
 }
 
-function RegistoSessaoAluno({ token, student, prescricao, treino, sessoesAnteriores, onConcluido, onVoltar }) {
+function RegistoSessaoAluno({ cliente, token, student, prescricao, treino, sessoesAnteriores, onConcluido, onVoltar }) {
   const dep = useMemo(() => ({ descreverLinha, camposDoTipo: (l) => tipoDeSerie(l.tipo).campos }), []);
   const chave = useMemo(() => chaveRascunho(student.id, treino.id), [student.id, treino.id]);
   const inicioMsRef = useRef(null);
@@ -342,7 +367,7 @@ function RegistoSessaoAluno({ token, student, prescricao, treino, sessoesAnterio
       editadoEm: '',
     });
     try {
-      const { data, error } = await supabase.functions.invoke('aluno-registar-sessao', { body: { token, sessao } });
+      const { data, error } = await cliente.functions.invoke('aluno-registar-sessao', { body: { token, sessao } });
       if (error || !data || data.error) {
         setErro(await mensagemDeErro(error, data, 'Não foi possível guardar. Tente outra vez.'));
         setAGuardar(false);
@@ -476,7 +501,7 @@ function HistoricoDeSessoes({ sessoes, prescricaoId }) {
 
 /* ============================== programa (vista) ============================== */
 
-function ProgramaDoAluno({ student, prescricao, sessoesAnteriores, onVoltar, token }) {
+function ProgramaDoAluno({ student, prescricao, sessoesAnteriores, onVoltar, token, cliente }) {
   const treinos = Array.isArray(prescricao.treinos) ? prescricao.treinos : [];
   const [treinoId, setTreinoId] = useState(treinos[0]?.id || null);
   const [modo, setModo] = useState('ver'); // ver | registar | concluido
@@ -485,6 +510,7 @@ function ProgramaDoAluno({ student, prescricao, sessoesAnteriores, onVoltar, tok
   if (treino && modo === 'registar') {
     return (
       <RegistoSessaoAluno
+        cliente={cliente}
         token={token}
         student={student}
         prescricao={prescricao}
@@ -555,38 +581,251 @@ function ProgramaDoAluno({ student, prescricao, sessoesAnteriores, onVoltar, tok
   );
 }
 
+/* ============================== conta própria (login) ============================== */
+
+function LoginDoAluno({ onEntrou }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [modoRecuperar, setModoRecuperar] = useState(false);
+  const [aEnviar, setAEnviar] = useState(false);
+  const [erro, setErro] = useState('');
+  const [recuperacaoEnviada, setRecuperacaoEnviada] = useState(false);
+
+  async function entrar(e) {
+    e.preventDefault();
+    if (!supabaseAluno) return;
+    setAEnviar(true);
+    setErro('');
+    const { error } = await supabaseAluno.auth.signInWithPassword({ email: email.trim(), password });
+    setAEnviar(false);
+    if (error) { setErro('Email ou palavra-passe incorretos.'); return; }
+    onEntrou();
+  }
+
+  async function pedirRecuperacao(e) {
+    e.preventDefault();
+    if (!supabaseAluno || typeof window === 'undefined') return;
+    setAEnviar(true);
+    setErro('');
+    await supabaseAluno.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/?${PARAM_CONVITE_ALUNO}=1`,
+    });
+    setAEnviar(false);
+    setRecuperacaoEnviada(true);
+  }
+
+  if (modoRecuperar) {
+    return (
+      <EcraCentrado>
+        <h1 className="font-display font-semibold text-lg text-primary" style={{ margin: 0 }}>Recuperar palavra-passe</h1>
+        {recuperacaoEnviada ? (
+          <>
+            <p className="text-sm font-body text-faint">
+              Se existir uma conta com esse email, enviámos um link para escolher uma palavra-passe nova.
+            </p>
+            <button type="button" onClick={() => { setModoRecuperar(false); setRecuperacaoEnviada(false); }} className="btn btn-ghost">
+              ← Voltar a entrar
+            </button>
+          </>
+        ) : (
+          <form onSubmit={pedirRecuperacao} className="flex flex-col gap-3 w-full" style={{ maxWidth: 300 }}>
+            <input
+              type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+              placeholder="O seu email" aria-label="Email" className="input-field" style={{ fontSize: 16 }}
+            />
+            {erro && <p className="text-xs font-body" style={{ color: 'var(--rust)' }}>{erro}</p>}
+            <button type="submit" disabled={aEnviar} className="btn btn-primary">{aEnviar ? 'A enviar...' : 'Enviar link'}</button>
+            <button type="button" onClick={() => setModoRecuperar(false)} className="btn btn-ghost">Cancelar</button>
+          </form>
+        )}
+      </EcraCentrado>
+    );
+  }
+
+  return (
+    <EcraCentrado>
+      <Mail size={26} className="text-brass" />
+      <h1 className="font-display font-semibold text-lg text-primary" style={{ margin: 0 }}>Entrar</h1>
+      <p className="text-xs font-body text-faint" style={{ margin: 0 }}>A sua área de treino na PTMANAGER.</p>
+      <form onSubmit={entrar} className="flex flex-col gap-3 w-full" style={{ maxWidth: 300 }}>
+        <input
+          type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email" aria-label="Email" className="input-field" style={{ fontSize: 16 }}
+        />
+        <input
+          type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
+          placeholder="Palavra-passe" aria-label="Palavra-passe" className="input-field" style={{ fontSize: 16 }}
+        />
+        {erro && <p className="text-xs font-body" style={{ color: 'var(--rust)' }}>{erro}</p>}
+        <button type="submit" disabled={aEnviar} className="btn btn-primary">{aEnviar ? 'A entrar...' : 'Entrar'}</button>
+        <button type="button" onClick={() => setModoRecuperar(true)} className="text-2xs font-body link-sky self-center">
+          Esqueci-me da palavra-passe
+        </button>
+      </form>
+    </EcraCentrado>
+  );
+}
+
+// Depois de aceitar o convite (ou de pedir para recuperar a password) --
+// mesma cautela do `ResetPasswordScreen` do treinador: um scanner de
+// segurança do email pode gastar um link de uso único antes da pessoa
+// clicar, por isso confirma-se a sessão a sério antes de mostrar o
+// formulário (CLAUDE.md, secção 6, armadilha do "Safe Links").
+function DefinirPasswordAluno({ onDefinida }) {
+  const [temSessao, setTemSessao] = useState(null); // null = a verificar
+  const [password, setPassword] = useState('');
+  const [confirmar, setConfirmar] = useState('');
+  const [aGuardar, setAGuardar] = useState(false);
+  const [erro, setErro] = useState('');
+
+  useEffect(() => {
+    if (!supabaseAluno) { setTemSessao(false); return; }
+    let vivo = true;
+    supabaseAluno.auth.getSession().then(({ data }) => { if (vivo) setTemSessao(Boolean(data.session)); });
+    return () => { vivo = false; };
+  }, []);
+
+  async function guardar(e) {
+    e.preventDefault();
+    if (password.length < 6) { setErro('A palavra-passe precisa de pelo menos 6 caracteres.'); return; }
+    if (password !== confirmar) { setErro('As duas palavras-passe têm de ser iguais.'); return; }
+    setAGuardar(true);
+    setErro('');
+    const { error } = await supabaseAluno.auth.updateUser({ password });
+    setAGuardar(false);
+    if (error) { setErro('Não foi possível guardar. O link pode já não ser válido.'); return; }
+    onDefinida();
+  }
+
+  if (temSessao === null) {
+    return (
+      <EcraCentrado>
+        <Loader2 size={22} className="text-faint spin" />
+        <p className="text-sm font-body text-faint">A confirmar...</p>
+      </EcraCentrado>
+    );
+  }
+
+  if (!temSessao) {
+    return (
+      <EcraCentrado>
+        <p className="text-sm font-body text-primary" style={{ fontWeight: 600 }}>Este link já não é válido</p>
+        <p className="text-xs font-body text-faint">Pode já ter sido usado, ou expirou. Peça ao seu treinador para o reenviar.</p>
+      </EcraCentrado>
+    );
+  }
+
+  return (
+    <EcraCentrado>
+      <h1 className="font-display font-semibold text-lg text-primary" style={{ margin: 0 }}>Escolha a sua palavra-passe</h1>
+      <p className="text-xs font-body text-faint" style={{ margin: 0 }}>É assim que vai entrar da próxima vez.</p>
+      <form onSubmit={guardar} className="flex flex-col gap-3 w-full" style={{ maxWidth: 300 }}>
+        <input
+          type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)}
+          placeholder="Palavra-passe nova" aria-label="Palavra-passe nova" className="input-field" style={{ fontSize: 16 }}
+        />
+        <input
+          type="password" required value={confirmar} onChange={(e) => setConfirmar(e.target.value)}
+          placeholder="Confirmar palavra-passe" aria-label="Confirmar palavra-passe" className="input-field" style={{ fontSize: 16 }}
+        />
+        {erro && <p className="text-xs font-body" style={{ color: 'var(--rust)' }}>{erro}</p>}
+        <button type="submit" disabled={aGuardar} className="btn btn-primary">{aGuardar ? 'A guardar...' : 'Começar'}</button>
+      </form>
+    </EcraCentrado>
+  );
+}
+
+// Três caminhos para chegar aqui: `?a=<token>` (link direto, sem conta --
+// cliente é sempre `supabase`, o `aluno-view`/`aluno-registar-sessao` nem
+// olham para sessão nenhuma quando há token); `?aluno-convite=1` (acabou de
+// aceitar um convite, ou pediu para recuperar a password -- mostra-se
+// `DefinirPasswordAluno`); ou nenhum dos dois, em que a conta própria do
+// aluno decide tudo (`supabaseAluno`, login ou já autenticado).
+function fasesDeArranque(token) {
+  if (token) return 'a-carregar';
+  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has(PARAM_CONVITE_ALUNO)) {
+    return 'definir-password';
+  }
+  return 'a-verificar-sessao';
+}
+
 export default function AreaDoAluno({ token }) {
-  const [estado, setEstado] = useState('a-carregar'); // a-carregar | ok | erro
+  const [fase, setFase] = useState(() => fasesDeArranque(token));
   const [erro, setErro] = useState('');
   const [dados, setDados] = useState(null);
   const [abertoId, setAbertoId] = useState(null);
+  const cliente = token ? supabase : supabaseAluno;
+  // Capturado uma vez só, da URL original -- não se recalcula a partir de
+  // `fasesDeArranque` dentro do efeito abaixo, que já reescreve essa mesma
+  // URL para "?aluno=1". Em StrictMode (dev), o React invoca o efeito duas
+  // vezes; recalcular ali leria a URL já normalizada e perdia este modo.
+  const eraConvite = useRef(fase === 'definir-password').current;
 
-  useEffect(() => {
-    let vivo = true;
-    async function carregar() {
-      if (!supabaseConfigured || !supabase) {
-        if (vivo) { setErro('Esta ligação não está configurada.'); setEstado('erro'); }
+  async function carregarDados() {
+    setFase('a-carregar');
+    setErro('');
+    if (!cliente) {
+      setErro('Esta ligação não está configurada.');
+      setFase('erro');
+      return;
+    }
+    try {
+      const { data, error } = await cliente.functions.invoke('aluno-view', { body: token ? { token } : {} });
+      if (error || !data || data.error) {
+        setErro(await mensagemDeErro(error, data, token ? 'Não foi possível abrir este link.' : 'Não foi possível carregar os seus dados.'));
+        setFase('erro');
         return;
       }
-      try {
-        const { data, error } = await supabase.functions.invoke('aluno-view', { body: { token } });
-        if (!vivo) return;
-        if (error || !data || data.error) {
-          setErro(await mensagemDeErro(error, data, 'Não foi possível abrir este link.'));
-          setEstado('erro');
-          return;
-        }
-        setDados(data);
-        setEstado('ok');
-      } catch {
-        if (vivo) { setErro('Não foi possível ligar ao servidor.'); setEstado('erro'); }
-      }
+      setDados(data);
+      setFase('ok');
+    } catch {
+      setErro('Não foi possível ligar ao servidor.');
+      setFase('erro');
     }
-    carregar();
-    return () => { vivo = false; };
+  }
+
+  useEffect(() => {
+    if (token) { carregarDados(); return undefined; }
+    if (eraConvite) return undefined; // tratado pelo próprio ecrã (DefinirPasswordAluno)
+
+    if (!supabaseConfigured || !supabaseAluno) {
+      setErro('Esta ligação não está configurada.');
+      setFase('erro');
+      return undefined;
+    }
+    let vivo = true;
+    supabaseAluno.auth.getSession().then(({ data }) => {
+      if (!vivo) return;
+      if (data.session) carregarDados(); else setFase('login');
+    });
+    const { data: listener } = supabaseAluno.auth.onAuthStateChange((_event, session) => {
+      if (!vivo) return;
+      if (session) carregarDados();
+      else setFase((f) => (f === 'definir-password' ? f : 'login'));
+    });
+    return () => { vivo = false; listener.subscription.unsubscribe(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, eraConvite]);
+
+  async function sair() {
+    if (supabaseAluno) await supabaseAluno.auth.signOut();
+    setDados(null);
+    setAbertoId(null);
+    setFase('login');
+  }
+
+  // Assenta a barra do endereço no link fixo (`?aluno=1`), venha-se de onde
+  // se vier (convite, recuperação, ou já lá) -- é essa barra que o aluno
+  // marca/guarda para voltar a entrar sem precisar de outro email.
+  useEffect(() => {
+    if (token || typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get(PARAM_AREA_ALUNO) !== '1' || params.has(PARAM_CONVITE_ALUNO)) {
+      window.history.replaceState(null, '', `${window.location.pathname}?${PARAM_AREA_ALUNO}=1`);
+    }
   }, [token]);
 
-  if (estado === 'a-carregar') {
+  if (fase === 'a-carregar' || fase === 'a-verificar-sessao') {
     return (
       <EcraCentrado>
         <Loader2 size={22} className="text-faint spin" />
@@ -595,11 +834,21 @@ export default function AreaDoAluno({ token }) {
     );
   }
 
-  if (estado === 'erro') {
+  if (fase === 'definir-password') {
+    return <DefinirPasswordAluno onDefinida={carregarDados} />;
+  }
+
+  if (fase === 'login') {
+    return <LoginDoAluno onEntrou={carregarDados} />;
+  }
+
+  if (fase === 'erro') {
     return (
       <EcraCentrado>
-        <p className="text-sm font-body text-primary" style={{ fontWeight: 600 }}>Link inválido</p>
-        <p className="text-xs font-body text-faint">{erro} Peça ao seu treinador um link novo.</p>
+        <p className="text-sm font-body text-primary" style={{ fontWeight: 600 }}>{token ? 'Link inválido' : 'Não foi possível entrar'}</p>
+        <p className="text-xs font-body text-faint">
+          {erro} {token ? 'Peça ao seu treinador um link novo.' : ''}
+        </p>
       </EcraCentrado>
     );
   }
@@ -607,12 +856,22 @@ export default function AreaDoAluno({ token }) {
   const { aluno, prescricoes, execucao } = dados;
   const sessoesAnteriores = (execucao && Array.isArray(execucao.sessoes)) ? execucao.sessoes : [];
   const aberto = prescricoes.find((p) => p.id === abertoId);
+  const primeiro = primeiroNome(aluno.name);
 
   return (
     <Ecra>
-      <div className="flex items-center gap-2">
-        <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: aluno.color || 'var(--brass)' }} />
-        <h1 className="font-display font-semibold text-xl text-primary tracking-wide truncate">{aluno.name}</h1>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: aluno.color || 'var(--brass)' }} />
+          <h1 className="font-display font-semibold text-xl text-primary tracking-wide truncate" style={{ margin: 0 }}>
+            {saudacao()}{primeiro ? `, ${primeiro}` : ''}
+          </h1>
+        </div>
+        {!token && (
+          <button type="button" onClick={sair} className="btn btn-ghost flex-shrink-0" style={{ fontSize: 12 }} aria-label="Sair da conta">
+            <LogOut size={14} /> Sair
+          </button>
+        )}
       </div>
 
       {aberto ? (
@@ -622,6 +881,7 @@ export default function AreaDoAluno({ token }) {
           sessoesAnteriores={sessoesAnteriores}
           onVoltar={() => setAbertoId(null)}
           token={token}
+          cliente={cliente}
         />
       ) : (
         <ListaDeProgramas prescricoes={prescricoes} onAbrir={setAbertoId} />

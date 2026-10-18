@@ -29,7 +29,7 @@ import {
   CargaDaSerie, NumerosDoMetodo, ExercicioVista,
 } from './src/components/TreinoAtoms';
 import Turnstile from './src/components/Turnstile';
-import { gerarTokenAcesso, hashTokenAcesso, linkDeAcesso, tokenDaUrl } from './src/data/acessoAluno';
+import { gerarTokenAcesso, hashTokenAcesso, linkDeAcesso, quiserAreaDoAluno, tokenDaUrl } from './src/data/acessoAluno';
 import AreaDoAluno from './src/components/AreaDoAluno';
 import LegalModal from './src/components/LegalDocs';
 import {
@@ -20199,16 +20199,18 @@ function AppInner() {
 }
 
 export default function App() {
-  // O link do aluno (`?a=<token>`) decide tudo antes de qualquer outra coisa
-  // montar -- nenhum hook de autenticação do treinador chega a correr neste
-  // caminho. `AreaDoAluno` nunca importa de `painel-pt.tsx`; só partilha
+  // O link do aluno (`?a=<token>`) ou a conta própria dele (`?aluno=1`,
+  // `?aluno-convite=1`) decidem tudo antes de qualquer outra coisa montar --
+  // nenhum hook de autenticação do treinador chega a correr neste caminho.
+  // `AreaDoAluno` nunca importa de `painel-pt.tsx`; só partilha
   // `GlobalStyles`, aqui em cima dos dois.
   const tokenAluno = typeof window !== 'undefined' ? tokenDaUrl(window.location.href) : null;
+  const areaDoAluno = Boolean(tokenAluno) || (typeof window !== 'undefined' && quiserAreaDoAluno(window.location.href));
   return (
     <>
       <GlobalStyles />
       <ErrorBoundary>
-        {tokenAluno ? <AreaDoAluno token={tokenAluno} /> : <AppInner />}
+        {areaDoAluno ? <AreaDoAluno token={tokenAluno} /> : <AppInner />}
       </ErrorBoundary>
     </>
   );

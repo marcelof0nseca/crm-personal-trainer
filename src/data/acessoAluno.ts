@@ -60,3 +60,22 @@ export function tokenDaUrl(href) {
   const token = url.searchParams.get('a');
   return token && token.length >= 20 ? token : null;
 }
+
+// Conta própria do aluno (email+password, a par do link com token acima --
+// CLAUDE.md, secção 4): dois parâmetros, sem caminho novo, pela mesma razão
+// de `linkDeAcesso`. `aluno-convite` é de uso único (convite ou recuperação
+// de password, consumido pelo Supabase); `aluno` é o link fixo que fica na
+// barra do endereço depois disso, para o aluno marcar/guardar e voltar a
+// entrar sempre que quiser, sem precisar de outro email.
+export const PARAM_CONVITE_ALUNO = 'aluno-convite';
+export const PARAM_AREA_ALUNO = 'aluno';
+
+export function quiserAreaDoAluno(href) {
+  let url;
+  try {
+    url = new URL(String(href || ''));
+  } catch {
+    return false;
+  }
+  return url.searchParams.has(PARAM_CONVITE_ALUNO) || url.searchParams.has(PARAM_AREA_ALUNO);
+}

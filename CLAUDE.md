@@ -47,7 +47,7 @@ O que ele faz na aplicação, todos os dias:
 | **Faltas** | Faltas, direito a reposição, créditos ligados à aula de origem |
 | **Alunos** | Fichas, plano, preço, cor de identificação. **Os treinos vivem aqui dentro** |
 | **Avaliações** | Dobras (5 protocolos), bioimpedância, 14 perímetros, cintura-anca, metas, fotografias, evolução, PDF timbrado |
-| **Finanças** | Entradas e saídas, categorias, IVA, pendências |
+| **Finanças** | Entradas e saídas, categorias, imposto genérico por aluno (`taxPercent`, não é IVA), pendências |
 
 Mais um separador **Admin**, só visível ao dono da aplicação.
 
@@ -90,6 +90,8 @@ secção 10 para o que ficou de fora.
 | `src/data/eliminar.ts` | À mão. O que sai ao **eliminar um aluno** ou **apagar uma avaliação**: que fotografias saem (só as que mais nada refere) e o que um aluno tem. Sem React nem Supabase |
 | `scripts/validar-eliminar.mjs` | `node scripts/validar-eliminar.mjs`. Confere `eliminar.ts` |
 | `scripts/validar-horas-pagas.mjs` | `node scripts/validar-horas-pagas.mjs`. Confere `horasPagasDoAluno` e os ajudantes de que depende — funções pequenas de mais para um módulo próprio, extraídas do `painel-pt.tsx` por texto, como o resto desta lista faz às que só correm contra o Supabase |
+| `src/data/prescricao.ts` | À mão. A lógica pura de validar o RIR alvo e clonar um programa. Confere-se com `node scripts/validar-prescricao.mjs` |
+| `docs/PTMANAGER_MFIT_PARIDADE.md` | A matriz de cobertura do roteiro de paridade, atualizada a cada lote. Ver secção 11, item 29 |
 | `scripts/gerar-exercicios.mjs` | Gera o ficheiro acima a partir do catálogo MFIT (que não está no repositório) |
 | `scripts/exercicios-legado.json` | Os 202 exercícios que a aplicação tinha antes do catálogo |
 | `supabase/functions/` | 9 Edge Functions: `admin-overview`, `create-checkout-session`, `create-mbway-checkout-session`, `create-portal-session`, `stripe-webhook`, `send-welcome-email`, `aluno-view`, `aluno-registar-sessao`, `aluno-convidar` |
@@ -774,6 +776,16 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   raio do canto (`border-radius`) disfarça o aperto a um olhar rápido. Três
   cartões da área do aluno (`AreaDoAluno.tsx`) tinham este esquecimento, dois
   deles de antes desta fatia.
+- **Dois clientes Supabase na mesma página apanham os dois a sessão do
+  endereço.** A `storageKey` própria do aluno não chegava: um convite gravava a
+  sessão do aluno também na chave do treinador, e quem abrisse o domínio entrava
+  na aplicação do treinador com a conta do aluno. Cada cliente liga agora o
+  `detectSessionInUrl` só para o que é seu (`eRegressoDoAluno`). Os testes com
+  sessão semeada não o apanhavam: é preciso abrir o endereço com o `#access_token`
+  e olhar para as chaves do `localStorage`, também no build de produção.
+- **O Chromium do Playwright usa o tema claro por omissão.** Sem
+  `colorScheme: 'dark'` no contexto, uma captura dita «escura» sai clara e o tema
+  escuro fica por testar sem ninguém dar por isso.
 
 ---
 
@@ -978,7 +990,7 @@ existe de verdade.
 | **Biblioteca** | Procura que traduz o termo escrito (pt-BR e inglês de ginásio) · sinónimos por exercício · favoritos · pastas · progressões, regressões e substituições, com **troca de exercício num clique dentro do treino** · **vídeo opcional por exercício** (até 10 s, demonstração para o treinador — não sai no PDF, o aluno continua sem acesso), carregado no balde `videos`; **MVP sem corte automático**, recusa-se o que vier mais comprido |
 | **Avaliações** | Dobras, % massa gorda, perímetros, fotografias, gráfico de evolução, PDF · **rascunho e final, autosave, revisões com motivo, comparar e repor** |
 | **Documentos** | Timbre com logótipo próprio, estúdio, nº profissional e contactos · aviso de confidencialidade em todas as folhas · escolher que secções saem · **pré-visualizar antes de imprimir** · abrir o e-mail para o aluno |
-| **Finanças** | Entradas e saídas, categorias, IVA, taxa do ginásio, pendências |
+| **Finanças** | Entradas e saídas, categorias, imposto genérico por aluno (`taxPercent`, não é IVA), taxa do ginásio, pendências |
 | **Pagamentos** | Stripe: mensal/trimestral/anual, cartão, Apple Pay, Google Pay, MB WAY, webhook, portal de faturação, meses grátis, **7 dias de trial nos três planos**, **preços de lançamento** com o valor anterior riscado |
 | **Relatórios** | Relatório do período (atividade, ocupação da agenda, receita dos planos, lançamentos, tabela por aluno) e relatório de progresso do aluno (primeira vs última avaliação, com gráfico) · ambos timbrados |
 | **Ficha 360º** | Aulas, faltas, avaliações, treinos, **sessões de treino realizadas** e formulários numa linha só, por aluno · procura livre sobre tudo · filtros por tipo e período · resumo com comparência e créditos · os pontos a ter em conta em cima · tocar numa sessão de treino abre-a no histórico do aluno |
@@ -1203,8 +1215,17 @@ Combinado por níveis, do mais barato ao mais caro:
     `.card` não tem padding nenhum por omissão (cada uso tem de levar `p-4`
     a sério, como `StatCard`/`StudentCard` já faziam) — faltava em todos os
     cartões deste ficheiro, incluindo os que já existiam antes desta fatia
-29. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
-30. Decisões de produto — ver secção 10
+29. **Roteiro de paridade funcional, sem IA e sem FMS** — em curso
+    — decidido pelo dono do produto a 30/10/2026, depois de lhe serem
+    explicados o custo legal da cobrança dos alunos e a sensibilidade da
+    avaliação postural. **Inverte parte da secção 10**: quando esta e o roteiro
+    divergirem em chat, recordes, vídeo, área do aluno ou agenda, vale o roteiro;
+    IA continua de fora. O estado de cada área vive em
+    `docs/PTMANAGER_MFIT_PARIDADE.md`. Cobranças, payouts e mensagens reais só em
+    modo de teste até haver autorização explícita para produção. Primeiro lote
+    feito: data de início do aluno, RIR alvo, título de evento e duplicar programa
+30. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
+31. Decisões de produto — ver secção 10
 
 ---
 

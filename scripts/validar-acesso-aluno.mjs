@@ -60,5 +60,11 @@ esperar(A.quiserAreaDoAluno('https://ptmanagerapp.com/') === false, 'sem parâme
 esperar(A.quiserAreaDoAluno('https://ptmanagerapp.com/?outro=1') === false, 'um parâmetro qualquer não confunde com o do aluno');
 esperar(A.quiserAreaDoAluno('isto nao e uma URL') === false, 'uma URL inválida não rebenta, devolve false');
 
+// --- eRegressoDoAluno: que cliente lê a sessão do endereço ---
+esperar(A.eRegressoDoAluno('https://ptmanagerapp.com/?aluno-convite=1#access_token=x') === true, 'um regresso de convite é do aluno');
+esperar(A.eRegressoDoAluno('https://ptmanagerapp.com/#access_token=x&type=recovery') === false, 'um regresso sem o parâmetro é do treinador');
+esperar(A.eRegressoDoAluno('https://ptmanagerapp.com/?aluno=1') === false, 'o link fixo do aluno não é um regresso de convite');
+esperar(A.eRegressoDoAluno('isto nao e uma URL') === false, 'uma URL inválida não rebenta');
+
 console.log(falhas === 0 ? '\nTUDO OK' : `\n${falhas} falha(s)`);
 process.exit(falhas === 0 ? 0 : 1);

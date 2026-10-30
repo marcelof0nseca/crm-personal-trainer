@@ -6,6 +6,7 @@
 // a entrar "ganha", e a outra pessoa é desligada sem aviso nenhum. A
 // `storageKey` própria mantém as duas sessões a coexistir sem se tocarem.
 import { createClient } from '@supabase/supabase-js';
+import { eRegressoDoAluno } from './data/acessoAluno';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -14,6 +15,6 @@ export const supabaseConfigured = Boolean(supabaseUrl && supabasePublishableKey)
 
 export const supabaseAluno = supabaseConfigured
   ? createClient(supabaseUrl, supabasePublishableKey, {
-    auth: { storageKey: 'ptmanager-aluno-auth' },
+    auth: { storageKey: 'ptmanager-aluno-auth', detectSessionInUrl: eRegressoDoAluno(window.location.href) },
   })
   : null;

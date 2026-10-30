@@ -70,6 +70,17 @@ export function tokenDaUrl(href) {
 export const PARAM_CONVITE_ALUNO = 'aluno-convite';
 export const PARAM_AREA_ALUNO = 'aluno';
 
+// Há dois clientes Supabase na mesma página e, por omissão, os dois guardam a
+// sessão que vem no endereço. Só o do aluno pode ler um regresso de convite, e
+// só o do treinador pode ler os outros.
+export function eRegressoDoAluno(href) {
+  try {
+    return new URL(String(href || '')).searchParams.has(PARAM_CONVITE_ALUNO);
+  } catch {
+    return false;
+  }
+}
+
 export function quiserAreaDoAluno(href) {
   let url;
   try {

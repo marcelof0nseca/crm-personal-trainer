@@ -81,6 +81,20 @@ function normalizarOrigem(o) {
   return Object.keys(saida).length ? saida : null;
 }
 
+const escala5 = (v) => { const n = Number(v); return v !== '' && v != null && Number.isInteger(n) && n >= 1 && n <= 5 ? String(n) : ''; };
+
+// O que o aluno diz da sessão, à parte do esforço e dos sintomas que já existiam.
+function normalizarFeedback(f) {
+  const b = f && typeof f === 'object' ? f : {};
+  return { satisfacao: escala5(b.satisfacao), energia: escala5(b.energia), comentario: texto(b.comentario, 1000) };
+}
+
+// O que o treinador fez com ela: viu, respondeu, arquivou.
+function normalizarAcompanhamento(a) {
+  const b = a && typeof a === 'object' ? a : {};
+  return { lido: Boolean(b.lido), arquivado: Boolean(b.arquivado), resposta: texto(b.resposta, 1000), em: texto(b.em, 40), quem: texto(b.quem, 120) };
+}
+
 export function normalizarSessaoRealizada(s) {
   const bruto = s || {};
   const duracao = Number(String(bruto.duracaoMin == null ? '' : bruto.duracaoMin).replace(',', '.'));
@@ -101,6 +115,8 @@ export function normalizarSessaoRealizada(s) {
     esforco: bruto.esforco !== '' && bruto.esforco != null && Number.isInteger(esforco) && esforco >= 0 && esforco <= 10 ? String(esforco) : '',
     sintomas: { durante: texto(sintomas.durante, 1000), depois: texto(sintomas.depois, 1000) },
     notas: texto(bruto.notas, 2000),
+    feedback: normalizarFeedback(bruto.feedback),
+    acompanhamento: normalizarAcompanhamento(bruto.acompanhamento),
     itens: (Array.isArray(bruto.itens) ? bruto.itens : []).map(normalizarItemRealizado),
     criadoEm: texto(bruto.criadoEm, 40),
     editadoEm: texto(bruto.editadoEm, 40),

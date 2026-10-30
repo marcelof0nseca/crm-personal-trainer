@@ -9,20 +9,22 @@
  * prometia «todos os dados».
  */
 import { chaveExecucoes, normalizarExecucoes } from './sessoes';
+import { NOMES_MODULOS, chaveModulo, nomeDaChave } from '../features/modulos';
 
 // Versão 1 (sem o campo `versao`): alunos, agenda, finanças, fotos e categorias.
 // Versão 2: tudo o que a conta guarda -- mais definições, treinos, formulários
 // e as sessões de treino realizadas, por aluno.
-export const VERSAO_COPIA = 2;
+// Versão 3: mais os módulos novos (`modulo:<nome>`).
+export const VERSAO_COPIA = 3;
 
 const ehObjeto = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 export function montarCopia(partes, agoraISO) {
-  const { alunos, agenda, financas, fotos, categorias, definicoes, treinos, formularios, execucoes } = partes;
+  const { alunos, agenda, financas, fotos, categorias, definicoes, treinos, formularios, execucoes, modulos } = partes;
   return {
     exportedAt: agoraISO,
     versao: VERSAO_COPIA,
-    alunos, agenda, financas, fotos, categorias, definicoes, treinos, formularios, execucoes,
+    alunos, agenda, financas, fotos, categorias, definicoes, treinos, formularios, execucoes, modulos: modulos || {},
   };
 }
 
@@ -59,7 +61,25 @@ export function lerCopia(texto) {
       if (sessoes.length > 0) copia.execucoes[id] = { sessoes };
     });
   }
+  if (d.modulos !== undefined) {
+    if (!ehObjeto(d.modulos)) throw new Error('formato inválido: modulos');
+    copia.modulos = {};
+    Object.entries(d.modulos).forEach(([nome, valor]) => {
+      if (!NOMES_MODULOS.includes(nome)) return;
+      if (!ehObjeto(valor)) throw new Error(`formato inválido: ${nome}`);
+      copia.modulos[nome] = valor;
+    });
+  }
   return copia;
+}
+
+// Uma cópia sem módulos (versões 1 e 2) não toca neles. Uma com módulos deixa a
+// conta com os do ficheiro, e só esses.
+export function planoDeModulos(copia, chavesExistentes) {
+  if (copia.modulos === undefined) return { escrever: [], apagar: [] };
+  const escrever = Object.entries(copia.modulos).map(([nome, valor]) => ({ chave: chaveModulo(nome), valor }));
+  const aEscrever = new Set(escrever.map((e) => e.chave));
+  return { escrever, apagar: chavesExistentes.filter((c) => nomeDaChave(c) && !aEscrever.has(c)) };
 }
 
 // Os números que o aviso de «Restaurar backup» mostra. `completa` é falso num

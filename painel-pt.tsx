@@ -9,7 +9,7 @@ import {
   Coffee, Dumbbell, Gift, CreditCard, Mail, CircleUser, KeyRound, ShieldCheck,
   RefreshCcw, Printer, Pencil, Copy, GripVertical, Bell, Archive, BookMarked,
   Sun, Moon, Monitor, Send, ImagePlus, Eye, EyeOff, History, Star, Clock, Lock, Link2,
-  ChevronDown, UserCheck,
+  ChevronDown, UserCheck, LayoutGrid,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
@@ -58,11 +58,19 @@ import {
 } from './src/data/sessoes';
 // A cópia de segurança, também em lógica pura: o que se exporta, como se lê um
 // ficheiro e o que muda nas sessões ao restaurar -- scripts/validar-copia.mjs.
-import { montarCopia, lerCopia, resumoDaCopia, planoDeSessoes } from './src/data/copia';
+import { montarCopia, lerCopia, resumoDaCopia, planoDeModulos, planoDeSessoes } from './src/data/copia';
 // O que sai ao apagar uma avaliação ou um aluno, fotografias incluídas --
 // scripts/validar-eliminar.mjs.
 import { fotosSoltas, planoDeEliminacao } from './src/data/eliminar';
 import { clonarPrograma, clonarTreinosCom, rirValido } from './src/data/prescricao';
+import { ConfirmDialog, EmptyState, FormField, Modal } from './src/components/UiAtoms';
+import { ModulosProvider, useModulo } from './src/features/useModulo';
+import { PREFIXO_MODULO, chaveModulo, modulosAoEliminarAluno, NOMES_MODULOS } from './src/features/modulos';
+import { aplicarPreset, presetDeSelecao, replicarSerie } from './src/features/treino/presets';
+import PresetsModal from './src/features/treino/PresetsModal';
+import PlaneamentoPrograma from './src/features/treino/PlaneamentoPrograma';
+import EvolucaoAluno from './src/features/treino/EvolucaoAluno';
+import { CronometroDescanso, CronometroMetodo } from './src/features/treino/Cronometros';
 
 /* ============================== LOGO ============================== */
 
@@ -3614,7 +3622,11 @@ async function convidarAlunoPorEmail(idAluno, email) {
 // Todas as linhas `execucoes:*` desta conta, incluindo as de alunos que já não
 // estão na lista. É o que deixa o «Apagar todos os dados» e o restauro
 // apanharem tudo, e não só o que a lista de alunos conhece.
-async function listarChavesDeExecucoes() {
+async function listarChavesDeModulos() {
+  return listarChavesDeExecucoes(PREFIXO_MODULO);
+}
+
+async function listarChavesDeExecucoes(prefixo = PREFIXO_CHAVE_EXECUCOES) {
   if (supabaseConfigured && supabase) {
     const userId = await currentSupabaseUserId();
     if (!userId) return [];
@@ -3622,7 +3634,7 @@ async function listarChavesDeExecucoes() {
       .from('app_data')
       .select('data_key')
       .eq('user_id', userId)
-      .like('data_key', `${PREFIXO_CHAVE_EXECUCOES}%`);
+      .like('data_key', `${prefixo}%`);
     if (error) throw error;
     return (data || []).map((linha) => linha.data_key);
   }
@@ -3630,7 +3642,7 @@ async function listarChavesDeExecucoes() {
   const chaves = [];
   for (let i = 0; i < window.localStorage.length; i += 1) {
     const chave = window.localStorage.key(i);
-    if (chave && chave.startsWith(PREFIXO_CHAVE_EXECUCOES)) chaves.push(chave);
+    if (chave && chave.startsWith(prefixo)) chaves.push(chave);
   }
   return chaves;
 }
@@ -4545,220 +4557,6 @@ class ErrorBoundary extends React.Component {
 
 /* ============================== SMALL ATOMS ============================== */
 
-function FormField({ label, children }) {
-  return (
-    <label className="flex flex-col gap-1.5 min-w-0">
-      <span className="text-xs font-body text-muted">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-// Resistencia progressiva para la do limite. Puxar a folha para cima nao tem
-// para onde ir, e parar a seco le-se como encravado; o que existe no mundo
-// abranda antes de parar.
-function elastico(excesso, dimensao, constante = 0.55) {
-  return (excesso * dimensao * constante) / (dimensao + constante * Math.abs(excesso));
-}
-
-// Onde e que um lancamento ia parar sozinho, com a travagem do sistema. E a
-// projeccao -- e nao a distancia ja percorrida -- que decide fechar ou voltar:
-// um piparote curto e rapido fecha, um arrasto longo e parado volta.
-function projetar(velocidade, travagem = 0.998) {
-  return (velocidade / 1000) * travagem / (1 - travagem);
-}
-
-function deslocamentoY(el) {
-  if (!el) return 0;
-  const t = getComputedStyle(el).transform;
-  if (!t || t === 'none') return 0;
-  const n = t.match(/matrix3d\(([^)]+)\)/) ? 13 : 5;
-  const v = t.slice(t.indexOf('(') + 1, -1).split(',').map((x) => parseFloat(x));
-  return v[n] || 0;
-}
-
-// Puxar a folha para baixo fecha-a. So pelo cabecalho: o corpo rola, e disputar
-// o mesmo dedo entre rolar e arrastar faz as duas coisas mal.
-function useFolhaArrastavel(onFechar) {
-  const painelRef = useRef(null);
-  const veuRef = useRef(null);
-  const gesto = useRef(null);
-
-  function pintar(y, altura) {
-    const el = painelRef.current;
-    if (!el) return;
-    el.style.transform = y ? `translate3d(0, ${y}px, 0)` : '';
-    if (veuRef.current) {
-      veuRef.current.style.opacity = String(Math.max(0, 1 - (y / (altura || 1)) * 0.9));
-    }
-  }
-
-  function comecar(e) {
-    // So no telemovel: com rato isto e um painel, nao uma folha.
-    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 640px)').matches) return;
-    if (e.button > 0) return;
-    // Um botao no cabecalho nao e uma pega.
-    if (e.target && e.target.closest && e.target.closest('button')) return;
-    const el = painelRef.current;
-    if (!el) return;
-    // Sai da animacao de entrada e de qualquer transicao a meio: a partir daqui
-    // quem manda e o dedo, e uma transicao por cima poe um fotograma de atraso.
-    // Comeca do valor que esta no ecra, e nao de zero, para nao dar o salto.
-    el.classList.add('a-puxar');
-    el.style.transition = 'none';
-    if (veuRef.current) veuRef.current.style.transition = 'none';
-    gesto.current = {
-      id: e.pointerId,
-      origem: e.clientY - deslocamentoY(el),
-      altura: el.offsetHeight || 400,
-      historia: [{ y: e.clientY, t: performance.now() }],
-    };
-    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* sem captura segue na mesma */ }
-  }
-
-  function mover(e) {
-    const g = gesto.current;
-    if (!g || e.pointerId !== g.id) return;
-    let dy = e.clientY - g.origem;
-    if (dy < 0) dy = -elastico(-dy, g.altura);
-    pintar(dy, g.altura);
-    g.historia.push({ y: e.clientY, t: performance.now() });
-    if (g.historia.length > 6) g.historia.shift();
-  }
-
-  function largar(e) {
-    const g = gesto.current;
-    if (!g || e.pointerId !== g.id) return;
-    gesto.current = null;
-    const el = painelRef.current;
-    if (!el) return;
-
-    // Ler a posição primeiro, e só depois mexer em estilos.
-    const y = deslocamentoY(el);
-
-    // Velocidade dos ultimos milissegundos, nao do gesto inteiro: o que conta e
-    // para onde a mao ia no instante em que largou.
-    const prim = g.historia[0];
-    const ult = g.historia[g.historia.length - 1];
-    const v = ((ult.y - prim.y) / Math.max(1, ult.t - prim.t)) * 1000;
-
-    el.style.transition = 'transform var(--dur-folha) var(--ease-folha)';
-    if (veuRef.current) veuRef.current.style.transition = 'opacity 180ms linear';
-
-    if (y + projetar(v) > g.altura * 0.4) {
-      el.style.transform = `translate3d(0, ${g.altura}px, 0)`;
-      if (veuRef.current) veuRef.current.style.opacity = '0';
-      window.setTimeout(onFechar, 190);
-    } else {
-      pintar(0, g.altura);
-      if (veuRef.current) veuRef.current.style.opacity = '1';
-    }
-  }
-
-  return { painelRef, veuRef, puxar: { onPointerDown: comecar, onPointerMove: mover, onPointerUp: largar, onPointerCancel: largar } };
-}
-
-// `largura` serve os poucos casos que nao cabem na coluna estreita -- a
-// pre-visualizacao de uma folha A4, por exemplo. Por omissao nada muda.
-function Modal({ title, onClose, children, onBack, largura, semPadding, acoes, camada }) {
-  // Esc fecha o modal — teclado deve conseguir sair sem rato.
-  useEffect(() => {
-    function onKey(e) { if (e.key === 'Escape') onClose(); }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  const { painelRef, veuRef, puxar } = useFolhaArrastavel(onClose);
-
-  return (
-    <div
-      className="fixed inset-0 flex items-end sm:items-center justify-center px-0 sm:px-4"
-      style={{ zIndex: camada || 40 }}
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
-    >
-      {/* O véu é irmão da folha e não pai: a opacidade dele acompanha o dedo
-          enquanto se puxa, e sendo pai levava a folha atrás no desvanecer. */}
-      <div
-        ref={veuRef}
-        className="absolute inset-0 animate-in"
-        style={{ backgroundColor: 'var(--overlay)', backdropFilter: 'blur(3px)' }}
-        onClick={onClose}
-      />
-      <div
-        ref={painelRef}
-        onClick={(e) => e.stopPropagation()}
-        className={`folha relative border border-hair w-full overflow-y-auto folha-corpo ${largura ? '' : 'sm:max-w-md'}`}
-        style={{
-          backgroundColor: 'var(--bg-surface)',
-          borderRadius: 'var(--r-xl) var(--r-xl) 0 0',
-          maxWidth: largura || undefined,
-          maxHeight: 'min(92dvh, 760px)',
-          paddingBottom: 'env(safe-area-inset-bottom)',
-          boxShadow: 'var(--shadow-lg)',
-          willChange: 'transform',
-        }}
-      >
-        {/* Cabeçalho e pega são a mesma peça: é por aqui que a folha se puxa. */}
-        <div
-          className="sticky top-0 folha-puxador"
-          style={{ backgroundColor: 'var(--bg-surface)', zIndex: 1, borderTopLeftRadius: 'inherit', borderTopRightRadius: 'inherit' }}
-          {...puxar}
-        >
-          <span className="folha-pega" style={{ marginTop: 8, marginBottom: 2 }} aria-hidden="true" />
-          <div className="flex items-center justify-between gap-2 px-5 py-3.5 border-b border-hair">
-            <div className="flex items-center gap-2 min-w-0">
-              {onBack && <button onClick={onBack} type="button" className="p-1.5 rounded-lg btn-surface flex-shrink-0 tap" aria-label="Voltar"><ArrowLeft size={16} className="text-muted" style={{ display: 'block' }} /></button>}
-              <h2 className="font-display font-semibold text-lg text-primary truncate" style={{ letterSpacing: '-0.01em' }}>{title}</h2>
-            </div>
-            <span className="flex items-center gap-2 flex-shrink-0">
-              {acoes}
-              <button onClick={onClose} type="button" className="p-1.5 rounded-lg btn-surface flex-shrink-0 tap" aria-label="Fechar">
-                <X size={18} className="text-muted" style={{ display: 'block' }} />
-              </button>
-            </span>
-          </div>
-        </div>
-        <div className={semPadding ? '' : 'p-5'}>{children}</div>
-      </div>
-    </div>
-  );
-}
-
-// `confirmLabel` e `tone` sao opcionais e mantem o comportamento antigo por
-// omissao: a caixa nasceu para eliminar, mas tambem confirma acoes que criam --
-// e ai um botao vermelho a dizer "Eliminar" seria mentira.
-function ConfirmDialog({ title, message, onConfirm, onCancel, confirmLabel = 'Eliminar', cancelLabel = 'Cancelar', tone = 'rust' }) {
-  useEffect(() => {
-    function onKey(e) { if (e.key === 'Escape') onCancel(); }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onCancel]);
-
-  return (
-    <div className="fixed inset-0 flex items-end sm:items-center justify-center px-0 sm:px-4 animate-in" style={{ backgroundColor: 'var(--overlay-strong)', backdropFilter: 'blur(3px)', zIndex: 50 }} onClick={onCancel} role="alertdialog" aria-modal="true" aria-label={title}>
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="dialogo border border-hair w-full sm:max-w-sm p-5"
-        style={{
-          backgroundColor: 'var(--bg-surface)',
-          boxShadow: 'var(--shadow-lg)',
-          borderRadius: 'var(--r-xl) var(--r-xl) 0 0',
-          paddingBottom: 'calc(20px + env(safe-area-inset-bottom))',
-        }}
-      >
-        <h3 className="font-display font-semibold text-base text-primary mb-2" style={{ letterSpacing: '-0.01em' }}>{title}</h3>
-        <p className="text-sm text-muted font-body mb-5" style={{ whiteSpace: 'pre-line', lineHeight: 1.5 }}>{message}</p>
-        <div className="flex gap-2 justify-end acoes-folha">
-          <button onClick={onCancel} type="button" className="btn btn-ghost">{cancelLabel}</button>
-          <button onClick={onConfirm} type="button" className="btn" style={{ backgroundColor: `var(--${tone})`, color: 'var(--on-accent)', fontWeight: 600 }}>{confirmLabel}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function Toast({ toast }) {
   if (!toast) return null;
   const isError = toast.type === 'error';
@@ -4774,23 +4572,6 @@ function Toast({ toast }) {
           style={{ color: 'var(--brass)', background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}
         >
           {toast.acao.label}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function EmptyState({ message, cta, onCta, icon: Icon = Info, hint }) {
-  return (
-    <div className="flex flex-col items-center justify-center text-center py-14 px-4">
-      <span className="p-3.5 mb-4" style={{ backgroundColor: 'var(--wash)', border: '1px solid var(--border-hair)', borderRadius: 'var(--r-lg)' }}>
-        <Icon size={22} className="text-faint" style={{ display: 'block' }} />
-      </span>
-      <p className="text-sm text-primary font-body max-w-xs font-medium" style={{ lineHeight: 1.5 }}>{message}</p>
-      {hint && <p className="text-xs text-faint font-body max-w-sm mt-1.5">{hint}</p>}
-      {cta && (
-        <button onClick={onCta} type="button" className="btn mt-4" style={{ backgroundColor: 'var(--brass-soft)', borderColor: 'var(--brass)', color: 'var(--brass)' }}>
-          {cta}
         </button>
       )}
     </div>
@@ -8148,6 +7929,7 @@ const NAV_TABS = [
   { id: 'students', label: 'Alunos', icon: Users },
   { id: 'assessments', label: 'Avaliações', icon: Activity },
   { id: 'finances', label: 'Finanças', icon: Wallet },
+  { id: 'mais', label: 'Mais', icon: LayoutGrid },
 ];
 
 // Desktop/tablet: separadores no topo. Telemóvel: barra fixa no fundo, ao alcance
@@ -11037,6 +10819,7 @@ function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, 
   const camposMetodo = camposDoMetodo(ex.metodo);
   const paramsMetodo = ex.metodoParams || {};
   const temSubEtapas = METODOS_COM_SUBETAPAS.includes(ex.metodo);
+  const [aReplicar, setAReplicar] = useState(null);
 
   function gerarEAplicar() {
     onMudar({ ...ex, linhas: gerarSubEtapas(ex.metodo, paramsMetodo, linhas[0]) });
@@ -11045,6 +10828,13 @@ function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, 
 
   // Entrar numa linha acrescenta outra por baixo, com os mesmos valores.
   // Escrever um treino é repetir a mesma série a mudar um número.
+  // Copia uma série para as outras deste exercício, só nos campos que cada uma usa.
+  function replicarParaTodas(indiceOrigem) {
+    const origem = linhas[indiceOrigem];
+    onMudar({ ...ex, linhas: linhas.map((l, i) => (i === indiceOrigem ? l : replicarSerie(origem, l, (id) => tipoDeSerie(id).campos))) });
+    setAReplicar(null);
+  }
+
   function acrescentarLinha(depoisDe) {
     const nova = novaLinhaSerie(linhas[depoisDe] || linhas[linhas.length - 1]);
     const seguintes = [...linhas];
@@ -11137,9 +10927,26 @@ function ExercicioRow({ ex, biblioteca, indice, onMudar, onRemover, onDuplicar, 
             onNovaLinha={() => acrescentarLinha(i)}
           />
         ))}
-        <button type="button" onClick={() => acrescentarLinha(linhas.length - 1)} className="btn btn-ghost self-start" style={{ fontSize: 11 }}>
-          <Plus size={13} /> Acrescentar série
-        </button>
+        <div className="flex gap-2 flex-wrap items-center">
+          <button type="button" onClick={() => acrescentarLinha(linhas.length - 1)} className="btn btn-ghost" style={{ fontSize: 11 }}>
+            <Plus size={13} /> Acrescentar série
+          </button>
+          {linhas.length > 1 && (
+            <button type="button" onClick={() => setAReplicar(0)} className="btn btn-ghost" style={{ fontSize: 11 }}>
+              <Copy size={13} /> Copiar série 1 para as outras
+            </button>
+          )}
+        </div>
+        {aReplicar !== null && (
+          <ConfirmDialog
+            title="Copiar a série 1?"
+            message={`As outras ${linhas.length - 1} séries ficam com os valores da série 1, nos campos que cada uma usa. O resto não muda.`}
+            confirmLabel="Copiar"
+            tone="brass"
+            onCancel={() => setAReplicar(null)}
+            onConfirm={() => replicarParaTodas(aReplicar)}
+          />
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -11720,8 +11527,27 @@ function DuplicarProgramaModal({ prescricao, alunos, onDuplicar, onClose }) {
   );
 }
 
-function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivar, onGuardarModelo, onImprimir, onEliminar, onVerTreino, onGuardarVideoExercicio, onApagarVideoExercicio, alunos, onDuplicarPrograma }) {
+function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivar, onGuardarModelo, onImprimir, onEliminar, onVerTreino, onGuardarVideoExercicio, onApagarVideoExercicio, alunos, onDuplicarPrograma, quem }) {
   const [aDuplicar, setADuplicar] = useState(false);
+  const [presetsDe, setPresetsDe] = useState(null); // id do treino que recebe o preset
+  const [guardarPresetDe, setGuardarPresetDe] = useState(null);
+  const [nomePreset, setNomePreset] = useState('');
+  const presets = useModulo('presets');
+
+  function acrescentarPreset(treinoId, preset) {
+    const t = prescricao.treinos.find((x) => x.id === treinoId);
+    if (!t) return;
+    const { exercicios, grupos } = aplicarPreset(preset, uid);
+    mudarTreino(treinoId, { ...t, exercicios: [...t.exercicios, ...exercicios], grupos: { ...(t.grupos || {}), ...grupos } });
+    setPresetsDe(null);
+  }
+  async function guardarPreset() {
+    const t = prescricao.treinos.find((x) => x.id === guardarPresetDe);
+    if (!t) return;
+    const novo = presetDeSelecao(nomePreset, t.exercicios.filter((e) => selecao.includes(e.id)), t.grupos, uid, new Date().toISOString());
+    await presets.gravar((v) => ({ ...v, itens: [...v.itens, novo] }));
+    setGuardarPresetDe(null); setNomePreset(''); setSelecao([]);
+  }
   const biblioteca = treinos.biblioteca;
   const [picker, setPicker] = useState(null); // id do treino a receber o exercicio
   const [alternativas, setAlternativas] = useState(null); // { treinoId, ex }
@@ -11844,6 +11670,20 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
 
   return (
     <div className="flex flex-col gap-4">
+      {presetsDe && <PresetsModal gerarId={uid} onClose={() => setPresetsDe(null)} onAplicar={(p) => acrescentarPreset(presetsDe, p)} />}
+      {guardarPresetDe && (
+        <Modal title="Guardar como preset" onClose={() => setGuardarPresetDe(null)}>
+          <div className="flex flex-col gap-3">
+            <FormField label="Nome do preset">
+              <input value={nomePreset} onChange={(e) => setNomePreset(e.target.value)} maxLength={80} className="input-field" placeholder="Ex.: Empurrar pesado" />
+            </FormField>
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={() => setGuardarPresetDe(null)} className="btn btn-ghost">Cancelar</button>
+              <button type="button" onClick={guardarPreset} disabled={!nomePreset.trim() || presets.estado !== 'ok'} className="btn btn-primary disabled:opacity-40">Guardar</button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {aDuplicar && (
         <DuplicarProgramaModal
           prescricao={prescricao}
@@ -11896,6 +11736,8 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
           </FormField>
         </div>
       </div>
+
+      <PlaneamentoPrograma prescricao={prescricao} onMudar={onMudar} gerarId={uid} quem={quem} />
 
       {prescricao.treinos.map((t, ti) => (
         <div key={t.id} className="card p-4 flex flex-col gap-3">
@@ -11987,6 +11829,9 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
                 >
                   Combinar em supersérie
                 </button>
+                <button type="button" onClick={() => setGuardarPresetDe(t.id)} className="btn btn-ghost" style={{ fontSize: 11 }}>
+                  Guardar como preset
+                </button>
                 {jaAgrupados > 0 && (
                   <button type="button" onClick={() => separarSelecionados(t.id)} className="btn btn-ghost" style={{ fontSize: 11 }}>
                     Separar
@@ -11999,9 +11844,14 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
             );
           })()}
 
-          <button type="button" onClick={() => setPicker(t.id)} className="btn btn-ghost self-start" style={{ fontSize: 12 }}>
-            <Plus size={14} /> Acrescentar exercício
-          </button>
+          <div className="flex gap-2 flex-wrap">
+            <button type="button" onClick={() => setPicker(t.id)} className="btn btn-ghost" style={{ fontSize: 12 }}>
+              <Plus size={14} /> Acrescentar exercício
+            </button>
+            <button type="button" onClick={() => setPresetsDe(t.id)} className="btn btn-ghost" style={{ fontSize: 12 }}>
+              <BookMarked size={14} /> Presets
+            </button>
+          </div>
         </div>
       ))}
 
@@ -12769,6 +12619,8 @@ function ExercicioRegisto({ ex, info, biblioteca, estado, ultima, onMudar }) {
         <p className="text-xs font-body text-muted" style={{ margin: '6px 0' }}>Exercício saltado.</p>
       ) : (
         <div className="flex flex-col min-w-0">
+          <CronometroMetodo metodo={ex.metodo} params={ex.metodoParams} />
+          {linhas[0] && <CronometroDescanso descanso={linhas[0].descanso} />}
           {linhas.map((linha, i) => {
             const campos = camposRealizaveis(tipoDeSerie(linha.tipo).campos, linha);
             return (
@@ -12828,6 +12680,16 @@ function CamposDoFecho({ f, mudar }) {
           {Array.from({ length: 11 }, (_, n) => <option key={n} value={String(n)}>{n}</option>)}
         </select>
       </FormField>
+      <div className="grid grid-cols-2 gap-2">
+        {[['satisfacao', 'Satisfação (1 a 5)'], ['energia', 'Energia (1 a 5)']].map(([campo, rotulo]) => (
+          <FormField key={campo} label={rotulo}>
+            <select value={f[campo] || ''} onChange={(e) => mudar(campo, e.target.value)} className="input-field">
+              <option value="">Sem indicar</option>
+              {[1, 2, 3, 4, 5].map((n) => <option key={n} value={String(n)}>{n}</option>)}
+            </select>
+          </FormField>
+        ))}
+      </div>
       <FormField label="Sintomas durante o treino">
         <textarea rows={2} value={f.durante} onChange={(e) => mudar('durante', e.target.value)} className="input-field" style={{ resize: 'vertical' }} placeholder="Ex.: dor no ombro direito ao subir" />
       </FormField>
@@ -12856,7 +12718,7 @@ function CamposDoFecho({ f, mudar }) {
 function FecharSessaoFolha({ resumo, minutos, aGuardar, onGuardar, onFechar }) {
   const [f, setF] = useState(() => ({
     data: fmtDateISO(new Date()), duracaoMin: String(Math.max(1, minutos)), esforco: '',
-    durante: '', depois: '', interrompida: false, motivo: '', notas: '',
+    durante: '', depois: '', interrompida: false, motivo: '', notas: '', satisfacao: '', energia: '',
   }));
   const mudar = (campo, valor) => setF((x) => ({ ...x, [campo]: valor }));
   return (
@@ -12982,6 +12844,7 @@ function RegistarSessao({ student, prescricao, treinoId, biblioteca, execucao, o
       esforco: f.esforco,
       sintomas: { durante: f.durante, depois: f.depois },
       notas: f.notas,
+      feedback: { satisfacao: f.satisfacao, energia: f.energia },
       itens: construirItens(treino, rascunho.itens, dep),
       criadoEm: new Date().toISOString(),
       editadoEm: '',
@@ -13356,7 +13219,15 @@ function VerSessaoModal({ sessao, onGuardar, onApagar, onFechar }) {
   );
 }
 
-function TreinosView({ student, alunos, onDuplicarPrograma, treinos, onMudarPrescricao, onCriarPrescricao, onEliminarPrescricao, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivarPrescricao, onGuardarModelo, onCriarDeModelo, onApagarModelo, usosDoExercicio, onImprimir, onVoltar, execucoes, onCarregarExecucoes, onGuardarSessao, onCorrigirSessao, onApagarSessao, sessaoInicial, onSessaoInicialLida, onGuardarVideoExercicio, onApagarVideoExercicio }) {
+function EvolucaoFolha({ student, sessoes, onFechar }) {
+  return (
+    <Modal title={`Evolução de ${student.name}`} onClose={onFechar}>
+      <EvolucaoAluno sessoes={sessoes} aulasPorSemana={aulasPorSemanaDoPlano(student.planType)} />
+    </Modal>
+  );
+}
+
+function TreinosView({ student, alunos, onDuplicarPrograma, quem, treinos, onMudarPrescricao, onCriarPrescricao, onEliminarPrescricao, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivarPrescricao, onGuardarModelo, onCriarDeModelo, onApagarModelo, usosDoExercicio, onImprimir, onVoltar, execucoes, onCarregarExecucoes, onGuardarSessao, onCorrigirSessao, onApagarSessao, sessaoInicial, onSessaoInicialLida, onGuardarVideoExercicio, onApagarVideoExercicio }) {
   const [abertoId, setAbertoId] = useState(null);
   // Um programa que já tem trabalho escrito abre para ser visto; um acabado de
   // criar abre no construtor, que é o que falta fazer-lhe.
@@ -13364,6 +13235,7 @@ function TreinosView({ student, alunos, onDuplicarPrograma, treinos, onMudarPres
   const [verArquivados, setVerArquivados] = useState(false);
   const [modeloAApagar, setModeloAApagar] = useState(null);
   const [verBiblioteca, setVerBiblioteca] = useState(false);
+  const [verEvolucao, setVerEvolucao] = useState(false);
   // Registar uma sessão: { prescricaoId, treinoId }. Ocupa o ecrã, como a
   // biblioteca; a vista do programa fica como estava por baixo.
   const [registo, setRegisto] = useState(null);
@@ -13472,6 +13344,7 @@ function TreinosView({ student, alunos, onDuplicarPrograma, treinos, onMudarPres
           onGuardarVideoExercicio={onGuardarVideoExercicio}
           onApagarVideoExercicio={onApagarVideoExercicio}
           alunos={alunos}
+          quem={quem}
           onDuplicarPrograma={(origem, destinoId) => {
             const nova = onDuplicarPrograma(origem, destinoId);
             // A cópia no mesmo aluno abre logo; noutro aluno, o aviso diz onde ficou.
@@ -13491,6 +13364,11 @@ function TreinosView({ student, alunos, onDuplicarPrograma, treinos, onMudarPres
           <button type="button" onClick={() => setVerBiblioteca(true)} className="btn btn-ghost">
             <BookMarked size={15} /> Biblioteca de modelos ({TOTAL_MODELOS_CATALOGO + TOTAL_PROTOCOLOS_SEMANAIS})
           </button>
+
+          <button type="button" onClick={() => setVerEvolucao(true)} className="btn btn-ghost">
+            <LineChartIcon size={15} /> Frequência, cargas e recordes
+          </button>
+          {verEvolucao && <EvolucaoFolha student={student} sessoes={execucaoDoAluno.sessoes} onFechar={() => setVerEvolucao(false)} />}
 
           {modelos.length > 0 && (
             <>
@@ -18204,6 +18082,22 @@ function AppInner() {
   }
 
   function showToast(msg, type = 'success', acao = null) { setToast({ msg, type, acao, key: Date.now() }); }
+  // Acesso dos módulos à base de dados. É estável de propósito: `useModulo` lê de
+  // novo sempre que isto mude. `geracaoModulos` remonta tudo depois de um restauro.
+  const [geracaoModulos, setGeracaoModulos] = useState(0);
+  const armazenamento = useRef(null);
+  armazenamento.current = { storageOk, gravarBloco };
+  const appModulos = useRef({
+    async lerChave(chave) {
+      if (!armazenamento.current.storageOk) return null;
+      const r = await readStoredValue(chave);
+      return r && r.value ? JSON.parse(r.value) : null;
+    },
+    async gravarChave(chave, valor, rotulo) {
+      if (!armazenamento.current.storageOk) return true;
+      return armazenamento.current.gravarBloco(chave, JSON.stringify(valor), rotulo);
+    },
+  });
 
   // Separa "não deu para gravar" de "outro dispositivo mexeu nisto primeiro".
   // O segundo caso não é um erro de rede: é trabalho de outra sessão que seria
@@ -18793,7 +18687,7 @@ function AppInner() {
       return;
     }
     setShowStudentModal(false);
-    const gravados = [persistStudents(plano.alunos), persistSessions(plano.sessoes), limparExecucoes(id), apagarAcessosDoAluno(id)];
+    const gravados = [persistStudents(plano.alunos), persistSessions(plano.sessoes), limparExecucoes(id), apagarAcessosDoAluno(id), limparModulosDoAluno(id)];
     if (plano.tem.programas > 0) gravados.push(persistTreinos((t) => ({ ...t, prescricoes: t.prescricoes.filter((p) => p.studentId !== id) })));
     if (plano.tem.respostas > 0) gravados.push(persistFormularios({ ...formularios, respostas: plano.respostas }));
     if (plano.soltas.length > 0) gravados.push(persistPhotos(plano.fotos));
@@ -19751,6 +19645,46 @@ function AppInner() {
   // Tudo o que a conta guarda, para a cópia de segurança. O registo de sessões
   // lê-se por aluno, e um aluno que não se conseguiu ler faz falhar a cópia: uma
   // cópia que se diz completa sem as sessões dele era pior do que nenhuma.
+  // Falha alto, como as sessões: uma cópia que se diz completa sem um módulo era
+  // pior do que nenhuma.
+  async function lerTodosOsModulos() {
+    const modulos = {};
+    if (!storageOk) return modulos;
+    for (const nome of NOMES_MODULOS) {
+      const r = await readStoredValue(chaveModulo(nome));
+      if (r && r.value) modulos[nome] = JSON.parse(r.value);
+    }
+    return modulos;
+  }
+
+  async function restaurarModulos(copia) {
+    if (!storageOk) return true;
+    try {
+      const { escrever, apagar } = planoDeModulos(copia, await listarChavesDeModulos());
+      for (const chave of apagar) await apagarStoredValue(chave);
+      for (const { chave, valor } of escrever) {
+        await readStoredValue(chave);
+        await writeStoredValue(chave, JSON.stringify(valor));
+      }
+      return true;
+    } catch (e) {
+      console.error('[PTMANAGER] falhou a restaurar os módulos', e);
+      return false;
+    }
+  }
+
+  async function limparModulosDoAluno(id) {
+    if (!storageOk) return true;
+    try {
+      const mudancas = modulosAoEliminarAluno(await lerTodosOsModulos(), id);
+      for (const [nome, valor] of Object.entries(mudancas)) await writeStoredValue(chaveModulo(nome), JSON.stringify(valor));
+      return true;
+    } catch (e) {
+      console.error('[PTMANAGER] falhou a limpar os módulos do aluno', e);
+      return false;
+    }
+  }
+
   async function juntarCopia() {
     await Promise.all(students.map((s) => carregarExecucoes(s.id)));
     const sessoesPorAluno = {};
@@ -19773,6 +19707,7 @@ function AppInner() {
       treinos: serializarTreinos(treinosRef.current),
       formularios,
       execucoes: sessoesPorAluno,
+      modulos: await lerTodosOsModulos(),
     }, new Date().toISOString());
   }
 
@@ -19815,7 +19750,9 @@ function AppInner() {
     if (copia.formularios) gravados.push(persistFormularios(copia.formularios));
     const blocosOk = (await Promise.all(gravados)).every(Boolean);
     const sessoesOk = await restaurarSessoes(copia);
-    if (blocosOk && sessoesOk) showToast('Backup restaurado.');
+    const modulosOk = await restaurarModulos(copia);
+    setGeracaoModulos((g) => g + 1);
+    if (blocosOk && sessoesOk && modulosOk) showToast('Backup restaurado.');
     else showToast('A cópia não ficou restaurada por inteiro. Volte a tentar: o que já foi restaurado mantém-se.', 'error');
   }
 
@@ -19864,6 +19801,8 @@ function AppInner() {
       for (const chave of await listarChavesDeExecucoes()) {
         await filaDeExecucoes.current(chave, () => apagarStoredValue(chave));
       }
+      for (const chave of await listarChavesDeModulos()) await apagarStoredValue(chave);
+      setGeracaoModulos((g) => g + 1);
       limparEcra();
       showToast('Dados apagados.');
       setSettingsOpen(false);
@@ -19910,7 +19849,8 @@ function AppInner() {
   if (supabaseConfigured && !subscriptionActive) return <SalesPlansPage onSignOut={signOut} onRefresh={refreshSubscription} checkoutReturn={checkoutReturn} subscription={subscription} />;
 
   return (
-    <div className="min-h-screen bg-base flex flex-col">
+    <ModulosProvider value={appModulos.current}>
+    <div key={geracaoModulos} className="min-h-screen bg-base flex flex-col">
       <div className="sticky top-0" style={{ zIndex: 31 }}>
         <Header
           view={view}
@@ -19974,6 +19914,7 @@ function AppInner() {
             onArquivarPrescricao={arquivarPrescricao}
             onGuardarModelo={guardarComoModelo}
             alunos={students}
+            quem={trainerName || user?.email || 'Personal Trainer'}
             onDuplicarPrograma={duplicarPrograma}
             onCriarDeModelo={criarPrescricaoDeModelo}
             onApagarModelo={apagarModelo}
@@ -20078,6 +20019,25 @@ function AppInner() {
               showToast('Registe um aluno antes de fazer uma avaliação física.');
               mudarVista('students');
             }} />
+        )}
+        {view === 'mais' && (
+          <React.Suspense fallback={<div className="px-4 py-4 max-w-3xl mx-auto"><EsqueletoLinhas /></div>}>
+            <CentroModulos
+              students={students}
+              sessions={sessions}
+              treinos={treinos}
+              definicoes={definicoes}
+              formularios={formularios}
+              quem={trainerName || user?.email || 'Personal Trainer'}
+              onCarregarExecucoes={carregarExecucoes}
+              execucoes={execucoes}
+              onCorrigirSessao={corrigirSessaoRealizada}
+              onMudarSessoes={persistSessions}
+              onMudarAlunos={persistStudents}
+              onAbrirAluno={(st) => { setView('students'); setFichaStudentId(st.id); }}
+              showToast={showToast}
+            />
+          </React.Suspense>
         )}
         {view === 'finances' && <FinancesView finances={finances} students={students} monthCursor={financeMonthCursor} setMonthCursor={setFinanceMonthCursor} onOpenTransaction={openEditTransaction} onNewTransaction={openNewTransaction} onQuickComplete={quickCompleteTransaction} customCategories={customCategories} />}
         </>
@@ -20276,8 +20236,11 @@ function AppInner() {
       )}
       <Toast toast={toast} />
     </div>
+    </ModulosProvider>
   );
 }
+
+const CentroModulos = React.lazy(() => import('./src/features/CentroModulos'));
 
 export default function App() {
   // O link do aluno (`?a=<token>`) ou a conta própria dele (`?aluno=1`,

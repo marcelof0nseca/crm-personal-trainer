@@ -1,6 +1,6 @@
 create table if not exists public.app_data (
   user_id uuid not null references auth.users(id) on delete cascade,
-  data_key text not null check (data_key in ('alunos', 'agenda', 'financas', 'fotos', 'categorias', 'definicoes', 'treinos', 'formularios') or data_key ~ '^execucoes:[A-Za-z0-9_-]{1,64}$'),
+  data_key text not null check (data_key in ('alunos', 'agenda', 'financas', 'fotos', 'categorias', 'definicoes', 'treinos', 'formularios') or data_key ~ '^execucoes:[A-Za-z0-9_-]{1,64}$' or data_key ~ '^modulo:[a-z_]{1,32}$'),
   value jsonb not null default '[]'::jsonb,
   updated_at timestamptz not null default now(),
   primary key (user_id, data_key)
@@ -17,6 +17,8 @@ alter table public.app_data drop constraint if exists app_data_data_key_check;
 alter table public.app_data add constraint app_data_data_key_check check (
   data_key in ('alunos', 'agenda', 'financas', 'fotos', 'categorias', 'definicoes', 'treinos', 'formularios')
   or data_key ~ '^execucoes:[A-Za-z0-9_-]{1,64}$'
+  -- `modulo:<nome>`: uma linha por módulo novo (src/features/modulos.ts).
+  or data_key ~ '^modulo:[a-z_]{1,32}$'
 );
 
 alter table public.app_data enable row level security;

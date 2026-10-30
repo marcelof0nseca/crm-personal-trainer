@@ -30,7 +30,7 @@ const feita = C.montarCopia({
 }, '2026-09-20T10:00:00.000Z');
 esperar(feita.versao === C.VERSAO_COPIA && feita.exportedAt === '2026-09-20T10:00:00.000Z', 'a cópia leva a versão e o instante');
 const lida = C.lerCopia(JSON.stringify(feita));
-esperar(lida.versao === 2 && lida.definicoes && lida.treinos && lida.formularios && lida.execucoes, 'uma cópia nova volta a ler-se com tudo');
+esperar(lida.versao === C.VERSAO_COPIA && lida.definicoes && lida.treinos && lida.formularios && lida.execucoes, 'uma cópia nova volta a ler-se com tudo');
 esperar(lida.execucoes.a1.sessoes.length === 2 && lida.execucoes.a1.sessoes[0].id === 'x1', 'as sessões voltam por aluno');
 const r = C.resumoDaCopia(lida);
 esperar(r.alunos === 2 && r.aulas === 1 && r.programas === 2 && r.sessoes === 2 && r.respostas === 1 && r.completa === true, 'o resumo conta programas, sessões e respostas');

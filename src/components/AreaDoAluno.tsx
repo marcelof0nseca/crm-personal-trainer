@@ -30,6 +30,7 @@ import { supabase, supabaseConfigured } from '../supabaseClient';
 import { supabaseAluno } from '../supabaseClientAluno';
 import { CAMPO_SERIE, ExercicioVista, descreverLinha, tipoDeSerie } from './TreinoAtoms';
 import { StatCard } from './DashboardAtoms';
+import { CronometroDescanso, CronometroMetodo } from '../features/treino/Cronometros';
 import {
   VERSAO_RASCUNHO, camposRealizaveis, chaveRascunho, construirItens, estatisticasDoAluno,
   lerRascunho, normalizarSessaoRealizada, ordenarSessoes, proximoTreino, resumoDaSessao, temSintomas,
@@ -301,7 +302,9 @@ function ExercicioRegisto({ ex, estado, ultima, onMudar }) {
       {saltado ? (
         <p className="text-xs font-body text-muted" style={{ margin: '6px 0' }}>Exercício saltado.</p>
       ) : (
-        <div className="flex flex-col min-w-0">
+        <div className="flex flex-col gap-1 min-w-0">
+          <CronometroMetodo metodo={ex.metodo} params={ex.metodoParams} />
+          {linhas[0] && <CronometroDescanso descanso={linhas[0].descanso} />}
           {linhas.map((linha, i) => (
             <LinhaRegisto
               key={linha.id}

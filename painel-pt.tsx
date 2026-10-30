@@ -407,6 +407,7 @@ const ALL_FOLD_SITES = [
   { id: 'assessFoldAbdominal', label: 'Abdominal' },
   { id: 'assessFoldSuprailiac', label: 'Supra-ilíaca' },
   { id: 'assessFoldThigh', label: 'Coxa' },
+  { id: 'assessFoldCalf', label: 'Gémeo' },
 ];
 function foldLabel(id) { return (ALL_FOLD_SITES.find((f) => f.id === id) || {}).label || id; }
 
@@ -447,6 +448,7 @@ const FOLD_PROTOCOLS = [
   {
     id: 'faulkner', label: 'Faulkner 4 Dobras', needsAge: false,
     sites: { M: ['assessFoldTriceps', 'assessFoldSubscapular', 'assessFoldSuprailiac', 'assessFoldAbdominal'], F: ['assessFoldTriceps', 'assessFoldSubscapular', 'assessFoldSuprailiac', 'assessFoldAbdominal'] },
+    direta: true,
     calc: (sum) => (sum > 0 ? 5.783 + 0.153 * sum : null),
   },
   {
@@ -457,6 +459,12 @@ const FOLD_PROTOCOLS = [
       const d = sex === 'F' ? 1.16650 - 0.07063 * Math.log10(sum) : 1.17136 - 0.06706 * Math.log10(sum);
       return siriFat(d);
     },
+  },
+  {
+    id: 'yuhasz', label: 'Yuhasz 6 Dobras', needsAge: false, direta: true,
+    referencia: 'Yuhasz, 1974. Estudada sobretudo em adultos jovens treinados: fora desse grupo, a margem de erro é maior.',
+    sites: { M: ['assessFoldTriceps', 'assessFoldSubscapular', 'assessFoldSuprailiac', 'assessFoldAbdominal', 'assessFoldThigh', 'assessFoldCalf'], F: ['assessFoldTriceps', 'assessFoldSubscapular', 'assessFoldSuprailiac', 'assessFoldAbdominal', 'assessFoldThigh', 'assessFoldCalf'] },
+    calc: (sum, age, sex) => (sum > 0 ? (sex === 'F' ? 4.56 + 0.143 * sum : 3.64 + 0.097 * sum) : null),
   },
 ];
 
@@ -535,7 +543,8 @@ const EMPTY_ASSESS_FIELDS = {
   assessBodyWater: '', assessProteinPct: '', assessMineralsKg: '', assessBoneMass: '',
   assessVisceralFat: '', assessObesityDegree: '', assessBMR: '', assessMetabolicAge: '',
   assessFoldChest: '', assessFoldMidaxillary: '', assessFoldTriceps: '', assessFoldBiceps: '',
-  assessFoldSubscapular: '', assessFoldAbdominal: '', assessFoldSuprailiac: '', assessFoldThigh: '',
+  assessFoldSubscapular: '', assessFoldAbdominal: '', assessFoldSuprailiac: '', assessFoldThigh: '', assessFoldCalf: '',
+  assessConversao: 'siri',
   assessNotes: '', photoIds: [],
   // Aplicações de protocolos de condicionamento, e as zonas de treino.
   assessCondicionamento: [], assessZonas: null,
@@ -2896,7 +2905,12 @@ function calcFoldBodyFat(form, sex) {
   if (sum <= 0) return null;
   const age = parseFloat(form.assessAge);
   if (protocol.needsAge && !age) return null;
-  const result = protocol.calc(sum, age, sexKey);
+  let result = protocol.calc(sum, age, sexKey);
+  // Brozek em vez de Siri: volta-se à densidade pela equação de Siri e aplica-se a
+  // outra. Só faz sentido nos protocolos que passam pela densidade.
+  if (form.assessConversao === 'brozek' && !protocol.direta && typeof result === 'number') {
+    result = 457 / (495 / (result + 450)) - 414.2;
+  }
   return typeof result === 'number' && !Number.isNaN(result) ? result : null;
 }
 
@@ -7633,6 +7647,15 @@ function AssessmentFields({ form, set, studentHeight, studentSex, definicoes, an
               {FOLD_PROTOCOLS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
             </select>
           </FormField>
+          {!protocol.direta && (
+            <FormField label="Conversão da densidade em % de gordura">
+              <select value={form.assessConversao || 'siri'} onChange={(e) => set('assessConversao', e.target.value)} className="input-field">
+                <option value="siri">Siri (1961)</option>
+                <option value="brozek">Brozek (1963)</option>
+              </select>
+            </FormField>
+          )}
+          {protocol.referencia && <div className="text-2xs text-faint font-body">{protocol.referencia}</div>}
           {!studentSex && <div className="text-2xs text-rust font-body">Defina o sexo biológico do aluno no registo para este protocolo calcular corretamente.</div>}
           {protocol.needsAge && !form.assessAge && <div className="text-2xs text-rust font-body">Indique a idade acima — este protocolo precisa dela para calcular.</div>}
           <div className="grid grid-cols-2 gap-3">
@@ -15237,6 +15260,25 @@ function PrintEvolutionChart({ assessments, sex }) {
 // Folha de exemplo, só para ver o timbre. Os dados são inventados de propósito
 // — quem está nas definições não quer escolher um aluno para ver um cabeçalho,
 // e não faz sentido pôr as medidas de uma pessoa real neste ecrã.
+// Folha timbrada dos módulos novos: cada um diz só que secções leva.
+function ModuloPrintDoc({ job, trainerName, userEmail, timbre }) {
+  return (
+    <>
+      <PrintHeader trainerName={trainerName} userEmail={userEmail} timbre={timbre} titulo={job.titulo} subtitulo={job.subtitulo} />
+      {(job.secoes || []).map((s, i) => (
+        <PrintSection key={i} title={s.titulo}>
+          {s.texto && <p>{s.texto}</p>}
+          {(s.imagens || []).map((src) => <img key={src} src={src} alt="" style={{ maxWidth: '60%', display: 'block', marginBottom: 8 }} />)}
+          {s.linhas && s.linhas.length > 0 && (
+            <dl className="print-grid">{s.linhas.map(([rotulo, valor], n) => <PrintField key={n} label={rotulo} value={valor} />)}</dl>
+          )}
+        </PrintSection>
+      ))}
+      <PrintFooter nota={job.nota} timbre={timbre} />
+    </>
+  );
+}
+
 function ExemploPrintDoc({ trainerName, userEmail, timbre }) {
   const marca = timbre || EMPTY_TIMBRE;
   return (
@@ -18877,6 +18919,9 @@ function AppInner() {
   // papel. Vem daqui as duas, para não haver hipótese de divergirem.
   function documentoDaFolha(job) {
     if (!job) return null;
+    if (job.tipo === 'modulo') {
+      return <ModuloPrintDoc job={job} trainerName={trainerName} userEmail={user?.email} timbre={definicoes.timbre} />;
+    }
     if (job.tipo === 'treino') {
       return (
         <TreinoPrintDoc
@@ -18951,6 +18996,7 @@ function AppInner() {
 
   function tituloDaFolha(job) {
     if (!job) return 'Documento';
+    if (job.tipo === 'modulo') return job.titulo;
     if (job.tipo === 'exemplo') return 'Exemplo de timbre';
     if (job.tipo === 'relatorio') {
       return `Relatório de ${fmtDateLong(`${job.inicio}T00:00:00`)} a ${fmtDateLong(`${job.fim}T00:00:00`)}`;
@@ -19673,11 +19719,32 @@ function AppInner() {
     }
   }
 
+  // Apaga as fotografias que só o registo de um módulo usava, com o mesmo cuidado
+  // das da avaliação física: uma que outra coisa refira fica.
+  async function soltarFotosDeModulo(removido, restanteDoModulo) {
+    const modulos = await lerTodosOsModulos();
+    return apagarFotosSoltas(fotosSoltas(removido, [restanteDosDados(sessions), modulos, restanteDoModulo], photosRef.current));
+  }
+
+  // Marca a avaliação combinada. O id vem da recorrência: repetir não duplica.
+  function agendarAvaliacaoRecorrente(studentId, data, idRecorrencia) {
+    const id = `av-${idRecorrencia}-${data}`.replace(/[^A-Za-z0-9_-]/g, '_');
+    if (sessions.some((s) => s.id === id)) return;
+    persistSessions([...sessions, { id, kind: 'aula', studentId, date: data, startTime: '09:00', endTime: '10:00', type: 'avaliacao', status: 'agendado', notes: '', ...EMPTY_ASSESS_FIELDS }]);
+  }
+
   async function limparModulosDoAluno(id) {
     if (!storageOk) return true;
     try {
-      const mudancas = modulosAoEliminarAluno(await lerTodosOsModulos(), id);
-      for (const [nome, valor] of Object.entries(mudancas)) await writeStoredValue(chaveModulo(nome), JSON.stringify(valor));
+      const antes = await lerTodosOsModulos();
+      const mudancas = modulosAoEliminarAluno(antes, id);
+      // O que saiu dos módulos pode levar fotografias (a postural, o progresso).
+      const soltas = fotosSoltas(antes, [restanteDosDados(sessions.filter((s) => s.studentId !== id)), { ...antes, ...mudancas }], photosRef.current);
+      if (soltas.length > 0 && !(await apagarFotosSoltas(soltas))) return false;
+      for (const [nome, valor] of Object.entries(mudancas)) {
+        await readStoredValue(chaveModulo(nome));
+        await writeStoredValue(chaveModulo(nome), JSON.stringify(valor));
+      }
       return true;
     } catch (e) {
       console.error('[PTMANAGER] falhou a limpar os módulos do aluno', e);
@@ -20032,6 +20099,11 @@ function AppInner() {
               onCarregarExecucoes={carregarExecucoes}
               execucoes={execucoes}
               onCorrigirSessao={corrigirSessaoRealizada}
+              photosById={photosById}
+              onCarregarFotos={uploadPhotos}
+              onImprimir={(doc) => setPreviaJob({ tipo: 'modulo', ...doc })}
+              onSoltarFotos={soltarFotosDeModulo}
+              onAgendarAvaliacao={agendarAvaliacaoRecorrente}
               onMudarSessoes={persistSessions}
               onMudarAlunos={persistStudents}
               onAbrirAluno={(st) => { setView('students'); setFichaStudentId(st.id); }}

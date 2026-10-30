@@ -1,9 +1,10 @@
 // O separador «Mais»: a entrada para os módulos que não cabem na barra. Cada área
 // carrega só quando se abre.
 import { Suspense, lazy, useState } from 'react';
-import { ArrowLeft, MessageSquareText } from 'lucide-react';
+import { ArrowLeft, ClipboardList, MessageSquareText } from 'lucide-react';
 
 const AREAS = [
+  { id: 'avaliacoes', rotulo: 'Centro de avaliações', ajuda: 'Postural, funcional, neuromotora, modelos e envio ao aluno', icon: ClipboardList, comp: lazy(() => import('./avaliacoes/CentroAvaliacoes')) },
   { id: 'feedbacks', rotulo: 'Feedbacks', ajuda: 'O que os alunos disseram dos treinos', icon: MessageSquareText, comp: lazy(() => import('./feedbacks/CentralFeedbacks')) },
 ];
 

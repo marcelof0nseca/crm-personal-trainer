@@ -205,9 +205,9 @@ export function SessionCard({ session, student, onOpen, onQuickStatus, customCat
           <div
             className={`font-body text-sm text-primary truncate ${isFalta ? 'line-through' : ''}`}
             style={{ fontWeight: 500 }}
-            title={isEvento ? type.label : (student?.name || 'Aluno removido')}
+            title={isEvento ? (session.title || type.label) : (student?.name || 'Aluno removido')}
           >
-            {isEvento ? type.label : (student?.name || 'Aluno removido')}
+            {isEvento ? (session.title || type.label) : (student?.name || 'Aluno removido')}
           </div>
           <span className="badge self-start" style={{ color: acentoTexto(statusInfo?.color), backgroundColor: `color-mix(in srgb, ${statusInfo?.color} 14%, transparent)` }}>
             {statusInfo?.label}
@@ -227,9 +227,9 @@ export function SessionCard({ session, student, onOpen, onQuickStatus, customCat
               <div
                 className={`font-body text-sm text-primary truncate ${isFalta ? 'line-through' : ''}`}
                 style={{ fontWeight: 500 }}
-                title={isEvento ? type.label : (student?.name || 'Aluno removido')}
+                title={isEvento ? (session.title || type.label) : (student?.name || 'Aluno removido')}
               >
-                {isEvento ? type.label : (student?.name || 'Aluno removido')}
+                {isEvento ? (session.title || type.label) : (student?.name || 'Aluno removido')}
               </div>
             </div>
             {vaoAcoes > 0 && <span aria-hidden="true" style={{ width: vaoAcoes, flexShrink: 0 }} />}

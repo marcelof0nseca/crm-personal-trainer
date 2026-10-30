@@ -166,7 +166,7 @@ export function descreverLinha(linha, opcoes) {
     })
     .filter(Boolean);
   if (linha.rpe) partes.push(`RPE ${linha.rpe}`);
-  if (linha.rir) partes.push(`RIR ${linha.rir}`);
+  if (linha.rir != null && linha.rir !== '') partes.push(`RIR ${linha.rir}`);
   const descricao = partes.join(' · ');
   const rotulo = rotuloDePapel(linha);
   return rotulo ? `${rotulo}: ${descricao}` : descricao;

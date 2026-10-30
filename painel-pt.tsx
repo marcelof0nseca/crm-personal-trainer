@@ -62,6 +62,7 @@ import { montarCopia, lerCopia, resumoDaCopia, planoDeSessoes } from './src/data
 // O que sai ao apagar uma avaliação ou um aluno, fotografias incluídas --
 // scripts/validar-eliminar.mjs.
 import { fotosSoltas, planoDeEliminacao } from './src/data/eliminar';
+import { clonarPrograma, clonarTreinosCom, rirValido } from './src/data/prescricao';
 
 /* ============================== LOGO ============================== */
 
@@ -2370,7 +2371,7 @@ function migrarExercicioParaLinhas(ex) {
   const modelo = {
     tipo: TIPO_SERIE_OMISSAO,
     reps: ex.reps || '', carga: ex.carga || '', descanso: ex.descanso || '',
-    rpe: ex.rpe || '', rir: ex.rir || '', percentagem1rm: ex.percentagem1rm || '',
+    rpe: ex.rpe || '', rir: ex.rir != null ? ex.rir : '', percentagem1rm: ex.percentagem1rm || '',
     tempo: ex.tempo || '', duracao: ex.duracao || '', distancia: ex.distancia || '',
     velocidade: ex.velocidade || '', ritmo: ex.ritmo || '', potencia: ex.potencia || '',
     inclinacao: ex.inclinacao || '',
@@ -2530,17 +2531,7 @@ function prescricoesDoAluno(treinos, studentId, arquivadas = false) {
 // modelos é uma constante do código, e uma escrita por engano numa dessas
 // listas partilhadas alterava o modelo para toda a gente.
 function clonarTreinos(lista) {
-  return (lista || []).map((t) => ({
-    ...t,
-    id: uid(),
-    grupos: t.grupos ? JSON.parse(JSON.stringify(t.grupos)) : t.grupos,
-    exercicios: (t.exercicios || []).map((ex) => ({
-      ...ex,
-      id: uid(),
-      metodoParams: ex.metodoParams ? { ...ex.metodoParams } : ex.metodoParams,
-      linhas: Array.isArray(ex.linhas) ? ex.linhas.map((l) => ({ ...l })) : ex.linhas,
-    })),
-  }));
+  return clonarTreinosCom(lista, uid);
 }
 
 // Um numero simples, com ou sem unidade de peso. "8-10" e "ate a falha" nao
@@ -9543,6 +9534,7 @@ function StudentFormModal({ student, sessions, customCategories, definicoes, tre
     active: true, memberNumber: '', sex: '', planType: PLAN_TYPES[0],
     paymentMode: 'mensal', planValue: '', biweeklyValue: '', quinzenasPagas: {},
     taxPercent: '', gymFeeType: 'percent', gymFeeValue: '', phone: '', height: '', notes: '',
+    startDate: fmtDateISO(new Date()),
   }));
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState('');
@@ -9692,6 +9684,10 @@ function StudentFormModal({ student, sessions, customCategories, definicoes, tre
             <input type="number" inputMode="decimal" min="0" step="1" value={form.height} onChange={(e) => set('height', e.target.value)} className="input-field" placeholder="Para calcular IMC" />
           </FormField>
         </div>
+
+        <FormField label="Aluno desde (opcional)">
+          <input type="date" value={form.startDate || ''} onChange={(e) => set('startDate', e.target.value)} className="input-field" />
+        </FormField>
 
         <FormField label="Observações (opcional)">
           <textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} className="input-field" rows={2} placeholder="Notas sobre o aluno..." />
@@ -9866,6 +9862,7 @@ function SessionFormModal({ session, students, sessions, defaultDate, reposicaoD
       type: kind === 'evento' ? EVENT_TYPES[0].id : 'fixo',
       studentId: kind === 'evento' ? null : (students[0]?.id || ''),
       status: kind === 'evento' ? 'agendado' : f.status,
+      title: kind === 'evento' ? f.title : '',
     }));
     setError('');
   }
@@ -10246,6 +10243,12 @@ function SessionFormModal({ session, students, sessions, defaultDate, reposicaoD
                   </>
                 )}
               </div>
+            )}
+
+            {isEvento && (
+              <FormField label="Título (opcional)">
+                <input value={form.title || ''} onChange={(e) => set('title', e.target.value)} maxLength={80} className="input-field" placeholder="Ex.: Reunião com o ginásio" />
+              </FormField>
             )}
 
             {(isEvento || form.type !== 'avaliacao') && (
@@ -10913,6 +10916,20 @@ function LinhaSerie({ linha, numero, onMudar, onRemover, onNovaLinha, unica, sep
         />
       </div>
 
+      <div className="flex flex-col gap-1" style={{ minWidth: 58, flex: '0 1 58px' }}>
+        {numero === 1 && <span className="text-2xs font-body text-faint">RIR</span>}
+        <input
+          value={linha.rir != null ? linha.rir : ''}
+          onChange={(e) => onMudar({ ...linha, rir: e.target.value })}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onNovaLinha(); } }}
+          aria-label={`RIR alvo da série ${numero}`}
+          aria-invalid={!rirValido(linha.rir)}
+          className="input-field"
+          placeholder="1-3"
+          style={{ fontSize: 13, ...(rirValido(linha.rir) ? {} : { borderColor: 'var(--rust)' }) }}
+        />
+      </div>
+
       <button
         type="button"
         onClick={onRemover}
@@ -10924,6 +10941,12 @@ function LinhaSerie({ linha, numero, onMudar, onRemover, onNovaLinha, unica, sep
       >
         <X size={13} className="text-muted" style={{ display: 'block' }} />
       </button>
+
+      {!rirValido(linha.rir) && (
+        <p className="text-2xs font-body" role="alert" style={{ flexBasis: '100%', margin: 0, color: 'var(--rust)' }}>
+          O RIR é um valor de 0 a 10 ou uma faixa, por exemplo 2 ou 1-3.
+        </p>
+      )}
     </div>
   );
 }
@@ -11672,7 +11695,33 @@ function TreinoVista({ prescricao, biblioteca, onMudar, onEditar, onImprimir, on
   );
 }
 
-function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivar, onGuardarModelo, onImprimir, onEliminar, onVerTreino, onGuardarVideoExercicio, onApagarVideoExercicio }) {
+function DuplicarProgramaModal({ prescricao, alunos, onDuplicar, onClose }) {
+  const [destinoId, setDestinoId] = useState(prescricao.studentId);
+  const ordenados = useMemo(() => [...alunos].sort((a, b) => byNamePt(a.name, b.name)), [alunos]);
+  return (
+    <Modal title="Duplicar programa" onClose={onClose}>
+      <div className="flex flex-col gap-4">
+        <p className="text-sm font-body text-muted" style={{ margin: 0 }}>
+          Copia os treinos, os exercícios, as séries e os métodos. O período recomeça hoje e o original não muda.
+        </p>
+        <FormField label="Para que aluno">
+          <select value={destinoId} onChange={(e) => setDestinoId(e.target.value)} className="input-field">
+            {ordenados.map((a) => (
+              <option key={a.id} value={a.id}>{a.name}{a.id === prescricao.studentId ? ' (este aluno)' : ''}{!a.active ? ' (inativo)' : ''}</option>
+            ))}
+          </select>
+        </FormField>
+        <div className="flex justify-end gap-2 flex-wrap">
+          <button type="button" onClick={onClose} className="btn btn-ghost">Cancelar</button>
+          <button type="button" onClick={() => onDuplicar(destinoId)} className="btn btn-primary">Duplicar</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivar, onGuardarModelo, onImprimir, onEliminar, onVerTreino, onGuardarVideoExercicio, onApagarVideoExercicio, alunos, onDuplicarPrograma }) {
+  const [aDuplicar, setADuplicar] = useState(false);
   const biblioteca = treinos.biblioteca;
   const [picker, setPicker] = useState(null); // id do treino a receber o exercicio
   const [alternativas, setAlternativas] = useState(null); // { treinoId, ex }
@@ -11795,6 +11844,14 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
 
   return (
     <div className="flex flex-col gap-4">
+      {aDuplicar && (
+        <DuplicarProgramaModal
+          prescricao={prescricao}
+          alunos={alunos}
+          onClose={() => setADuplicar(false)}
+          onDuplicar={(destinoId) => { setADuplicar(false); onDuplicarPrograma(prescricao, destinoId); }}
+        />
+      )}
       {/* Sem seta propria: a vista de treinos tem uma so, cujo destino muda
           consoante haja ou nao um programa aberto. Duas setas empilhadas
           confundiam. */}
@@ -11810,6 +11867,9 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
           </button>
           <button type="button" onClick={() => onGuardarModelo(prescricao)} className="btn btn-ghost" style={{ fontSize: 12 }}>
             <BookMarked size={14} /> Guardar como modelo
+          </button>
+          <button type="button" onClick={() => setADuplicar(true)} className="btn btn-ghost" style={{ fontSize: 12 }}>
+            <Copy size={14} /> Duplicar programa
           </button>
           <button type="button" onClick={() => onArquivar(prescricao.id, !prescricao.arquivado)} className="btn btn-ghost" style={{ fontSize: 12 }}>
             <Archive size={14} /> {prescricao.arquivado ? 'Reativar' : 'Arquivar'}
@@ -13296,7 +13356,7 @@ function VerSessaoModal({ sessao, onGuardar, onApagar, onFechar }) {
   );
 }
 
-function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, onEliminarPrescricao, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivarPrescricao, onGuardarModelo, onCriarDeModelo, onApagarModelo, usosDoExercicio, onImprimir, onVoltar, execucoes, onCarregarExecucoes, onGuardarSessao, onCorrigirSessao, onApagarSessao, sessaoInicial, onSessaoInicialLida, onGuardarVideoExercicio, onApagarVideoExercicio }) {
+function TreinosView({ student, alunos, onDuplicarPrograma, treinos, onMudarPrescricao, onCriarPrescricao, onEliminarPrescricao, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivarPrescricao, onGuardarModelo, onCriarDeModelo, onApagarModelo, usosDoExercicio, onImprimir, onVoltar, execucoes, onCarregarExecucoes, onGuardarSessao, onCorrigirSessao, onApagarSessao, sessaoInicial, onSessaoInicialLida, onGuardarVideoExercicio, onApagarVideoExercicio }) {
   const [abertoId, setAbertoId] = useState(null);
   // Um programa que já tem trabalho escrito abre para ser visto; um acabado de
   // criar abre no construtor, que é o que falta fazer-lhe.
@@ -13411,6 +13471,12 @@ function TreinosView({ student, treinos, onMudarPrescricao, onCriarPrescricao, o
           onGuardarModelo={onGuardarModelo}
           onGuardarVideoExercicio={onGuardarVideoExercicio}
           onApagarVideoExercicio={onApagarVideoExercicio}
+          alunos={alunos}
+          onDuplicarPrograma={(origem, destinoId) => {
+            const nova = onDuplicarPrograma(origem, destinoId);
+            // A cópia no mesmo aluno abre logo; noutro aluno, o aviso diz onde ficou.
+            if (destinoId === student.id) { setAbertoId(nova.id); setModo('editar'); }
+          }}
         />
       ) : (
         <>
@@ -18790,7 +18856,7 @@ function AppInner() {
       // ocorrência tem o seu dia e o seu histórico de presença.
       const comum = {
         kind: session.kind, type: session.type, studentId: session.studentId,
-        startTime: session.startTime, endTime: session.endTime, notes: session.notes,
+        startTime: session.startTime, endTime: session.endTime, notes: session.notes, title: session.title,
       };
       next = sessions.map((s) => (s.id === session.id
         ? session
@@ -19137,6 +19203,19 @@ function AppInner() {
     };
     persistTreinos((t) => ({ ...t, prescricoes: [...t.prescricoes, nova] }));
     showToast('Programa criado a partir do modelo.');
+    return nova;
+  }
+
+  function duplicarPrograma(prescricao, destinoId) {
+    const nova = clonarPrograma(prescricao, {
+      studentId: destinoId,
+      gerarId: uid,
+      hoje: fmtDateISO(new Date()),
+      agora: new Date().toISOString(),
+    });
+    persistTreinos((t) => ({ ...t, prescricoes: [...t.prescricoes, nova] }));
+    const destino = students.find((s) => s.id === destinoId);
+    showToast(destinoId === prescricao.studentId ? 'Programa duplicado.' : `Programa duplicado para ${destino ? destino.name : 'o aluno escolhido'}.`);
     return nova;
   }
 
@@ -19894,6 +19973,8 @@ function AppInner() {
             onCriarPasta={criarPastaBiblioteca}
             onArquivarPrescricao={arquivarPrescricao}
             onGuardarModelo={guardarComoModelo}
+            alunos={students}
+            onDuplicarPrograma={duplicarPrograma}
             onCriarDeModelo={criarPrescricaoDeModelo}
             onApagarModelo={apagarModelo}
             usosDoExercicio={usosDoExercicio}

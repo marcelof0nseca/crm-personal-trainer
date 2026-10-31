@@ -109,6 +109,24 @@ export async function apagarDocumentos(paths) {
   return !error;
 }
 
+/* ---------------------------- registo de alterações ---------------------------- */
+
+// Falhar aqui nunca impede a ação: fica na consola, e o resto da aplicação segue.
+export async function auditar(quem, acao, alvo = '', dados = {}) {
+  if (!temServidor()) return;
+  const userId = await idDaConta();
+  if (!userId) return;
+  const { error } = await supabase.from('audit_events').insert({ user_id: userId, quem: String(quem || ''), acao, alvo: String(alvo || ''), dados });
+  if (error && !tabelaEmFalta(error)) console.error('[PTMANAGER] auditoria', error);
+}
+
+export async function lerAuditoria() {
+  if (!temServidor()) return { ok: true, itens: [] };
+  const { data, error } = await supabase.from('audit_events').select('*').order('created_at', { ascending: false }).limit(200);
+  if (error) return { ok: false, erro: erroDe(error), itens: [] };
+  return { ok: true, itens: data || [] };
+}
+
 /* ---------------------------- apagar ---------------------------- */
 
 const tolerarTabelaEmFalta = (r) => !r.error || tabelaEmFalta(r.error);
@@ -116,6 +134,11 @@ const tolerarTabelaEmFalta = (r) => !r.error || tabelaEmFalta(r.error);
 // Ao eliminar um aluno: o que chegou dele e as leituras. Devolve se ficou feito.
 export async function limparAlunoNoServidor(alunoId) {
   if (!temServidor()) return true;
+  // As fotografias de progresso que o aluno enviou vivem no balde, ligadas à entrada.
+  const fotos = await supabase.from('entradas').select('dados').eq('aluno_id', alunoId).eq('tipo', 'progresso_aluno');
+  if (fotos.error && !tabelaEmFalta(fotos.error)) return false;
+  const paths = (fotos.data || []).map((e) => e.dados && e.dados.path).filter(Boolean);
+  if (!(await apagarDocumentos(paths))) return false;
   const a = await supabase.from('entradas').delete().eq('aluno_id', alunoId);
   const b = await supabase.from('notificacao_leituras').delete().eq('aluno_id', alunoId);
   const c = await supabase.from('push_subscricoes').delete().eq('aluno_id', alunoId);

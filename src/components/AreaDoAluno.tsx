@@ -37,7 +37,7 @@ import {
   ultimaVezDoExercicio, valoresSugeridos,
 } from '../data/sessoes';
 import { PARAM_AREA_ALUNO, PARAM_CONVITE_ALUNO } from '../data/acessoAluno';
-import { AgendaDoAluno, MaisDoAluno, ProgressoDoAluno, contarPorLer } from '../features/aluno/AreaAlunoExtra';
+import { AgendaDoAluno, CheckIn, Lembretes, MaisDoAluno, ProgressoDoAluno, contarPorLer } from '../features/aluno/AreaAlunoExtra';
 import { ProvedorIdioma, useIdioma } from '../features/i18n';
 
 // `supabase`/`supabaseConfigured` (de `../supabaseClient`) só serve para a
@@ -1098,13 +1098,16 @@ function AreaDoAlunoInterior({ token }) {
         ) : aba === 'agenda' ? (
           <AgendaDoAluno dados={dados} invocar={invocarAcao} onRecarregar={recarregarEmSilencio} />
         ) : aba === 'progresso' ? (
-          <ProgressoDoAluno dados={dados} sessoes={sessoesAnteriores} />
+          <ProgressoDoAluno dados={dados} sessoes={sessoesAnteriores} invocar={invocarAcao} />
         ) : aba === 'mais' ? (
           <MaisDoAluno dados={dados} invocar={invocarAcao} onRecarregar={recarregarEmSilencio} onLerLocal={(id) => setDados((d) => ({ ...d, notificacoes: (d.notificacoes || []).map((n) => (n.id === id ? { ...n, lida: true } : n)) }))} />
         ) : (
           <>
             {dados.restrito && <p className="text-sm font-body rounded-lg px-3 py-2" role="status" style={{ margin: 0, color: 'var(--gold)', backgroundColor: 'var(--gold-soft)' }}>{t('restrito')}</p>}
-            <InicioDoAluno prescricoes={prescricoes} sessoesAnteriores={sessoesAnteriores} onAbrir={abrirPrograma} />
+            <Lembretes lista={dados.lembretes} />
+            <InicioDoAluno prescricoes={prescricoes.filter((p) => !p.extra)} sessoesAnteriores={sessoesAnteriores} onAbrir={abrirPrograma} />
+            {prescricoes.some((p) => p.extra) && <ListaDeProgramas prescricoes={prescricoes.filter((p) => p.extra)} onAbrir={abrirPrograma} titulo={t('extra')} />}
+            {dados.via === 'conta' && !dados.checkinFeito && <CheckIn invocar={invocarAcao} onRecarregar={recarregarEmSilencio} />}
           </>
         )}
       </Ecra>

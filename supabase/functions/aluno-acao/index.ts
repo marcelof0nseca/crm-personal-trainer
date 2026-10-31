@@ -28,6 +28,14 @@ Deno.serve(async (req) => {
     if (r.erro) return json({ error: r.erro }, r.estado || 400);
 
     if (r.entrada) {
+      // A fotografia entra primeiro: uma entrada a apontar para um ficheiro que falhou não serve.
+      if (r.fotoInfo) {
+        const path = `${quem.userId}/progresso-${crypto.randomUUID()}.${r.fotoInfo.extensao}`;
+        const bytes = Uint8Array.from(atob(r.fotoInfo.base64), (c) => c.charCodeAt(0));
+        const up = await fetch(`${env.url}/storage/v1/object/documentos/${path}`, { method: 'POST', headers: { apikey: env.service, Authorization: `Bearer ${env.service}`, 'Content-Type': r.fotoInfo.tipo }, body: bytes });
+        if (!up.ok) return json({ error: 'Não foi possível guardar a fotografia.' }, 500);
+        r.entrada.dados.path = path;
+      }
       const ok = await gravarEntrada(env, { user_id: quem.userId, aluno_id: quem.alunoId, origem: 'aluno', ...r.entrada });
       return ok ? json({ ok: true }) : json({ error: 'Não foi possível enviar o pedido.' }, 500);
     }

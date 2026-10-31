@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ConfirmDialog, FormField } from '../../components/UiAtoms';
 import { useModulo } from '../useModulo';
 import { Abas, Aviso, Grupo, ProntoOu, Titulo, Vazio, alunosAtuais, csvDe, descarregar, dm, hojeISO, nomeDoAluno, uid } from '../comum';
-import { chamar, lerPagamentos, temServidor } from '../servidor';
+import { auditar, chamar, lerPagamentos, temServidor } from '../servidor';
 import {
   CADENCIAS, ESTADOS_FATURA, estadoDaFatura, faturasEmFalta, formatar, mrrClientes, novaVersaoModelo, pagoDe, paraCentimos, proximaDoContrato, reembolsar, registarPagamento, relatorio, totais,
 } from './logica';
@@ -29,7 +29,7 @@ function Planos({ modulo }) {
   const mudar = (id, c) => modulo.gravar((m) => ({ ...m, modelos: m.modelos.map((x) => (x.id === id ? { ...x, ...c } : x)) }));
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm font-body text-muted" style={{ margin: 0 }}>O que vende aos seus alunos. Mudar o preço aqui só vale para contratos novos.</p>
+      <p className="text-sm font-body text-muted" style={{ margin: 0 }}>O que vende aos seus alunos. Mudar o preço aqui só vale para contratos novos. O PTMANAGER não é software de faturação certificado: um comprovativo daqui não substitui a fatura legal.</p>
       <button type="button" onClick={() => modulo.gravar((m) => ({ ...m, modelos: [...m.modelos, { id: uid(), nome: 'Plano novo', cadencia: 'mensal', centimos: 0, moeda: 'EUR', descricao: '', ativo: true, impostoBp: 0 }] }))} className="btn btn-primary" style={{ alignSelf: 'flex-start' }}>Novo plano</button>
       {modelos.length === 0 && <Vazio>Sem planos.</Vazio>}
       {modelos.map((p) => (
@@ -37,6 +37,7 @@ function Planos({ modulo }) {
           <FormField label="Nome"><input value={p.nome} maxLength={60} onChange={(e) => mudar(p.id, { nome: e.target.value })} className="input-field" /></FormField>
           <div className="grid grid-cols-2 gap-2">
             <CampoEuros rotulo="Preço (€)" centimos={p.centimos} onMudar={(c) => mudar(p.id, { centimos: c })} />
+            <FormField label="IVA (%)"><input value={p.impostoBp ? String(p.impostoBp / 100).replace('.', ',') : ''} inputMode="decimal" onChange={(e) => { const x = parseFloat(e.target.value.replace(',', '.')); mudar(p.id, { impostoBp: Number.isFinite(x) && x >= 0 && x <= 100 ? Math.round(x * 100) : 0 }); }} className="input-field" /></FormField>
             <FormField label="Renovação"><select value={p.cadencia} onChange={(e) => mudar(p.id, { cadencia: e.target.value })} className="input-field">{Object.keys(CADENCIAS).map((k) => <option key={k} value={k}>{ROTULO_CADENCIA[k]}</option>)}</select></FormField>
           </div>
           <FormField label="Descrição (aparece na página de vendas)"><textarea rows={2} maxLength={300} value={p.descricao || ''} onChange={(e) => mudar(p.id, { descricao: e.target.value })} className="input-field" /></FormField>
@@ -135,8 +136,8 @@ function Faturas({ modulo, students, showToast, carteiraLigada, quem, onImprimir
               {['aberta', 'vencida', 'parcial'].includes(e) && carteiraLigada && <button type="button" onClick={() => linkDePagamento(f)} className="btn btn-primary" style={{ fontSize: 12 }}>Criar ligação de pagamento</button>}
               {['aberta', 'vencida'].includes(e) && <button type="button" onClick={() => setAnular(f)} className="btn btn-ghost" style={{ fontSize: 12 }}>Anular</button>}
               {e === 'vencida' && <button type="button" onClick={() => mudar(f.id, (x) => ({ ...x, estado: 'incobravel' }))} className="btn btn-ghost" style={{ fontSize: 12 }}>Marcar incobrável</button>}
-              {['vencida'].includes(e) && <label className="flex items-center gap-1.5 text-xs font-body text-muted"><input type="checkbox" checked={Boolean(f.override)} onChange={(ev) => mudar(f.id, (x) => ({ ...x, override: ev.target.checked }))} /> Manter o acesso</label>}
-              {pagoDe(f) > 0 && (f.pagamentos || []).every((p) => p.origem !== 'webhook') && <button type="button" onClick={() => { const r = reembolsar(f, { id: uid(), centimos: pagoDe(f), em: new Date().toISOString(), motivo: 'Registado à mão' }); if (r.ok) mudar(f.id, () => r.fatura); else showToast(r.erro, 'error'); }} className="btn btn-ghost" style={{ fontSize: 12 }}>Registar devolução</button>}
+              {['vencida'].includes(e) && <label className="flex items-center gap-1.5 text-xs font-body text-muted"><input type="checkbox" checked={Boolean(f.override)} onChange={(ev) => { mudar(f.id, (x) => ({ ...x, override: ev.target.checked })); auditar(quem, ev.target.checked ? 'Acesso mantido apesar da fatura' : 'Exceção de acesso retirada', f.id); }} /> Manter o acesso</label>}
+              {pagoDe(f) > 0 && (f.pagamentos || []).every((p) => p.origem !== 'webhook') && <button type="button" onClick={() => { const r = reembolsar(f, { id: uid(), centimos: pagoDe(f), em: new Date().toISOString(), motivo: 'Registado à mão' }); if (r.ok) { mudar(f.id, () => r.fatura); auditar(quem, 'Devolução registada', f.id, { centimos: pagoDe(f) }); } else showToast(r.erro, 'error'); }} className="btn btn-ghost" style={{ fontSize: 12 }}>Registar devolução</button>}
               <button type="button" onClick={() => imprimir(f)} className="btn btn-ghost" style={{ fontSize: 12 }}>Comprovativo</button>
             </div>
           </div>
@@ -151,12 +152,12 @@ function Faturas({ modulo, students, showToast, carteiraLigada, quem, onImprimir
             <FormField label="Método"><select value={pagar.metodo} onChange={(e) => setPagar({ ...pagar, metodo: e.target.value })} className="input-field">{Object.entries(METODOS).map(([k, r]) => <option key={k} value={k}>{r}</option>)}</select></FormField>
           </div>
           <div className="flex gap-2">
-            <button type="button" disabled={!(pagar.centimos > 0)} onClick={() => { mudar(pagar.f.id, (x) => registarPagamento(x, { id: uid(), centimos: pagar.centimos, metodo: pagar.metodo, em: new Date().toISOString(), origem: 'manual', quem })); setPagar(null); showToast('Pagamento registado.'); }} className="btn btn-primary" style={{ fontSize: 12, opacity: pagar.centimos > 0 ? 1 : 0.45 }}>Confirmar</button>
+            <button type="button" disabled={!(pagar.centimos > 0)} onClick={() => { mudar(pagar.f.id, (x) => registarPagamento(x, { id: uid(), centimos: pagar.centimos, metodo: pagar.metodo, em: new Date().toISOString(), origem: 'manual', quem })); auditar(quem, 'Pagamento registado à mão', pagar.f.id, { centimos: pagar.centimos, metodo: pagar.metodo }); setPagar(null); showToast('Pagamento registado.'); }} className="btn btn-primary" style={{ fontSize: 12, opacity: pagar.centimos > 0 ? 1 : 0.45 }}>Confirmar</button>
             <button type="button" onClick={() => setPagar(null)} className="btn btn-ghost" style={{ fontSize: 12 }}>Cancelar</button>
           </div>
         </div>
       )}
-      {anular && <ConfirmDialog title="Anular fatura" message="A fatura deixa de contar como dívida, e continua no histórico." confirmLabel="Anular" onCancel={() => setAnular(null)} onConfirm={() => { mudar(anular.id, (x) => ({ ...x, estado: 'anulada', anuladaEm: hoje })); setAnular(null); }} />}
+      {anular && <ConfirmDialog title="Anular fatura" message="A fatura deixa de contar como dívida, e continua no histórico." confirmLabel="Anular" onCancel={() => setAnular(null)} onConfirm={() => { mudar(anular.id, (x) => ({ ...x, estado: 'anulada', anuladaEm: hoje })); auditar(quem, 'Fatura anulada', anular.id); setAnular(null); }} />}
     </div>
   );
 }

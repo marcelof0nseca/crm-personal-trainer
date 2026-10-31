@@ -678,3 +678,24 @@ drop policy if exists "documentos_exige_aal2" on storage.objects;
 create policy "documentos_exige_aal2" on storage.objects as restrictive to authenticated
 using (bucket_id <> 'documentos' or public.aal_suficiente())
 with check (bucket_id <> 'documentos' or public.aal_suficiente());
+
+-- Registo de alterações. Só acrescenta: o dono lê e escreve as suas linhas, e nenhuma
+-- política deixa alterar uma já escrita. Sai com a conta.
+create table if not exists public.audit_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  quem text not null default '',
+  acao text not null,
+  alvo text not null default '',
+  dados jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+create index if not exists audit_events_dono_idx on public.audit_events (user_id, created_at desc);
+alter table public.audit_events enable row level security;
+drop policy if exists "audit_events_ler" on public.audit_events;
+create policy "audit_events_ler" on public.audit_events for select to authenticated using (public.has_personal_app_access(user_id));
+drop policy if exists "audit_events_escrever" on public.audit_events;
+create policy "audit_events_escrever" on public.audit_events for insert to authenticated with check (public.has_personal_app_access(user_id));
+drop policy if exists "audit_events_exige_aal2" on public.audit_events;
+create policy "audit_events_exige_aal2" on public.audit_events as restrictive to authenticated using (public.aal_suficiente()) with check (public.aal_suficiente());
+grant select, insert on public.audit_events to authenticated;

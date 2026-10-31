@@ -9515,9 +9515,14 @@ function StudentFormModal({ student, sessions, customCategories, definicoes, tre
           </FormField>
         </div>
 
-        <FormField label="Aluno desde (opcional)">
-          <input type="date" value={form.startDate || ''} onChange={(e) => set('startDate', e.target.value)} className="input-field" />
-        </FormField>
+        <div className="grid grid-cols-2 gap-3">
+          <FormField label="Aluno desde (opcional)">
+            <input type="date" value={form.startDate || ''} onChange={(e) => set('startDate', e.target.value)} className="input-field" />
+          </FormField>
+          <FormField label="Data de nascimento (opcional)">
+            <input type="date" value={form.birthDate || ''} onChange={(e) => set('birthDate', e.target.value)} className="input-field" />
+          </FormField>
+        </div>
 
         <FormField label="Observações (opcional)">
           <textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} className="input-field" rows={2} placeholder="Notas sobre o aluno..." />

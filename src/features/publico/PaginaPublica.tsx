@@ -126,7 +126,7 @@ export default function PaginaPublica({ slug }) {
         {(pagina.inicio || pagina.fim) && <p className="text-xs font-body text-faint" style={{ margin: 0 }}>{pagina.inicio ? `${t('pub_inicio')} ${data(pagina.inicio)}` : ''}{pagina.inicio && pagina.fim ? ' · ' : ''}{pagina.fim ? `${t('pub_fim')} ${data(pagina.fim)}` : ''}</p>}
       </header>
       {pagina.descricao && <p className="text-sm font-body text-primary" style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{pagina.descricao}</p>}
-      {pagina.beneficios.length > 0 && <ul className="text-sm font-body text-primary flex flex-col gap-1" style={{ margin: 0, paddingLeft: 18 }}>{pagina.beneficios.map((b) => <li key={b}>{b}</li>)}</ul>}
+      {pagina.beneficios.length > 0 && <ul className="text-sm font-body text-primary flex flex-col gap-1" style={{ margin: 0, paddingLeft: 18, listStyle: 'disc' }}>{pagina.beneficios.map((b) => <li key={b}>{b}</li>)}</ul>}
       {pagina.planos.length > 0 && (
         <section className="flex flex-col gap-2" aria-label={t('pub_planos')}>
           {pagina.planos.map((p) => (

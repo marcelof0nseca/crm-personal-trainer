@@ -3,12 +3,13 @@ import { useMemo, useState } from 'react';
 import { ConfirmDialog, FormField } from '../../components/UiAtoms';
 import { useModulo } from '../useModulo';
 import { Abas, Aviso, Grupo, ProntoOu, Titulo, Vazio, alunosAtuais, dm, hojeISO, ligacaoWhatsApp, uid } from '../comum';
+import { auditar } from '../servidor';
 import { CAMPOS_IMPORTACAO, ETAPAS_LEAD, converterLead, juntarLead, lerCsv, mapearColunas, prepararImportacao } from './logica';
 
 const CORES = ['#5DA9E9', '#E9A15D', '#7BC47F', '#C58BE0', '#E06C75', '#56B6C2'];
 const corPara = (i) => CORES[i % CORES.length];
 
-function Leads({ crm, students, onMudarAlunos, onAbrirAluno, showToast }) {
+function Leads({ crm, students, onMudarAlunos, onAbrirAluno, showToast, quem }) {
   const [etapa, setEtapa] = useState('abertos');
   const [novo, setNovo] = useState({ nome: '', telefone: '', email: '' });
   const [perder, setPerder] = useState(null);
@@ -30,6 +31,7 @@ function Leads({ crm, students, onMudarAlunos, onAbrirAluno, showToast }) {
     const r = converterLead(l, students, { gerarId: uid, cor: corPara(students.length), hoje: hojeISO() });
     if (r.novo && !(await onMudarAlunos([...students, r.aluno]))) return;
     await mudar(l.id, { etapa: 'convertido', alunoId: r.aluno.id, atividades: [...(l.atividades || []), { em: new Date().toISOString(), texto: r.novo ? 'Convertido em aluno' : 'Ligado a um aluno que já existia' }] });
+    auditar(quem, 'Contacto convertido em aluno', l.id, { novo: r.novo });
     showToast(r.novo ? `${r.aluno.name} já é aluno.` : `${r.aluno.name} já era aluno: não criei outro.`);
   }
   return (
@@ -191,14 +193,14 @@ function Lixeira({ students, onMudarAlunos, showToast }) {
   );
 }
 
-export default function CentralCrm({ students, onMudarAlunos, onAbrirAluno, showToast }) {
+export default function CentralCrm({ students, onMudarAlunos, onAbrirAluno, showToast, quem }) {
   const crm = useModulo('crm');
   const [aba, setAba] = useState('leads');
   return (
     <ProntoOu modulos={crm}>{() => (
       <div className="flex flex-col gap-3">
         <Abas valor={aba} onMudar={setAba} abas={[{ id: 'leads', rotulo: 'Contactos' }, { id: 'importar', rotulo: 'Importar' }, { id: 'grupos', rotulo: 'Grupos e etiquetas' }, { id: 'lixeira', rotulo: 'Lixeira' }]} />
-        {aba === 'leads' && <Leads crm={crm} students={students} onMudarAlunos={onMudarAlunos} onAbrirAluno={onAbrirAluno} showToast={showToast} />}
+        {aba === 'leads' && <Leads crm={crm} students={students} onMudarAlunos={onMudarAlunos} onAbrirAluno={onAbrirAluno} showToast={showToast} quem={quem} />}
         {aba === 'importar' && <Importar students={students} onMudarAlunos={onMudarAlunos} showToast={showToast} />}
         {aba === 'grupos' && <Grupos crm={crm} students={students} onMudarAlunos={onMudarAlunos} />}
         {aba === 'lixeira' && <Lixeira students={students} onMudarAlunos={onMudarAlunos} showToast={showToast} />}

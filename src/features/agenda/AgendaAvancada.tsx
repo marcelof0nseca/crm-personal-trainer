@@ -182,7 +182,7 @@ function Regras({ modulo }) {
 
 function Exportar({ sessions, students }) {
   const [de, setDe] = useState(hojeISO());
-  const [ate, setAte] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 60); return d.toISOString().slice(0, 10); });
+  const [ate, setAte] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 60); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; });
   const lista = sessions.filter((s) => s.date >= de && s.date <= ate && s.type !== 'horario_livre' && s.type !== 'bloqueado');
   function baixar() {
     const texto = icsDeSessoes(lista, { agora: new Date().toISOString(), nomeDe: (s) => (s.kind === 'evento' ? (s.title || 'Evento') : `Aula: ${nomeDoAluno(students, s.studentId)}`) });

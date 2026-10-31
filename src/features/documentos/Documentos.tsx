@@ -3,7 +3,11 @@ import { useRef, useState } from 'react';
 import { ConfirmDialog, FormField } from '../../components/UiAtoms';
 import { useModulo } from '../useModulo';
 import { Abas, Aviso, ProntoOu, Titulo, Vazio, alunosAtuais, dm, hojeISO, nomeDoAluno, uid } from '../comum';
-import { apagarDocumentos, carregarDocumento, temServidor, urlDeDocumento } from '../servidor';
+import { apagarDocumentos, auditar, carregarDocumento, temServidor, urlDeDocumento } from '../servidor';
+import { descarregar } from '../comum';
+import { dadosDoAluno } from '../metas/logica';
+import { NOMES_MODULOS } from '../modulos';
+import { useApp } from '../useModulo';
 
 function Ficheiros({ modulo, students, quem, showToast }) {
   const [alunoId, setAlunoId] = useState('');
@@ -95,6 +99,37 @@ function Envios({ modulo, students, modelos, showToast }) {
   );
 }
 
+function Exportar({ students, sessions, treinos, formularios, execucoes, onCarregarExecucoes, quem, showToast }) {
+  const app = useApp();
+  const [alunoId, setAlunoId] = useState('');
+  const [aGerar, setAGerar] = useState(false);
+  async function gerar() {
+    const aluno = students.find((s) => s.id === alunoId);
+    setAGerar(true);
+    try {
+      await onCarregarExecucoes(aluno.id, true);
+      // Falha alto: um ficheiro que se diz completo sem as sessões dele era pior do que nenhum.
+      const modulos = {};
+      for (const nome of NOMES_MODULOS) modulos[nome] = await app.lerChave(`modulo:${nome}`);
+      const exec = await app.lerChave(`execucoes:${aluno.id}`);
+      const dados = dadosDoAluno({ aluno, sessoes: sessions, prescricoes: treinos.prescricoes, execucoes: (exec && exec.sessoes) || execucoes[aluno.id]?.sessoes || [], respostas: formularios.respostas, modulos }, new Date().toISOString());
+      descarregar(`dados-${aluno.name.replace(/\s+/g, '-').toLowerCase()}.json`, JSON.stringify(dados, null, 2), 'application/json');
+      auditar(quem, 'Dados do aluno exportados', aluno.id);
+    } catch (e) {
+      console.error('[PTMANAGER] exportar aluno', e);
+      showToast('Não foi possível ler tudo. Nada foi gerado.', 'error');
+    }
+    setAGerar(false);
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm font-body text-muted" style={{ margin: 0 }}>Um ficheiro com o que a conta guarda deste aluno, para responder a um pedido de acesso ou portabilidade. Os ficheiros carregados e as fotografias não vão dentro: entregam-se à parte.</p>
+      <FormField label="Aluno"><select value={alunoId} onChange={(e) => setAlunoId(e.target.value)} className="input-field"><option value="">Escolher...</option>{alunosAtuais(students).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FormField>
+      <button type="button" disabled={!alunoId || aGerar} onClick={gerar} className="btn btn-primary" style={{ alignSelf: 'flex-start', opacity: alunoId ? 1 : 0.45 }}>{aGerar ? 'A gerar...' : 'Descarregar dados'}</button>
+    </div>
+  );
+}
+
 const CAMPOS_PARTILHA = [['assessWeight', 'Peso', 'kg'], ['assessBodyFat', 'Massa gorda', '%'], ['assessMuscleMassPct', 'Massa muscular', '%']];
 
 function Partilhar({ students, sessions, showToast }) {
@@ -135,16 +170,17 @@ function Partilhar({ students, sessions, showToast }) {
   );
 }
 
-export default function Documentos({ students, sessions, quem, modelosFormulario, showToast }) {
+export default function Documentos({ students, sessions, treinos, formularios, execucoes, onCarregarExecucoes, quem, modelosFormulario, showToast }) {
   const modulo = useModulo('documentos');
   const [aba, setAba] = useState('ficheiros');
   return (
     <ProntoOu modulos={modulo}>{() => (
       <div className="flex flex-col gap-3">
-        <Abas valor={aba} onMudar={setAba} abas={[{ id: 'ficheiros', rotulo: 'Ficheiros' }, { id: 'envios', rotulo: 'Formulários enviados' }, { id: 'partilhar', rotulo: 'Partilhar resultados' }]} />
+        <Abas valor={aba} onMudar={setAba} abas={[{ id: 'ficheiros', rotulo: 'Ficheiros' }, { id: 'envios', rotulo: 'Formulários enviados' }, { id: 'partilhar', rotulo: 'Partilhar resultados' }, { id: 'exportar', rotulo: 'Exportar dados' }]} />
         {aba === 'ficheiros' && <Ficheiros modulo={modulo} students={students} quem={quem} showToast={showToast} />}
         {aba === 'envios' && <Envios modulo={modulo} students={students} modelos={modelosFormulario || []} showToast={showToast} />}
         {aba === 'partilhar' && <Partilhar students={students} sessions={sessions} showToast={showToast} />}
+        {aba === 'exportar' && <Exportar students={students} sessions={sessions} treinos={treinos} formularios={formularios} execucoes={execucoes} onCarregarExecucoes={onCarregarExecucoes} quem={quem} showToast={showToast} />}
       </div>
     )}</ProntoOu>
   );

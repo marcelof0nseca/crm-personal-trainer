@@ -23,6 +23,7 @@ export const MODULOS = {
   avaliacoes: { vazio: { registos: [], modelos: [], recorrencias: [] }, removerAluno: (v, id) => ({ ...v, registos: (v.registos || []).filter((r) => r.studentId !== id), recorrencias: (v.recorrencias || []).filter((r) => r.studentId !== id) }) },
   crm: { vazio: { leads: [], segmentos: [], grupos: [], ligacaoRegisto: null, lixeira: [] }, removerAluno: (v, id) => ({ ...v, grupos: (v.grupos || []).map((g) => ({ ...g, alunos: (g.alunos || []).filter((a) => a !== id) })) }) },
   tarefas: { vazio: lista(), removerAluno: semAluno() },
+  metas: { vazio: lista(), removerAluno: semAluno() },
   automacoes: { vazio: { regras: [], registo: [] }, removerAluno: nenhum },
   mensagens: { vazio: { modelos: [], campanhas: [] }, removerAluno: nenhum },
   retencao: { vazio: { regras: null, instantaneos: [], acoes: [] }, removerAluno: (v, id) => ({ ...v, acoes: (v.acoes || []).filter((a) => a.studentId !== id) }) },

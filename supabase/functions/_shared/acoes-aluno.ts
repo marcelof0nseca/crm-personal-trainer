@@ -8,7 +8,10 @@ const HORA = /^\d{2}:\d{2}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ID = /^[A-Za-z0-9_:.-]{1,80}$/;
 
-export const ACOES_SO_COM_CONTA = ['pedir_aula', 'cancelar_aula', 'responder_formulario', 'responder_avaliacao', 'aceitar_contrato', 'atualizar_perfil', 'responder_pesquisa', 'abrir_documento', 'pagar_fatura', 'ligacao_calendario'];
+export const TIPOS_FOTO = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+export const LIMITE_FOTO_BASE64 = 6 * 1024 * 1024;
+
+export const ACOES_SO_COM_CONTA = ['check_in', 'publicar_progresso', 'pedir_aula', 'cancelar_aula', 'responder_formulario', 'responder_avaliacao', 'aceitar_contrato', 'atualizar_perfil', 'responder_pesquisa', 'abrir_documento', 'pagar_fatura', 'ligacao_calendario'];
 export const ACOES_COM_TOKEN = ['marcar_lida'];
 
 function horasAte(data, hora, agoraMs) {
@@ -34,6 +37,27 @@ export function validarAcao(op, dados, { via, vista, agenda, alunoId, agoraMs })
   if (![...ACOES_SO_COM_CONTA, ...ACOES_COM_TOKEN].includes(op)) return { erro: 'Pedido desconhecido.', estado: 400 };
   if (ACOES_SO_COM_CONTA.includes(op) && via !== 'conta') return { erro: 'Para isto precisa de entrar com a sua conta.', estado: 403 };
 
+  if (op === 'check_in') {
+    const dia = new Date(agoraMs).toISOString().slice(0, 10);
+    const escala = (k) => { const n = Number(d[k]); return Number.isInteger(n) && n >= 1 && n <= 5 ? n : null; };
+    const valores = Object.fromEntries(['sono', 'energia', 'stress', 'dor', 'motivacao', 'recuperacao'].map((k) => [k, escala(k)]).filter(([, v]) => v !== null));
+    if (Object.keys(valores).length === 0) return { erro: 'Responda a pelo menos uma pergunta.', estado: 400 };
+    return { entrada: { tipo: 'checkin', ref: `checkin:${dia}`, chave: `checkin:${alunoId}:${dia}`, dados: { ...valores, dia, nota: texto(d.nota, 300) } } };
+  }
+  if (op === 'publicar_progresso') {
+    const nota = texto(d.texto, 500); const peso = texto(d.peso, 12); const medida = texto(d.medida, 60);
+    const foto = typeof d.foto === 'string' ? d.foto : '';
+    if (!nota && !peso && !medida && !foto) return { erro: 'Escreva alguma coisa ou escolha uma fotografia.', estado: 400 };
+    let fotoInfo = null;
+    if (foto) {
+      const m = foto.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
+      if (!m) return { erro: 'Só fotografias JPEG, PNG ou WebP.', estado: 400 };
+      if (foto.length > LIMITE_FOTO_BASE64) return { erro: 'A fotografia é demasiado grande.', estado: 400 };
+      if (d.consentimentoFoto !== true) return { erro: 'Confirme que autoriza o envio da fotografia ao seu treinador.', estado: 400 };
+      fotoInfo = { tipo: m[1], base64: m[2], extensao: TIPOS_FOTO[m[1]] };
+    }
+    return { fotoInfo, entrada: { tipo: 'progresso_aluno', ref: '', chave: null, dados: { texto: nota, peso, medida, vista: texto(d.vista, 20), comFoto: Boolean(fotoInfo), consentimentoFotoEm: fotoInfo ? new Date(agoraMs).toISOString() : null } } };
+  }
   if (op === 'pedir_aula') {
     const p = vista.politica;
     if (!p || !p.aceitaPedidos) return { erro: 'O seu treinador não recebe pedidos por aqui.', estado: 403 };

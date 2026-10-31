@@ -56,7 +56,7 @@ export async function treinadorPede(req: Request, env: NonNullable<ReturnType<ty
   return (await u.json())?.id as string | null;
 }
 
-const MODULOS_DO_ALUNO = ['planos', 'documentos', 'progresso', 'mensagens', 'crm', 'pontos', 'recursos', 'avaliacoes', 'satisfacao'];
+const MODULOS_DO_ALUNO = ['planos', 'documentos', 'progresso', 'mensagens', 'crm', 'pontos', 'recursos', 'avaliacoes', 'satisfacao', 'metas'];
 
 // Lê os blocos de que a vista precisa. Um módulo que falte vem vazio.
 export async function lerBlocos(userId: string, alunoId: string, env: NonNullable<ReturnType<typeof ambiente>>) {

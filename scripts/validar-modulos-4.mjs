@@ -86,6 +86,20 @@ export async function correr() {
     const sobram = Object.keys(TEXTOS[l]).filter((k) => !(k in TEXTOS.pt));
     esperar(faltam.length === 0 && sobram.length === 0, `a língua ${l} tem as mesmas chaves (${[...faltam, ...sobram].join(',')})`);
   });
+  const ML = await import('../src/features/metas/logica.ts');
+  esperar(ML.progressoDaMeta({ base: '10', alvo: '20', atual: '15' }) === 50 && ML.progressoDaMeta({ base: '80', alvo: '70', atual: '75' }) === 50, 'a meta conta nos dois sentidos');
+  esperar(ML.progressoDaMeta({ base: '10', alvo: '20', atual: '' }) === null && ML.progressoDaMeta({ base: '5', alvo: '5', atual: '5' }) === null, 'sem dados não inventa um número');
+  esperar(ML.progressoDaMeta({ base: '0', alvo: '10', atual: '99' }) === 100 && ML.progressoDaMeta({ base: '0', alvo: '10', atual: '-5' }) === 0, 'fica entre 0 e 100');
+  esperar(ML.pontosDoCheckin({ dor: 4, energia: 2, sono: 3, stress: 1 }).join() === 'dor,energia' && ML.pontosDoCheckin({ dor: 1, energia: 5 }).length === 0, 'o check-in destaca por regra escrita');
+  esperar(ML.pontosDoCheckin({}).length === 0, 'o que não se respondeu não levanta nada');
+  const exp = ML.dadosDoAluno({ aluno: { id: 'a', name: 'R' }, sessoes: [{ id: '1', studentId: 'a' }, { id: 'SEGREDO', studentId: 'b' }], prescricoes: [{ id: 'SEGREDO', studentId: 'b' }], execucoes: [], respostas: [{ studentId: 'b', id: 'SEGREDO' }], modulos: { documentos: { itens: [{ studentId: 'a', id: 'd', path: 'SEGREDO' }] }, planos: { faturas: [{ studentId: 'b', id: 'SEGREDO' }] } } }, 'agora');
+  esperar(!/SEGREDO/.test(JSON.stringify(exp)) && exp.agenda.length === 1 && exp.documentos.length === 1, 'a exportação só leva o que é do aluno');
+  const comLembrete = V.vistaDoAluno({ ...blocos, agenda: [{ id: 'am', studentId: 'a', date: '2026-10-31', startTime: '09:00', endTime: '10:00', status: 'agendado' }, { id: 'lg', studentId: 'a', date: '2026-11-20', startTime: '09:00', endTime: '10:00', status: 'agendado' }, { id: 'cc', studentId: 'a', date: '2026-10-31', startTime: '11:00', endTime: '12:00', status: 'cancelado' }] }, 'a', { hoje, agoraMs, via: 'conta' });
+  esperar(comLembrete.lembretes.map((l) => l.id).join() === 'am', 'o lembrete é só da aula próxima e marcada');
+  const comMeta = V.vistaDoAluno({ ...blocos, modulos: { ...blocos.modulos, metas: { itens: [{ id: 'm1', studentId: 'a', titulo: 'T', visivel: true }, { id: 'm2', studentId: 'a', titulo: 'SEGREDO', visivel: false }, { id: 'm3', studentId: 'b', titulo: 'SEGREDO', visivel: true }] } } }, 'a', { hoje, agoraMs, via: 'conta' });
+  esperar(comMeta.metas.length === 1 && !/SEGREDO/.test(JSON.stringify(comMeta.metas)), 'só as metas visíveis e dele');
+  esperar(V.vistaDoAluno({ ...blocos, respondidas: [`checkin:${hoje}`] }, 'a', { hoje, agoraMs, via: 'conta' }).checkinFeito === true, 'o check-in de hoje não se repete');
+
   // ações
   const ctx = { via: 'conta', vista: conta, agenda: blocos.agenda, alunoId: 'a', agoraMs };
   esperar(A.validarAcao('apagar_tudo', {}, ctx).estado === 400, 'um pedido fora da lista é recusado');
@@ -109,6 +123,17 @@ export async function correr() {
   esperar(A.validarAcao('aceitar_contrato', { envioId: 'ct', nome: '', aceito: true }, ctx).erro && A.validarAcao('aceitar_contrato', { envioId: 'ct', nome: 'R' }, ctx).erro, 'aceitar exige nome e confirmação');
   esperar(A.validarAcao('aceitar_contrato', { envioId: 'ct', nome: 'R', aceito: true }, ctx).entrada.chave === 'contrato:ct', 'aceitar duas vezes conta uma');
   esperar(A.validarAcao('responder_pesquisa', { pesquisaId: 'n', nota: 11 }, ctx).erro && A.validarAcao('responder_pesquisa', { pesquisaId: 'n', nota: 0 }, ctx).entrada.dados.nota === 0, 'nota de 0 a 10, e o 0 conta');
+  esperar(A.validarAcao('check_in', { dor: 4 }, { ...ctx, via: 'token' }).estado === 403, 'o check-in exige conta');
+  esperar(A.validarAcao('check_in', { dor: 9, sono: 'x' }, ctx).erro && A.validarAcao('check_in', { dor: 4 }, ctx).entrada.dados.dor === 4, 'o check-in só aceita de 1 a 5');
+  esperar(A.validarAcao('check_in', { dor: 1 }, ctx).entrada.chave === 'checkin:a:2026-10-30', 'um check-in por dia');
+  const png = 'data:image/png;base64,AAAA';
+  esperar(A.validarAcao('publicar_progresso', {}, ctx).erro, 'o progresso vazio não entra');
+  esperar(A.validarAcao('publicar_progresso', { foto: png }, ctx).erro, 'a fotografia exige consentimento próprio');
+  esperar(A.validarAcao('publicar_progresso', { foto: 'data:text/html;base64,AAAA', consentimentoFoto: true }, ctx).erro, 'só fotografias');
+  esperar(A.validarAcao('publicar_progresso', { foto: `data:image/png;base64,${'A'.repeat(A.LIMITE_FOTO_BASE64)}`, consentimentoFoto: true }, ctx).erro, 'com limite de tamanho');
+  const pf = A.validarAcao('publicar_progresso', { foto: png, consentimentoFoto: true, texto: 'ok' }, ctx);
+  esperar(pf.fotoInfo.extensao === 'png' && pf.entrada.dados.comFoto && !JSON.stringify(pf.entrada).includes('AAAA'), 'a fotografia não fica na entrada');
+  esperar(A.validarAcao('publicar_progresso', { peso: '60' }, ctx).entrada.dados.peso === '60', 'o peso é opcional, e a fotografia também');
   esperar(A.validarAcao('atualizar_perfil', { email: 'mau' }, ctx).erro && A.validarAcao('atualizar_perfil', { phone: '91' }, ctx).entrada.tipo === 'perfil', 'o perfil passa pelo treinador');
 
   // público

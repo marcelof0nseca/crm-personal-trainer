@@ -118,6 +118,9 @@ export function vistaDoAluno(blocos, alunoId, { hoje, agoraMs, via }) {
     pontos: pontos.ativo ? { saldo: saldoDePontos(pontos.movimentos, alunoId, hoje), movimentos: (pontos.movimentos || []).filter((m) => m.studentId === alunoId).slice(-20).reverse().map((m) => ({ pontos: m.pontos, motivo: m.motivo, em: m.em })), recompensas: (pontos.recompensas || []).filter((r) => r.ativa).map((r) => ({ id: r.id, nome: r.nome, pontos: r.pontos })) } : null,
     politica: politica ? { aceitaPedidos: Boolean(politica.aceitaPedidos), antecedenciaMinHoras: politica.antecedenciaMinHoras, antecedenciaMaxDias: politica.antecedenciaMaxDias, cancelamentoMinHoras: politica.cancelamentoMinHoras } : null,
     locais: (recursos.locais || []).map((l) => ({ id: l.id, nome: l.nome })),
+    lembretes: minhas.filter((s) => s.status === 'agendado' && s.date >= hoje && s.date <= somarDias(hoje, 1)).map((s) => ({ id: s.id, date: s.date, startTime: s.startTime })),
+    metas: ((modulos.metas || {}).itens || []).filter((m) => m.studentId === alunoId && m.visivel).map((m) => ({ id: m.id, titulo: m.titulo, tipo: m.tipo, base: m.base, alvo: m.alvo, atual: m.atual, unidade: m.unidade, prazo: m.prazo, marcos: m.marcos || [], comentario: m.comentario })),
+    checkinFeito: respondidasSet.has(`checkin:${hoje}`),
     publicacoes: ((modulos.progresso || {}).publicacoes || []).filter((p) => p.studentId === alunoId).map((p) => ({ id: p.id, titulo: p.titulo, texto: p.texto, linhas: p.linhas, em: p.em })),
   };
   if (!conta) return base;

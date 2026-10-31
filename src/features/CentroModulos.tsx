@@ -1,7 +1,7 @@
 // O separador «Mais»: a entrada para os módulos que não cabem na barra. Cada área
 // carrega só quando se abre.
 import { Suspense, lazy, useState } from 'react';
-import { ArrowLeft, BookOpen, CalendarCog, ClipboardList, Contact, FileText, HeartPulse, Inbox, ListChecks, Megaphone, MessageSquareText, Receipt, Send, Trophy } from 'lucide-react';
+import { ArrowLeft, BookOpen, CalendarCog, ClipboardList, Contact, FileText, Flag, HeartPulse, Inbox, ListChecks, Megaphone, MessageSquareText, Receipt, Send, Trophy } from 'lucide-react';
 
 const AREAS = [
   { id: 'novidades', rotulo: 'Novidades', ajuda: 'O que os alunos e o público enviaram, à espera da sua decisão', icon: Inbox, comp: lazy(() => import('./novidades/Novidades')) },
@@ -10,6 +10,7 @@ const AREAS = [
   { id: 'crm', rotulo: 'Contactos', ajuda: 'Interessados, importação, grupos e lixeira', icon: Contact, comp: lazy(() => import('./crm/CentralCrm')) },
   { id: 'mensagens', rotulo: 'Mensagens', ajuda: 'Modelos prontos e avisos para a área do aluno', icon: Send, comp: lazy(() => import('./crm/Mensagens')) },
   { id: 'agenda', rotulo: 'Agenda avançada', ajuda: 'Modelos de horário, turmas, lista de espera, locais e calendário', icon: CalendarCog, comp: lazy(() => import('./agenda/AgendaAvancada')) },
+  { id: 'metas', rotulo: 'Metas', ajuda: 'Objetivos de cada aluno, com partida, alvo e marcos', icon: Flag, comp: lazy(() => import('./metas/Metas')) },
   { id: 'planos', rotulo: 'Planos e faturas', ajuda: 'O que os alunos pagam: planos, faturas, contratos e carteira', icon: Receipt, comp: lazy(() => import('./planos/CentroPlanos')) },
   { id: 'documentos', rotulo: 'Documentos', ajuda: 'Ficheiros do aluno e formulários para ele preencher', icon: FileText, comp: lazy(() => import('./documentos/Documentos')) },
   { id: 'vendas', rotulo: 'Vendas', ajuda: 'Página de vendas, inscrição, indicações e imagens', icon: Megaphone, comp: lazy(() => import('./vendas/Vendas')) },

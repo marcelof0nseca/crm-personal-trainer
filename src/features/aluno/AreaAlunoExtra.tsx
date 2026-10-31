@@ -36,6 +36,92 @@ const Mensagens = ({ a }) => (
   </>
 );
 
+/* ---------------------------- início ---------------------------- */
+
+const PERGUNTAS_CHECKIN = ['sono', 'energia', 'stress', 'dor', 'motivacao', 'recuperacao'];
+
+export function CheckIn({ invocar, onRecarregar }) {
+  const { t } = useIdioma();
+  const [v, setV] = useState({});
+  const acao = useAcao(invocar, onRecarregar);
+  return (
+    <div className="card p-3 flex flex-col gap-2">
+      <Titulo>{t('checkin')}</Titulo>
+      <p className="text-xs font-body text-faint" style={{ margin: 0 }}>{t('checkin_ajuda')}</p>
+      {PERGUNTAS_CHECKIN.map((k) => (
+        <div key={k} role="group" aria-label={t(`ci_${k}`)} className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-sm font-body text-primary">{t(`ci_${k}`)}</span>
+          <span className="flex gap-1">
+            {[1, 2, 3, 4, 5].map((n) => <button key={n} type="button" aria-pressed={v[k] === n} onClick={() => setV({ ...v, [k]: n })} className="btn btn-ghost font-mono" style={{ fontSize: 12, minWidth: 36, padding: '6px 0', ...(v[k] === n ? { color: 'var(--brass)', borderColor: 'var(--brass)' } : {}) }}>{n}</button>)}
+          </span>
+        </div>
+      ))}
+      <Mensagens a={acao} />
+      <button type="button" disabled={Object.keys(v).length === 0 || acao.aEnviar} onClick={() => acao.enviar('check_in', v, t('checkin_feito'))} className="btn btn-primary" style={{ alignSelf: 'flex-start', opacity: Object.keys(v).length ? 1 : 0.45 }}>{t('enviar')}</button>
+    </div>
+  );
+}
+
+export function Lembretes({ lista }) {
+  const { t, data } = useIdioma();
+  if (!lista || lista.length === 0) return null;
+  return lista.map((l) => <p key={l.id} className="text-sm font-body rounded-lg px-3 py-2" role="status" style={{ margin: 0, color: 'var(--gold)', backgroundColor: 'var(--gold-soft)' }}>{t('lembrete_aula')}: {data(l.date)} · <span className="font-mono">{l.startTime}</span></p>);
+}
+
+// A fotografia reduz-se no aparelho, para caber no pedido e não gastar dados.
+function reduzirFotografia(ficheiro, lado = 1600, qualidade = 0.82) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(ficheiro);
+    const img = new Image();
+    img.onload = () => {
+      const f = Math.min(1, lado / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * f); c.height = Math.round(img.height * f);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/jpeg', qualidade));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('foto')); };
+    img.src = url;
+  });
+}
+
+function PublicarProgresso({ invocar }) {
+  const { t } = useIdioma();
+  const [f, setF] = useState({ texto: '', peso: '', medida: '' });
+  const [foto, setFoto] = useState('');
+  const [consent, setConsent] = useState(false);
+  const [erro, setErro] = useState('');
+  const acao = useAcao(invocar);
+  async function escolher(ficheiro) {
+    setErro(''); setFoto('');
+    if (!ficheiro) return;
+    try { setFoto(await reduzirFotografia(ficheiro)); } catch { setErro(t('pp_grande')); }
+  }
+  async function enviar() {
+    if (foto && !consent) { setErro(t('pp_consent_falta')); return; }
+    setErro('');
+    const r = await acao.enviar('publicar_progresso', { ...f, ...(foto ? { foto, consentimentoFoto: consent } : {}) }, t('pp_enviado'));
+    if (r) { setF({ texto: '', peso: '', medida: '' }); setFoto(''); setConsent(false); }
+  }
+  return (
+    <div className="card p-3 flex flex-col gap-2">
+      <Titulo>{t('publicar')}</Titulo>
+      <FormField label={t('pp_texto')}><textarea rows={2} maxLength={500} value={f.texto} onChange={(e) => setF({ ...f, texto: e.target.value })} className="input-field" /></FormField>
+      <div className="grid grid-cols-2 gap-2">
+        <FormField label={t('pp_peso')}><input value={f.peso} inputMode="decimal" maxLength={12} onChange={(e) => setF({ ...f, peso: e.target.value })} className="input-field" /></FormField>
+        <FormField label={t('pp_medida')}><input value={f.medida} maxLength={60} onChange={(e) => setF({ ...f, medida: e.target.value })} className="input-field" /></FormField>
+      </div>
+      <FormField label={t('pp_foto')}><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => escolher(e.target.files[0])} className="text-sm font-body text-muted" /></FormField>
+      {foto && <img src={foto} alt={t('pp_foto')} className="rounded-lg" style={{ maxWidth: 160 }} />}
+      {foto && <label className="flex items-start gap-2 text-sm font-body text-primary"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ marginTop: 3 }} /> {t('pp_consent')}</label>}
+      {erro && <p className="text-xs font-body" role="alert" style={{ margin: 0, color: 'var(--rust)' }}>{erro}</p>}
+      <Mensagens a={acao} />
+      <button type="button" disabled={acao.aEnviar || (!f.texto.trim() && !f.peso.trim() && !f.medida.trim() && !foto)} onClick={enviar} className="btn btn-primary" style={{ alignSelf: 'flex-start' }}>{t('enviar')}</button>
+    </div>
+  );
+}
+
 /* ---------------------------- agenda ---------------------------- */
 
 export function AgendaDoAluno({ dados, invocar, onRecarregar }) {
@@ -47,6 +133,7 @@ export function AgendaDoAluno({ dados, invocar, onRecarregar }) {
   const [aCancelar, setACancelar] = useState(null);
   const [calendario, setCalendario] = useState('');
   const acao = useAcao(invocar, onRecarregar);
+  const acaoPedido = useAcao(invocar, onRecarregar);
   const locais = dados.locais || [];
   const nomeLocal = (id) => (locais.find((l) => l.id === id) || {}).nome;
   const proximas = (dados.agenda || []).filter((s) => s.date >= hoje && s.status === 'agendado').sort((a, b) => `${a.date}${a.startTime}`.localeCompare(`${b.date}${b.startTime}`));
@@ -88,7 +175,8 @@ export function AgendaDoAluno({ dados, invocar, onRecarregar }) {
             <FormField label={t('as')}><input type="time" value={pedido.endTime} onChange={(e) => setPedido({ ...pedido, endTime: e.target.value })} className="input-field" /></FormField>
           </div>
           <FormField label={t('notas_opcional')}><input value={pedido.notas} maxLength={300} onChange={(e) => setPedido({ ...pedido, notas: e.target.value })} className="input-field" /></FormField>
-          <button type="button" disabled={!pedido.date || acao.aEnviar} onClick={async () => { if (await acao.enviar('pedir_aula', pedido, t('pedido_enviado'))) setPedido({ ...pedido, date: '', notas: '' }); }} className="btn btn-primary" style={{ alignSelf: 'flex-start', opacity: pedido.date ? 1 : 0.45 }}>{t('enviar_pedido')}</button>
+          <Mensagens a={acaoPedido} />
+          <button type="button" disabled={!pedido.date || acaoPedido.aEnviar} onClick={async () => { if (await acaoPedido.enviar('pedir_aula', pedido, t('pedido_enviado'))) setPedido({ ...pedido, date: '', notas: '' }); }} className="btn btn-primary" style={{ alignSelf: 'flex-start', opacity: pedido.date ? 1 : 0.45 }}>{t('enviar_pedido')}</button>
         </div>
       )}
       {!conta && <p className="text-xs font-body text-faint" style={{ margin: 0 }}>{t('so_conta')}</p>}
@@ -112,8 +200,13 @@ export function AgendaDoAluno({ dados, invocar, onRecarregar }) {
 
 /* ---------------------------- progresso ---------------------------- */
 
-export function ProgressoDoAluno({ dados, sessoes }) {
+export function ProgressoDoAluno({ dados, sessoes, invocar }) {
   const { t, data } = useIdioma();
+  const pct = (m) => {
+    const n = (v) => { const x = parseFloat(String(v == null ? '' : v).replace(',', '.')); return Number.isFinite(x) ? x : null; };
+    const [b, a, c] = [n(m.base), n(m.alvo), n(m.atual)];
+    return b === null || a === null || c === null || a === b ? null : Math.max(0, Math.min(100, Math.round(((c - b) / (a - b)) * 100)));
+  };
   const publicacoes = dados.publicacoes || [];
   const pontos = dados.pontos;
   return (
@@ -123,6 +216,20 @@ export function ProgressoDoAluno({ dados, sessoes }) {
           <div className="flex items-center justify-between gap-2"><Titulo>{t('pontos')}</Titulo><span className="font-mono text-lg" style={{ color: 'var(--gold)' }}>{pontos.saldo}</span></div>
           {pontos.recompensas.length > 0 && <p className="text-xs font-body text-muted" style={{ margin: 0 }}>{t('recompensas')}: {pontos.recompensas.map((r) => `${r.nome} (${r.pontos})`).join(' · ')}</p>}
           {pontos.movimentos.slice(0, 5).map((m, i) => <p key={`${m.em}${i}`} className="text-xs font-body text-faint" style={{ margin: 0 }}><span className="font-mono">{m.pontos > 0 ? `+${m.pontos}` : m.pontos}</span> · {m.motivo}</p>)}
+        </div>
+      )}
+      {dados.via === 'conta' && <PublicarProgresso invocar={invocar} />}
+      {(dados.metas || []).length > 0 && (
+        <div className="flex flex-col gap-2">
+          <Titulo>{t('metas')}</Titulo>
+          {dados.metas.map((m) => (
+            <div key={m.id} className="card p-3 flex flex-col gap-1">
+              <p className="text-sm font-body text-primary" style={{ margin: 0, fontWeight: 600 }}>{m.titulo}</p>
+              {pct(m) !== null && <p className="text-xs font-body text-muted" style={{ margin: 0 }}>{pct(m)}% {t('meta_caminho')} · <span className="font-mono">{m.atual}{m.unidade ? ` ${m.unidade}` : ''}</span></p>}
+              {m.prazo && <p className="text-2xs font-body text-faint" style={{ margin: 0 }}>{t('meta_prazo')}: {data(m.prazo)}</p>}
+              {m.comentario && <p className="text-xs font-body text-muted" style={{ margin: 0 }}>{m.comentario}</p>}
+            </div>
+          ))}
         </div>
       )}
       <Titulo>{t('partilhado')}</Titulo>

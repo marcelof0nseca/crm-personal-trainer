@@ -34,7 +34,7 @@ export const MODULOS = {
   pontos: { vazio: { regras: null, movimentos: [], recompensas: [], resgates: [], ativo: false }, removerAluno: (v, id) => ({ ...v, movimentos: (v.movimentos || []).filter((m) => m.studentId !== id), resgates: (v.resgates || []).filter((r) => r.studentId !== id) }) },
   conteudos: { vazio: { favoritos: [], templates: [] }, removerAluno: nenhum },
   satisfacao: { vazio: { pesquisas: [], respostas: [] }, removerAluno: semAluno('respostas') },
-  recursos: { vazio: { locais: [], politica: null, listaEspera: [], pedidos: [], lembretes: [] }, removerAluno: (v, id) => ({ ...v, listaEspera: (v.listaEspera || []).filter((x) => x.studentId !== id), pedidos: (v.pedidos || []).filter((x) => x.studentId !== id), lembretes: (v.lembretes || []).filter((x) => x.studentId !== id) }) },
+  recursos: { vazio: { locais: [], turmas: [], politica: null, listaEspera: [], pedidos: [], lembretes: [] }, removerAluno: (v, id) => ({ ...v, turmas: (v.turmas || []).map((t) => ({ ...t, alunos: (t.alunos || []).filter((a) => a !== id) })), listaEspera: (v.listaEspera || []).filter((x) => x.studentId !== id), pedidos: (v.pedidos || []).filter((x) => x.studentId !== id), lembretes: (v.lembretes || []).filter((x) => x.studentId !== id) }) },
 };
 
 export const NOMES_MODULOS = Object.keys(MODULOS);

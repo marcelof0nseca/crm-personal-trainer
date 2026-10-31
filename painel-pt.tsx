@@ -65,6 +65,7 @@ import { fotosSoltas, planoDeEliminacao } from './src/data/eliminar';
 import { clonarPrograma, clonarTreinosCom, rirValido } from './src/data/prescricao';
 import { ConfirmDialog, EmptyState, FormField, Modal } from './src/components/UiAtoms';
 import { ModulosProvider, useModulo } from './src/features/useModulo';
+import { colarMarcacoes, conflitosDeLocal } from './src/features/agenda/logica';
 import { PREFIXO_MODULO, chaveModulo, modulosAoEliminarAluno, NOMES_MODULOS } from './src/features/modulos';
 import { aplicarPreset, presetDeSelecao, replicarSerie } from './src/features/treino/presets';
 import PresetsModal from './src/features/treino/PresetsModal';
@@ -239,6 +240,7 @@ function normalizarDefinicoes(raw) {
   const excecoes = {};
   Object.entries(excecoesBrutas).forEach(([iso, valor]) => {
     excecoes[iso] = normalizarDiaDeHorario(valor, EMPTY_DEFINICOES.horarios[1]);
+    if (valor && valor.motivo) excecoes[iso].motivo = String(valor.motivo).slice(0, 60);
   });
   return {
     horarios,
@@ -8509,6 +8511,12 @@ function Dashboard({ students, sessions, finances, customCategories, definicoes,
 
 /* ============================== WEEKLY VIEW ============================== */
 
+// Arrastar um cartão para outro dia só com rato ou caneta: o gesto de dedo já
+// falhou num telemóvel real (CLAUDE.md, secção 6). Soltar não grava nada, abre o
+// formulário com a data nova para se confirmar.
+const TIPO_ARRASTO_SESSAO = 'text/ptmanager-sessao';
+const ARRASTAR_DISPONIVEL = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: fine)').matches;
+
 function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSession, horario, students, compact, customCategories, selecao }) {
   const iso = fmtDateISO(date);
   const isToday = iso === fmtDateISO(new Date());
@@ -8520,6 +8528,11 @@ function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSess
     <div
       // data-day-iso e o alvo que o arrasto procura com elementFromPoint.
       data-day-iso={iso}
+      onDragOver={(e) => { if (e.dataTransfer.types.includes(TIPO_ARRASTO_SESSAO)) e.preventDefault(); }}
+      onDrop={(e) => {
+        const id = e.dataTransfer.getData(TIPO_ARRASTO_SESSAO);
+        if (id && selecao && selecao.pedirMover) { e.preventDefault(); selecao.pedirMover(id, iso); }
+      }}
       className="bg-surface border border-hair rounded-xl p-3 flex flex-col min-w-0"
       style={{
         minHeight: '140px',
@@ -8569,8 +8582,13 @@ function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSess
           : itensDoDia(sessionsList).map((item) => (item.sessoes.length > 1 ? (
             <GroupedSessionCard key={item.sessoes[0].groupId} sessoes={item.sessoes} students={students} onOpenSession={onOpenSession} onQuickStatus={onQuickStatus} compact={compact} customCategories={customCategories} />
           ) : (
-            <SessionCard
+            <div
               key={item.sessoes[0].id}
+              className="min-w-0"
+              draggable={ARRASTAR_DISPONIVEL && Boolean(selecao && selecao.pedirMover)}
+              onDragStart={(e) => { e.dataTransfer.setData(TIPO_ARRASTO_SESSAO, item.sessoes[0].id); e.dataTransfer.effectAllowed = 'move'; }}
+            >
+            <SessionCard
               session={item.sessoes[0]}
               student={students.find((st) => st.id === item.sessoes[0].studentId)}
               onOpen={() => onOpenSession(item.sessoes[0])}
@@ -8579,6 +8597,7 @@ function DayColumn({ date, sessionsList, onOpenSession, onQuickStatus, onAddSess
               compact={compact}
               selecao={selecao}
             />
+            </div>
           )))}
       </div>
     </div>
@@ -8841,6 +8860,9 @@ function BarraSelecao({ selecao }) {
             />
             <button type="button" onClick={mover} disabled={!destino} className="btn btn-primary" style={{ fontSize: 12, opacity: destino ? 1 : 0.45 }}>
               Mover para o dia
+            </button>
+            <button type="button" onClick={() => { selecao.copiarPara(destino); setDestino(''); }} disabled={!destino} className="btn btn-ghost" style={{ fontSize: 12, opacity: destino ? 1 : 0.45 }}>
+              Copiar para o dia
             </button>
           </span>
         </div>
@@ -9270,6 +9292,7 @@ function StudentsView({ students, sessions, onEdit, onNew }) {
     const norm = (v) => (v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
     const term = norm(search);
     const list = students.filter((s) => {
+      if (s.naLixeira) return false;
       if (filter === 'ativos' && !s.active) return false;
       if (term && !norm(s.name).includes(term)) return false;
       return true;
@@ -9605,6 +9628,24 @@ function StudentFormModal({ student, sessions, customCategories, definicoes, tre
 }
 
 /* ============================== SESSION FORM MODAL ============================== */
+
+// Só aparece a quem criou locais (Mais → Agenda avançada). Avisa, nunca bloqueia.
+function CampoLocal({ form, sessions, onMudar }) {
+  const recursos = useModulo('recursos');
+  const locais = recursos.valor.locais || [];
+  if (recursos.estado !== 'ok' || locais.length === 0) return null;
+  const local = locais.find((l) => l.id === form.localId);
+  const choques = local ? conflitosDeLocal(sessions, form, local.preparacaoMin || 0) : [];
+  return (
+    <FormField label="Local (opcional)">
+      <select value={form.localId || ''} onChange={(e) => onMudar(e.target.value)} className="input-field">
+        <option value="">Sem local</option>
+        {locais.map((l) => <option key={l.id} value={l.id}>{l.nome}</option>)}
+      </select>
+      {choques.length > 0 && <p className="text-xs font-body" style={{ margin: '4px 0 0', color: 'var(--gold)' }}>Este local já está ocupado às {choques[0].startTime}.</p>}
+    </FormField>
+  );
+}
 
 function SessionFormModal({ session, students, sessions, defaultDate, reposicaoDe, customCategories, definicoes, serieCount = 0, onAddCategory, onSave, onClose, onDelete, onReplicar }) {
   const isEdit = !!session;
@@ -10057,9 +10098,12 @@ function SessionFormModal({ session, students, sessions, defaultDate, reposicaoD
             )}
 
             {(isEvento || form.type !== 'avaliacao') && (
+              <>
+              <CampoLocal form={form} sessions={sessions} onMudar={(v) => set('localId', v)} />
               <FormField label="Observações (opcional)">
                 <textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} className="input-field" rows={2} placeholder={isEvento ? 'Notas sobre o evento...' : 'Notas sobre a aula...'} />
               </FormField>
+              </>
             )}
           </>
         )}
@@ -19595,7 +19639,31 @@ function AppInner() {
     showToast(`${plural(mexidas.length, 'marcação eliminada', 'marcações eliminadas')}.`);
   }
 
+  // Cada cópia nasce agendada, sem falta nem dados de avaliação, e mantém a
+  // distância entre dias. Uma sobreposição avisa, como no resto da agenda.
+  function copiarSelecionadasPara(iso) {
+    const copias = colarMarcacoes(sessions.filter((s) => selecionadas.includes(s.id)), iso, uid).map((c) => ({ ...EMPTY_ASSESS_FIELDS, ...c }));
+    if (copias.length === 0) return;
+    const next = [...sessions, ...copias];
+    const choques = copias.filter((c) => conflitosDe(next, c).length > 0).length;
+    const ids = new Set(copias.map((c) => c.id));
+    persistSessions(next);
+    sairDaSelecao();
+    showToast(
+      `${plural(copias.length, 'marcação copiada', 'marcações copiadas')}${choques ? ` · ${plural(choques, 'sobreposição', 'sobreposições')}` : ''}.`,
+      choques ? 'error' : 'success',
+      { label: 'Desfazer', onClick: () => persistSessions(sessionsRef.current.filter((s) => !ids.has(s.id))) },
+    );
+  }
+
+  function pedirMoverSessao(id, iso) {
+    const s = sessions.find((x) => x.id === id);
+    if (s && s.date !== iso) openEditSession({ ...s, date: iso });
+  }
+
   const selecaoAgenda = {
+    pedirMover: pedirMoverSessao,
+    copiarPara: copiarSelecionadasPara,
     ativo: modoSelecao,
     ids: selecionadas,
     alternar: alternarSelecionada,
@@ -20106,6 +20174,7 @@ function AppInner() {
               onAgendarAvaliacao={agendarAvaliacaoRecorrente}
               onMudarSessoes={persistSessions}
               onMudarAlunos={persistStudents}
+              onMudarDefinicoes={persistDefinicoes}
               onAbrirAluno={(st) => { setView('students'); setFichaStudentId(st.id); }}
               showToast={showToast}
             />

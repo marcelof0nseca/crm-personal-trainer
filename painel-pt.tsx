@@ -66,6 +66,7 @@ import { clonarPrograma, clonarTreinosCom, rirValido } from './src/data/prescric
 import { ConfirmDialog, EmptyState, FormField, Modal } from './src/components/UiAtoms';
 import { ModulosProvider, useModulo } from './src/features/useModulo';
 import { colarMarcacoes, conflitosDeLocal } from './src/features/agenda/logica';
+import { apagarDocumentos, limparAlunoNoServidor, limparContaNoServidor } from './src/features/servidor';
 import { PREFIXO_MODULO, chaveModulo, modulosAoEliminarAluno, NOMES_MODULOS } from './src/features/modulos';
 import { aplicarPreset, presetDeSelecao, replicarSerie } from './src/features/treino/presets';
 import PresetsModal from './src/features/treino/PresetsModal';
@@ -19809,6 +19810,8 @@ function AppInner() {
       // O que saiu dos módulos pode levar fotografias (a postural, o progresso).
       const soltas = fotosSoltas(antes, [restanteDosDados(sessions.filter((s) => s.studentId !== id)), { ...antes, ...mudancas }], photosRef.current);
       if (soltas.length > 0 && !(await apagarFotosSoltas(soltas))) return false;
+      const ficheiros = ((antes.documentos && antes.documentos.itens) || []).filter((d) => d.studentId === id).map((d) => d.path);
+      if (!(await apagarDocumentos(ficheiros)) || !(await limparAlunoNoServidor(id))) return false;
       for (const [nome, valor] of Object.entries(mudancas)) {
         await readStoredValue(chaveModulo(nome));
         await writeStoredValue(chaveModulo(nome), JSON.stringify(valor));
@@ -19892,6 +19895,11 @@ function AppInner() {
   }
 
   async function resetAllData() {
+    // O que vive fora de `app_data` sai primeiro: a lista dos documentos está no bloco.
+    if (storageOk && !(await limparContaNoServidor())) {
+      showToast('Não foi possível apagar os documentos e pedidos no servidor. Nada foi apagado.', 'error');
+      return;
+    }
     // Os rascunhos das sessões a meio vivem só neste aparelho.
     apagarRascunhosCom(PREFIXO_RASCUNHO);
     const definicoesVazias = normalizarDefinicoes(null);
@@ -20175,6 +20183,8 @@ function AppInner() {
               onMudarSessoes={persistSessions}
               onMudarAlunos={persistStudents}
               onMudarDefinicoes={persistDefinicoes}
+              onMudarFormularios={persistFormularios}
+              modelosFormulario={[...MODELOS_BASE, ...(formularios.modelos || [])]}
               onAbrirAluno={(st) => { setView('students'); setFichaStudentId(st.id); }}
               showToast={showToast}
             />

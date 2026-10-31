@@ -164,8 +164,8 @@ function Locais({ modulo }) {
 function Regras({ modulo }) {
   const p = { ...POLITICA_OMISSAO, ...(modulo.valor.politica || {}) };
   const mudar = (campos) => modulo.gravar((m) => ({ ...m, politica: { ...p, ...campos } }));
-  const numero = (rotulo, campo, ajuda) => (
-    <FormField label={rotulo}><input type="number" min="0" value={p[campo]} onChange={(e) => mudar({ [campo]: Number(e.target.value) || 0 })} className="input-field" aria-describedby={ajuda ? undefined : undefined} /></FormField>
+  const numero = (rotulo, campo) => (
+    <FormField label={rotulo}><input type="number" min="0" value={p[campo]} onChange={(e) => mudar({ [campo]: Number(e.target.value) || 0 })} className="input-field" /></FormField>
   );
   return (
     <div className="flex flex-col gap-3">

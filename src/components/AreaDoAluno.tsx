@@ -690,7 +690,7 @@ function ProgramaDoAluno({ student, prescricao, videos = [], sessoesAnteriores, 
               // a carga já vêm na própria prescrição. onMudar={() => {}} é o
               // mesmo padrão já usado na landing para uma vista só de leitura
               // (LandingPage.tsx) -- o componente é real, só não persiste.
-              <ExercicioVista key={ex.id} ex={ex} biblioteca={videos} onMudar={() => {}} comCabecalho />
+              <ExercicioVista key={ex.id} ex={ex} biblioteca={videos} onMudar={() => {}} comCabecalho soLeitura />
             ))}
           </div>
         )

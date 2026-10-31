@@ -172,6 +172,10 @@ Consequências que decidem quase tudo:
   corre em `normalizarTreinos`. O método pode levar números próprios em
   `ex.metodoParams` (`CAMPOS_POR_METODO`), e `ex.grupo` liga os exercícios de
   uma supersérie, que ganham etiqueta A1/A2 por `etiquetasDeGrupo`.
+  **Uma carga em percentagem é uma referência, não o peso.** Os modelos trazem
+  «40%» da carga de trabalho; ao escrever os kg na vista do treino, o peso vai para
+  `carga` e a percentagem para `cargaRef` (`mudarPesoDaLinha`, `src/data/prescricao.ts`).
+  Assim o volume, o registo e o PDF leem o peso sem saberem da referência.
 - **As sub-etapas de 8 métodos também são linhas**, nunca uma entidade nova —
   o mesmo padrão da supersérie, só que dentro de um exercício só.
   `gerarSubEtapas` escreve-as a partir dos números do método
@@ -736,9 +740,9 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   `ConfirmDialog` do «descartar» tem cancelar = continuar a editar, que é o lado
   seguro.
 - **Campos de texto a 16 px no telemóvel, ou o iOS aproxima a página ao
-  tocar neles** e não a volta a afastar. `.input-field` já o faz; o
-  `CargaDaSerie` (13 px em linha) não, e por isso o registo do realizado tem os
-  seus próprios campos (`CamposDaSerie`), com `inputMode` e `enterKeyHint`.
+  tocar neles** e não a volta a afastar. `.input-field` já o faz, e o
+  `CargaDaSerie` também; o registo do realizado tem os seus próprios campos
+  (`CamposDaSerie`), com `inputMode` e `enterKeyHint`.
   O alvo de toque de um ✓ entre duas séries é de 48 px.
 - **Uma barra fixa em baixo tem de ficar acima da navegação, não por cima
   dela.** No telemóvel a barra de separadores ocupa `--nav-h`;

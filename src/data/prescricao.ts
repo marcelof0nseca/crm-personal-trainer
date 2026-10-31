@@ -7,6 +7,22 @@ const NUMERO_RIR = '(?:10|\\d)';
 const RIR_VALIDO = new RegExp(`^(${NUMERO_RIR})(?:\\s*-\\s*(${NUMERO_RIR}))?$`);
 
 // Um valor (2) ou uma faixa (1-3), de 0 a 10. Vazio é válido: o campo é opcional.
+// A carga de um modelo pode vir em percentagem da carga de trabalho («40%», «100% → 75%»).
+// Isso é uma referência, não o peso: o peso vai para `carga`, para o volume, o registo e
+// o PDF o lerem como sempre, e a percentagem fica em `cargaRef`, à vista.
+export const cargaEPercentagem = (v) => String(v == null ? '' : v).includes('%');
+export const referenciaDaCarga = (l) => (l.cargaRef ? l.cargaRef : (cargaEPercentagem(l.carga) ? l.carga : ''));
+export const pesoDaCarga = (l) => (cargaEPercentagem(l.carga) ? '' : (l.carga || ''));
+
+export function mudarPesoDaLinha(linha, texto) {
+  const { cargaRef: _antiga, ...resto } = linha;
+  // Escrever outra percentagem troca a referência; apagar o peso devolve-a.
+  if (cargaEPercentagem(texto)) return { ...resto, carga: texto };
+  const ref = referenciaDaCarga(linha);
+  if (!ref) return { ...resto, carga: texto };
+  return String(texto).trim() ? { ...resto, carga: texto, cargaRef: ref } : { ...resto, carga: ref };
+}
+
 export function rirValido(valor) {
   const texto = String(valor === undefined || valor === null ? '' : valor).trim();
   if (!texto) return true;

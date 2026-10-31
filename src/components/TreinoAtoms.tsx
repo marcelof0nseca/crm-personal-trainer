@@ -4,6 +4,7 @@
 // passa a importar tudo isto daqui, em vez de o definir localmente.
 import { useState } from 'react';
 import { leitorYoutube, ligacaoYoutube } from '../data/youtube';
+import { mudarPesoDaLinha, pesoDaCarga, referenciaDaCarga } from '../data/prescricao';
 
 export const CAMPO_SERIE = {
   reps: ['Reps', '10'],
@@ -179,10 +180,11 @@ function acentoTexto(hex) {
   return `color-mix(in srgb, ${hex}, var(--acc-mix) var(--acc-amt))`;
 }
 
-export function CargaDaSerie({ valor, rotulo, onMudar }) {
-  return (
+export function CargaDaSerie({ valor, referencia, rotulo, onMudar }) {
+  const campo = (
     <input
       value={valor || ''}
+      inputMode={referencia ? 'decimal' : undefined}
       data-carga-vista=""
       onChange={(e) => onMudar(e.target.value)}
       onKeyDown={(e) => {
@@ -192,11 +194,19 @@ export function CargaDaSerie({ valor, rotulo, onMudar }) {
         const proximo = todos[todos.indexOf(e.currentTarget) + 1];
         if (proximo) { proximo.focus(); proximo.select(); } else e.currentTarget.blur();
       }}
-      aria-label={rotulo}
+      aria-label={referencia ? `${rotulo}, em kg. Referência: ${referencia}` : rotulo}
       className="input-field font-mono"
-      placeholder="—"
-      style={{ fontSize: 13, textAlign: 'right', padding: '4px 8px' }}
+      placeholder={referencia ? 'kg' : '—'}
+      // 16 px: abaixo disto, o iOS aproxima a página ao tocar no campo.
+      style={{ fontSize: 16, textAlign: 'right', padding: '4px 8px' }}
     />
+  );
+  if (!referencia) return campo;
+  return (
+    <span className="flex flex-col gap-0.5 min-w-0">
+      {campo}
+      <span className="font-mono text-2xs text-faint" style={{ textAlign: 'right' }}>{referencia}</span>
+    </span>
   );
 }
 
@@ -249,7 +259,7 @@ export function VideoYoutube({ id, nome }) {
   );
 }
 
-export function ExercicioVista({ ex, biblioteca, grupoInfo, onMudar, comCabecalho }) {
+export function ExercicioVista({ ex, biblioteca, grupoInfo, onMudar, comCabecalho, soLeitura }) {
   const [numeros, setNumeros] = useState(false);
   const daBiblioteca = biblioteca.find((b) => b.id === ex.exercicioId);
   const linhas = Array.isArray(ex.linhas) && ex.linhas.length ? ex.linhas : [];
@@ -257,10 +267,6 @@ export function ExercicioVista({ ex, biblioteca, grupoInfo, onMudar, comCabecalh
   const extras = extrasPreenchidos(ex);
   const subtitulo = [daBiblioteca && daBiblioteca.grupo, daBiblioteca && daBiblioteca.equipamento]
     .filter(Boolean).join(' · ');
-
-  function mudarLinha(id, campo, valor) {
-    onMudar({ ...ex, linhas: linhas.map((l) => (l.id === id ? { ...l, [campo]: valor } : l)) });
-  }
 
   return (
     <div
@@ -361,11 +367,18 @@ export function ExercicioVista({ ex, biblioteca, grupoInfo, onMudar, comCabecalh
                 </span>
                 <span style={{ width: 92, flexShrink: 0 }}>
                   {temCarga ? (
-                    <CargaDaSerie
-                      valor={linha.carga}
-                      rotulo={`Carga da série ${i + 1} de ${ex.nome || 'exercício'}`}
-                      onMudar={(v) => mudarLinha(linha.id, 'carga', v)}
-                    />
+                    soLeitura ? (
+                      <span className="block font-mono text-xs text-primary" style={{ textAlign: 'right' }}>
+                        {pesoDaCarga(linha) ? pesoDaCarga(linha) : (referenciaDaCarga(linha) || '—')}
+                      </span>
+                    ) : (
+                      <CargaDaSerie
+                        valor={pesoDaCarga(linha)}
+                        referencia={referenciaDaCarga(linha)}
+                        rotulo={`Carga da série ${i + 1} de ${ex.nome || 'exercício'}`}
+                        onMudar={(v) => onMudar({ ...ex, linhas: linhas.map((l) => (l.id === linha.id ? mudarPesoDaLinha(l, v) : l)) })}
+                      />
+                    )
                   ) : (
                     <span className="block font-mono text-2xs text-faint" style={{ textAlign: 'right' }}>—</span>
                   )}

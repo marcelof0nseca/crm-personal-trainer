@@ -3,7 +3,7 @@
  *
  * Uso: node scripts/validar-prescricao.mjs
  */
-import { clonarPrograma, clonarTreinosCom, rirValido } from '../src/data/prescricao.ts';
+import { clonarPrograma, clonarTreinosCom, mudarPesoDaLinha, pesoDaCarga, referenciaDaCarga, rirValido } from '../src/data/prescricao.ts';
 import { camposRealizaveis, valoresSugeridos } from '../src/data/sessoes.ts';
 
 let falhas = 0;
@@ -62,6 +62,21 @@ esperar(outro.treinos[0].exercicios.length === 2 && outro.treinos[0].exercicios[
 
 esperar(clonarTreinosCom(undefined, gerarId).length === 0, 'um programa sem treinos não rebenta');
 esperar(clonarPrograma({ id: 'p', studentId: 'a' }, { ...opcoes, studentId: 'a' }).treinos.length === 0, 'dados antigos incompletos não rebentam');
+
+const pct = { id: 'l', reps: '8', carga: '40%' };
+esperar(pesoDaCarga(pct) === '' && referenciaDaCarga(pct) === '40%', 'a percentagem é referência, e o campo do peso fica vazio');
+const comPeso = mudarPesoDaLinha(pct, '32');
+esperar(comPeso.carga === '32' && comPeso.cargaRef === '40%' && pesoDaCarga(comPeso) === '32' && referenciaDaCarga(comPeso) === '40%', 'escrever o peso guarda-o e mantém a referência');
+const zero = mudarPesoDaLinha(pct, '0');
+esperar(zero.carga === '0' && zero.cargaRef === '40%', 'zero é um peso');
+const devolvido = mudarPesoDaLinha(comPeso, '');
+esperar(devolvido.carga === '40%' && !('cargaRef' in devolvido), 'apagar o peso devolve a percentagem');
+const outraPct = mudarPesoDaLinha(comPeso, '50%');
+esperar(outraPct.carga === '50%' && !('cargaRef' in outraPct), 'outra percentagem troca a referência');
+const normal = mudarPesoDaLinha({ id: 'n', carga: '20' }, '25');
+esperar(normal.carga === '25' && !('cargaRef' in normal), 'uma carga normal continua igual');
+esperar(valoresSugeridos({ tipo: 'normal', reps: '8', carga: comPeso.carga }, ['reps', 'carga']).carga === '32', 'o registo passa a sugerir o peso');
+esperar(mudarPesoDaLinha({ id: 'n', carga: '' }, '').carga === '', 'sem nada, continua sem nada');
 
 console.log(falhas === 0 ? '\nTUDO OK' : `\n${falhas} falha(s)`);
 process.exit(falhas === 0 ? 0 : 1);

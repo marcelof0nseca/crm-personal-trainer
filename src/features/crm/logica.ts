@@ -42,22 +42,23 @@ export function converterLead(lead, alunos, { gerarId, cor, hoje }) {
 export function lerCsv(texto) {
   const limpo = String(texto || '').replace(/^﻿/, '');
   const sep = (limpo.split('\n')[0].match(/;/g) || []).length >= (limpo.split('\n')[0].match(/,/g) || []).length ? ';' : ',';
-  const linhas = []; let campo = ''; let linha = []; let aspas = false;
+  const linhas = []; const numeros = []; let campo = ''; let linha = []; let aspas = false; let fisica = 1; let inicioDaLinha = 1;
   for (let i = 0; i < limpo.length; i += 1) {
     const c = limpo[i];
     if (aspas) {
+      if (c === '\n') fisica += 1;
       if (c === '"' && limpo[i + 1] === '"') { campo += '"'; i += 1; } else if (c === '"') aspas = false; else campo += c;
     } else if (c === '"') aspas = true;
     else if (c === sep) { linha.push(campo); campo = ''; } else if (c === '\n' || c === '\r') {
       if (c === '\r' && limpo[i + 1] === '\n') i += 1;
       linha.push(campo); campo = '';
-      if (linha.some((x) => x.trim())) linhas.push(linha);
-      linha = [];
+      if (linha.some((x) => x.trim())) { linhas.push(linha); numeros.push(inicioDaLinha); }
+      linha = []; fisica += 1; inicioDaLinha = fisica;
     } else campo += c;
   }
   linha.push(campo);
-  if (linha.some((x) => x.trim())) linhas.push(linha);
-  return { cabecalho: (linhas[0] || []).map((x) => x.trim()), linhas: linhas.slice(1) };
+  if (linha.some((x) => x.trim())) { linhas.push(linha); numeros.push(inicioDaLinha); }
+  return { cabecalho: (linhas[0] || []).map((x) => x.trim()), linhas: linhas.slice(1), numeros: numeros.slice(1) };
 }
 
 export const CAMPOS_IMPORTACAO = [
@@ -78,13 +79,13 @@ export function mapearColunas(cabecalho) {
 }
 
 // O relatório diz, linha a linha, o que entra e porque não entra o resto.
-export function prepararImportacao({ linhas }, mapa, alunos) {
+export function prepararImportacao({ linhas, numeros }, mapa, alunos) {
   const validos = []; const erros = [];
   const vistos = [...(alunos || [])];
   linhas.forEach((l, i) => {
     const v = {};
     Object.entries(mapa).forEach(([campo, col]) => { v[campo] = String(l[col] ?? '').trim(); });
-    const n = i + 2;
+    const n = numeros ? numeros[i] : i + 2;
     if (!v.name) { erros.push({ linha: n, motivo: 'Sem nome' }); return; }
     if (vistos.some((a) => mesmaPessoa(a, v))) { erros.push({ linha: n, motivo: `Já existe: ${v.name}` }); return; }
     const valor = v.planValue ? Number(String(v.planValue).replace(',', '.')) : 0;

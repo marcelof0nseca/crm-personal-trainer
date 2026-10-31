@@ -1,9 +1,13 @@
 // O separador «Mais»: a entrada para os módulos que não cabem na barra. Cada área
 // carrega só quando se abre.
 import { Suspense, lazy, useState } from 'react';
-import { ArrowLeft, CalendarCog, ClipboardList, MessageSquareText } from 'lucide-react';
+import { ArrowLeft, CalendarCog, ClipboardList, Contact, HeartPulse, ListChecks, MessageSquareText, Send } from 'lucide-react';
 
 const AREAS = [
+  { id: 'retencao', rotulo: 'Retenção', ajuda: 'Quem está a treinar e quem deixou de treinar', icon: HeartPulse, comp: lazy(() => import('./retencao/CentralRetencao')) },
+  { id: 'tarefas', rotulo: 'Tarefas e regras', ajuda: 'O que há para fazer hoje e regras automáticas', icon: ListChecks, comp: lazy(() => import('./crm/Tarefas')) },
+  { id: 'crm', rotulo: 'Contactos', ajuda: 'Interessados, importação, grupos e lixeira', icon: Contact, comp: lazy(() => import('./crm/CentralCrm')) },
+  { id: 'mensagens', rotulo: 'Mensagens', ajuda: 'Modelos prontos e avisos para a área do aluno', icon: Send, comp: lazy(() => import('./crm/Mensagens')) },
   { id: 'agenda', rotulo: 'Agenda avançada', ajuda: 'Modelos de horário, turmas, lista de espera, locais e calendário', icon: CalendarCog, comp: lazy(() => import('./agenda/AgendaAvancada')) },
   { id: 'avaliacoes', rotulo: 'Centro de avaliações', ajuda: 'Postural, funcional, neuromotora, modelos e envio ao aluno', icon: ClipboardList, comp: lazy(() => import('./avaliacoes/CentroAvaliacoes')) },
   { id: 'feedbacks', rotulo: 'Feedbacks', ajuda: 'O que os alunos disseram dos treinos', icon: MessageSquareText, comp: lazy(() => import('./feedbacks/CentralFeedbacks')) },

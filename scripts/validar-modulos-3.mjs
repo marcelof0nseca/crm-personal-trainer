@@ -80,6 +80,7 @@ export async function correr(reportar) {
   const imp = CR.prepararImportacao(csv, mapa, []);
   esperar(imp.validos.length === 1 && imp.validos[0].planValue === 50.5 && imp.erros.length === 2, 'o relatório separa o que entra do que não entra');
   esperar(/inválido/.test(imp.erros[0].motivo) && /Já existe/.test(imp.erros[1].motivo), 'diz porque cada linha ficou de fora');
+  esperar(imp.erros[0].linha === 4 && imp.erros[1].linha === 5, 'o número da linha é o do ficheiro, mesmo com linhas em branco');
   const tar = CR.vistaDeTarefas([{ id: 1, data: '2026-10-29' }, { id: 2, data: hoje }, { id: 3, data: '2026-11-01' }, { id: 4 }, { id: 5, feita: true }], hoje);
   esperar(tar.atrasadas.length === 1 && tar.hoje.length === 1 && tar.proximas.length === 2 && tar.feitas.length === 1, 'tarefas por hoje, atrasadas e próximas');
   const regra = { id: 'r', ativa: true, gatilho: 'aluno_em_risco', titulo: 'Falar com {nome}' };

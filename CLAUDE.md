@@ -94,7 +94,8 @@ secção 10 para o que ficou de fora.
 | `docs/PTMANAGER_MFIT_PARIDADE.md` | A matriz de cobertura do roteiro de paridade, atualizada a cada lote. Ver secção 11, item 29 |
 | `scripts/gerar-exercicios.mjs` | Gera o ficheiro acima a partir do catálogo MFIT (que não está no repositório) |
 | `scripts/exercicios-legado.json` | Os 202 exercícios que a aplicação tinha antes do catálogo |
-| `supabase/functions/` | 9 Edge Functions: `admin-overview`, `create-checkout-session`, `create-mbway-checkout-session`, `create-portal-session`, `stripe-webhook`, `send-welcome-email`, `aluno-view`, `aluno-registar-sessao`, `aluno-convidar` |
+| `supabase/functions/` | 16 Edge Functions: `admin-overview`, `create-checkout-session`, `create-mbway-checkout-session`, `create-portal-session`, `stripe-webhook`, `send-welcome-email`, `aluno-view`, `aluno-registar-sessao`, `aluno-convidar`, `aluno-acao`, `publico`, `publico-calendario`, `cobranca-onboarding`, `cobranca-checkout`, `cobranca-webhook`, `notificacoes-despachar`. As regras do que o aluno e o público veem e pedem são funções puras em `_shared/vista-aluno.ts` e `_shared/acoes-aluno.ts` |
+| `src/features/` | Módulos novos, um por domínio, abertos pelo separador «Mais» (`CentroModulos.tsx`). `logica.ts` sem React em cada um, testada em `scripts/validar-modulos*.mjs`; `modulos.ts` é o registo das linhas `modulo:<nome>`; `servidor.ts` é o que fala com as tabelas novas |
 | `supabase-schema.sql` | Schema completo e idempotente |
 | `public/` | Ficheiros estáticos que o Vite copia tal e qual para a raiz do build (ao contrário de `src/assets/`, que leva hash) — `og-image.png`, `favicon.png`, `apple-touch-icon.png`, `icon-512.png`, `robots.txt` |
 
@@ -128,9 +129,21 @@ formularios
 ```
 
 As chaves são limitadas por um `check` em `supabase-schema.sql`. **Uma chave
-nova exige alterar esse `check` e correr o SQL no painel do Supabase.** A única
-família fora desta lista é `execucoes:<idDoAluno>` (o treino realizado, mais
-abaixo), que o `check` aceita por expressão regular.
+nova exige alterar esse `check` e correr o SQL no painel do Supabase.** Fora desta
+lista, o `check` aceita por expressão regular duas famílias: `execucoes:<idDoAluno>`
+(o treino realizado, mais abaixo) e `modulo:<nome>`.
+
+**Um módulo novo não é uma chave nova:** regista-se em `src/features/modulos.ts`, com
+o seu vazio e o que lhe sai ao eliminar um aluno, e só por isso entra na cópia de
+segurança, no restauro, no «Apagar tudo» e na eliminação do aluno. Lê-se com
+`useModulo(nome)`. Histórico que cresce sem fim não vive aqui: vai para tabelas
+próprias (`entradas`, `cobranca_pagamentos`, `audit_events`, `notificacao_leituras`).
+
+**Ninguém de fora escreve nos blocos.** O aluno e o público criam linhas em
+`entradas` pelas funções `aluno-acao` e `publico`, e o treinador trata-as nas
+Novidades. A única exceção é a de sempre: o aluno regista as suas sessões em
+`execucoes:<id>`. O público lê um retrato em `publico_enderecos`, copiado ao publicar,
+nunca os blocos. Um campo novo só chega ao aluno se entrar em `vistaDoAluno` pelo nome.
 
 Consequências que decidem quase tudo:
 
@@ -783,6 +796,18 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   `detectSessionInUrl` só para o que é seu (`eRegressoDoAluno`). Os testes com
   sessão semeada não o apanhavam: é preciso abrir o endereço com o `#access_token`
   e olhar para as chaves do `localStorage`, também no build de produção.
+- **Um `FormField` é um `<label>`: botões não entram lá dentro.** O primeiro botão
+  ficava com o nome do rótulo, e tocar no rótulo acionava-o. Para um conjunto de
+  botões, usar `Grupo` (`src/features/comum.tsx`).
+- **«Hoje» é o dia local, nunca `toISOString()`.** À noite em Portugal, no horário de
+  verão, a data em UTC já pode ser a de amanhã: um aniversário de hoje desaparecia.
+  Usar `hojeISO()`. Só as contas sobre datas já escritas podem usar UTC.
+- **Em `StrictMode`, a limpeza de um efeito corre e o efeito volta a correr.** Uma
+  marca `montado.current = false` na limpeza, sem a repor no corpo do efeito, fica
+  falsa para sempre, e o ecrã nunca reage ao fim de um pedido.
+- **Comparar dois campos que podem faltar dá verdadeiro sem haver nada.** No conflito
+  de local, `undefined !== undefined` é falso: duas aulas sem grupo pareciam do mesmo
+  grupo, e o aviso nunca disparava. Confirmar primeiro que o campo existe.
 - **O Chromium do Playwright usa o tema claro por omissão.** Sem
   `colorScheme: 'dark'` no contexto, uma captura dita «escura» sai clara e o tema
   escuro fica por testar sem ninguém dar por isso.
@@ -1215,15 +1240,19 @@ Combinado por níveis, do mais barato ao mais caro:
     `.card` não tem padding nenhum por omissão (cada uso tem de levar `p-4`
     a sério, como `StatCard`/`StudentCard` já faziam) — faltava em todos os
     cartões deste ficheiro, incluindo os que já existiam antes desta fatia
-29. **Roteiro de paridade funcional, sem IA e sem FMS** — em curso
+29. **Roteiro de paridade funcional, sem IA e sem FMS** — código entregue, por ligar
     — decidido pelo dono do produto a 30/10/2026, depois de lhe serem
     explicados o custo legal da cobrança dos alunos e a sensibilidade da
     avaliação postural. **Inverte parte da secção 10**: quando esta e o roteiro
     divergirem em chat, recordes, vídeo, área do aluno ou agenda, vale o roteiro;
     IA continua de fora. O estado de cada área vive em
     `docs/PTMANAGER_MFIT_PARIDADE.md`. Cobranças, payouts e mensagens reais só em
-    modo de teste até haver autorização explícita para produção. Primeiro lote
-    feito: data de início do aluno, RIR alvo, título de evento e duplicar programa
+    modo de teste até haver autorização explícita para produção. **Falta correr o
+    SQL e publicar as funções novas** (lista em «Para ligar», na matriz), e nada foi
+    testado num Supabase real, no Stripe nem num telemóvel. Lacunas por área, na
+    matriz; o documento só se dá por concluído quando essas linhas fecharem. **Falta a
+    revisão legal**, mais urgente do que nunca: cobrança, contratos, fotografias
+    enviadas pelo aluno e formulários públicos
 30. **IA** — decisão do dono do produto, não tarefa. Ver secção 10
 31. Decisões de produto — ver secção 10
 

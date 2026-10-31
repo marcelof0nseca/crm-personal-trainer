@@ -284,13 +284,15 @@ export default function CentroPlanos({ students, showToast, quem, onImprimir }) 
       const hoje = hojeISO();
       const pag = await lerPagamentos();
       const confirmados = pag.ok ? pag.itens.filter((p) => p.estado === 'pago') : [];
+      const devolvidos = pag.ok ? pag.itens.filter((p) => p.estado === 'reembolsado') : [];
       const v = modulo.valor;
       const novas = (v.contratos || []).flatMap((c) => faturasEmFalta(c, v.faturas, hoje));
       const porConciliar = confirmados.filter((p) => (v.faturas || []).some((f) => f.id === p.fatura_id && !(f.pagamentos || []).some((x) => x.referencia === p.referencia)));
-      if (novas.length === 0 && porConciliar.length === 0) return;
+      const porDevolver = devolvidos.filter((p) => (v.faturas || []).some((f) => f.id === p.fatura_id && (f.pagamentos || []).some((x) => x.referencia === p.referencia) && !(f.reembolsos || []).some((x) => x.id === p.referencia)));
+      if (novas.length === 0 && porConciliar.length === 0 && porDevolver.length === 0) return;
       await modulo.gravar((m) => ({
         ...m,
-        faturas: [...m.faturas.map((f) => porConciliar.filter((p) => p.fatura_id === f.id).reduce((acc, p) => registarPagamento(acc, { id: p.referencia, centimos: p.centimos, metodo: p.metodo || 'cartao', referencia: p.referencia, em: p.created_at, origem: 'webhook' }), f)), ...novas],
+        faturas: [...m.faturas.map((f) => porConciliar.filter((p) => p.fatura_id === f.id).reduce((acc, p) => registarPagamento(acc, { id: p.referencia, centimos: p.centimos, metodo: p.metodo || 'cartao', referencia: p.referencia, em: p.created_at, origem: 'webhook' }), f)).map((f) => porDevolver.filter((p) => p.fatura_id === f.id).reduce((acc, p) => { const r = reembolsar(acc, { id: p.referencia, centimos: p.reembolsado_centimos || p.centimos, em: new Date().toISOString(), motivo: 'Devolução no fornecedor' }); return r.ok ? r.fatura : acc; }, f)), ...novas],
       }));
     })();
   }, [modulo.estado]); // eslint-disable-line react-hooks/exhaustive-deps

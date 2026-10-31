@@ -319,7 +319,7 @@ export default function CentroAvaliacoes(props) {
   const nova = (m) => setForm({ inicial: { id: uid(), studentId: alunoId, modeloId: m ? m.id : null, tipo: m ? m.categoria : 'postural', data: hoje, estado: 'rascunho', valores: {}, vistas: {}, observacoes: '' }, modelo: m });
 
   async function enviar(m) {
-    const ok = await modulo.gravar((x) => ({ ...x, registos: [...x.registos, { id: uid(), studentId: alunoId, modeloId: m.id, tipo: 'online', data: hoje, estado: 'aguarda-aluno', valores: {}, enviadoEm: new Date().toISOString(), prazo: somarDias(hoje, 14) }] }));
+    const ok = await modulo.gravar((x) => ({ ...x, registos: [...x.registos, { id: uid(), studentId: alunoId, modeloId: m.id, modeloCopia: { nome: m.nome, campos: m.campos }, tipo: 'online', data: hoje, estado: 'aguarda-aluno', valores: {}, enviadoEm: new Date().toISOString(), prazo: somarDias(hoje, 14) }] }));
     if (ok) showToast(`Enviado a ${nomeDe(alunoId)}. Aparece na área do aluno.`);
   }
 

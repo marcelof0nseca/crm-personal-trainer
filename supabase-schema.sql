@@ -477,3 +477,204 @@ with check (public.aal_suficiente());
 
 grant select on public.aluno_contas to authenticated;
 grant select, insert on public.aluno_contas to service_role;
+
+
+/* ======================== ROTEIRO DE PARIDADE: SERVIDOR ======================
+   Tudo aditivo e repetível. Nenhuma tabela existente muda de forma. Regra comum:
+   só o dono lê as suas linhas, a escrita de fora passa pela service_role nas Edge
+   Functions, e estas tabelas seguem o mesmo gatilho de dois fatores de `app_data`.
+   ========================================================================== */
+
+-- O que chega do aluno ou do público, à espera de o treinador tratar. Ninguém de
+-- fora escreve em `app_data`. `chave` torna um pedido repetido num só.
+create table if not exists public.entradas (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  aluno_id text,
+  origem text not null check (origem in ('aluno', 'publico')),
+  tipo text not null,
+  ref text not null default '',
+  chave text,
+  dados jsonb not null default '{}'::jsonb,
+  estado text not null default 'nova' check (estado in ('nova', 'tratada')),
+  created_at timestamptz not null default now()
+);
+create unique index if not exists entradas_chave_idx on public.entradas (user_id, chave);
+create index if not exists entradas_dono_idx on public.entradas (user_id, estado, created_at desc);
+alter table public.entradas enable row level security;
+
+drop policy if exists "entradas_ler" on public.entradas;
+create policy "entradas_ler" on public.entradas for select to authenticated using (public.has_personal_app_access(user_id));
+drop policy if exists "entradas_atualizar" on public.entradas;
+create policy "entradas_atualizar" on public.entradas for update to authenticated using (public.has_personal_app_access(user_id)) with check (public.has_personal_app_access(user_id));
+drop policy if exists "entradas_apagar" on public.entradas;
+create policy "entradas_apagar" on public.entradas for delete to authenticated using (public.has_personal_app_access(user_id));
+drop policy if exists "entradas_exige_aal2" on public.entradas;
+create policy "entradas_exige_aal2" on public.entradas as restrictive to authenticated using (public.aal_suficiente()) with check (public.aal_suficiente());
+grant select, delete on public.entradas to authenticated;
+grant update (estado) on public.entradas to authenticated;
+grant select, insert on public.entradas to service_role;
+
+-- Retratos publicados: só o que é público, nunca os blocos. O público lê por função.
+create table if not exists public.publico_enderecos (
+  slug text primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  tipo text not null check (tipo in ('vendas', 'inscricao', 'indicacao', 'desafio', 'calendario', 'programa')),
+  ref text not null default '',
+  dados jsonb not null default '{}'::jsonb,
+  ativo boolean not null default true,
+  expira_em timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists publico_enderecos_dono_idx on public.publico_enderecos (user_id);
+alter table public.publico_enderecos enable row level security;
+drop policy if exists "publico_enderecos_dono" on public.publico_enderecos;
+create policy "publico_enderecos_dono" on public.publico_enderecos for all to authenticated using (public.has_personal_app_access(user_id)) with check (public.has_personal_app_access(user_id));
+drop policy if exists "publico_enderecos_exige_aal2" on public.publico_enderecos;
+create policy "publico_enderecos_exige_aal2" on public.publico_enderecos as restrictive to authenticated using (public.aal_suficiente()) with check (public.aal_suficiente());
+grant select, insert, update, delete on public.publico_enderecos to authenticated;
+grant select, insert on public.publico_enderecos to service_role;
+
+-- Limite de pedidos das páginas públicas. Guarda um hash, nunca o endereço IP.
+create table if not exists public.publico_limites (
+  chave text not null,
+  janela timestamptz not null,
+  n integer not null default 0,
+  primary key (chave, janela)
+);
+alter table public.publico_limites enable row level security;
+grant select, insert, update, delete on public.publico_limites to service_role;
+
+create or replace function public.publico_contar_pedido(p_chave text, p_janela timestamptz)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare total integer;
+begin
+  insert into public.publico_limites (chave, janela, n) values (p_chave, p_janela, 1)
+  on conflict (chave, janela) do update set n = public.publico_limites.n + 1
+  returning n into total;
+  delete from public.publico_limites where janela < now() - interval '2 days';
+  return total;
+end;
+$$;
+revoke all on function public.publico_contar_pedido(text, timestamptz) from public, anon, authenticated;
+grant execute on function public.publico_contar_pedido(text, timestamptz) to service_role;
+
+-- Carteira do treinador. Identidade e IBAN ficam no fornecedor; aqui só o estado.
+create table if not exists public.cobranca_contas (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  stripe_account_id text not null unique,
+  pagamentos_ativos boolean not null default false,
+  transferencias_ativas boolean not null default false,
+  requisitos jsonb not null default '[]'::jsonb,
+  atualizado_em timestamptz not null default now()
+);
+alter table public.cobranca_contas enable row level security;
+drop policy if exists "cobranca_contas_ler" on public.cobranca_contas;
+create policy "cobranca_contas_ler" on public.cobranca_contas for select to authenticated using (public.has_personal_app_access(user_id));
+grant select on public.cobranca_contas to authenticated;
+grant select, insert, update on public.cobranca_contas to service_role;
+
+-- Pagamentos confirmados pelo fornecedor. A referência não repete: um webhook
+-- reenviado não conta duas vezes. Valores em cêntimos inteiros.
+create table if not exists public.cobranca_pagamentos (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  aluno_id text not null,
+  fatura_id text not null,
+  centimos integer not null check (centimos >= 0),
+  moeda text not null default 'EUR',
+  metodo text not null default 'stripe',
+  referencia text not null unique,
+  estado text not null check (estado in ('pago', 'reembolsado')),
+  reembolsado_centimos integer not null default 0,
+  created_at timestamptz not null default now()
+);
+create index if not exists cobranca_pagamentos_dono_idx on public.cobranca_pagamentos (user_id, created_at desc);
+alter table public.cobranca_pagamentos enable row level security;
+drop policy if exists "cobranca_pagamentos_ler" on public.cobranca_pagamentos;
+create policy "cobranca_pagamentos_ler" on public.cobranca_pagamentos for select to authenticated using (public.has_personal_app_access(user_id));
+drop policy if exists "cobranca_pagamentos_exige_aal2" on public.cobranca_pagamentos;
+create policy "cobranca_pagamentos_exige_aal2" on public.cobranca_pagamentos as restrictive to authenticated using (public.aal_suficiente()) with check (public.aal_suficiente());
+grant select on public.cobranca_pagamentos to authenticated;
+grant select, insert, update on public.cobranca_pagamentos to service_role;
+
+create table if not exists public.cobranca_eventos (
+  stripe_event_id text primary key,
+  tipo text not null,
+  recebido_em timestamptz not null default now()
+);
+alter table public.cobranca_eventos enable row level security;
+grant select, insert on public.cobranca_eventos to service_role;
+
+-- Avisos lidos e notificações no telemóvel: crescem sem fim, por isso são tabelas.
+create table if not exists public.notificacao_leituras (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  aluno_id text not null,
+  ocorrencia_id text not null,
+  lida_em timestamptz not null default now(),
+  primary key (user_id, aluno_id, ocorrencia_id)
+);
+alter table public.notificacao_leituras enable row level security;
+drop policy if exists "notificacao_leituras_dono" on public.notificacao_leituras;
+create policy "notificacao_leituras_dono" on public.notificacao_leituras for all to authenticated using (public.has_personal_app_access(user_id)) with check (public.has_personal_app_access(user_id));
+grant select, delete on public.notificacao_leituras to authenticated;
+grant select, insert on public.notificacao_leituras to service_role;
+
+create table if not exists public.push_subscricoes (
+  endpoint text primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  aluno_id text not null,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists push_subscricoes_aluno_idx on public.push_subscricoes (user_id, aluno_id);
+alter table public.push_subscricoes enable row level security;
+drop policy if exists "push_subscricoes_dono" on public.push_subscricoes;
+create policy "push_subscricoes_dono" on public.push_subscricoes for all to authenticated using (public.has_personal_app_access(user_id)) with check (public.has_personal_app_access(user_id));
+grant select, delete on public.push_subscricoes to authenticated;
+grant select, insert, delete on public.push_subscricoes to service_role;
+
+-- Biblioteca editorial comum. Lê-se com sessão; escreve-se só no painel do Supabase,
+-- depois de revisto. Começa vazia de propósito.
+create table if not exists public.conteudos (
+  id uuid primary key default gen_random_uuid(),
+  titulo text not null,
+  categoria text not null default '',
+  corpo text not null default '',
+  autor text not null default '',
+  fontes text not null default '',
+  revisto_em date,
+  publicado boolean not null default false,
+  created_at timestamptz not null default now()
+);
+alter table public.conteudos enable row level security;
+drop policy if exists "conteudos_ler" on public.conteudos;
+create policy "conteudos_ler" on public.conteudos for select to authenticated using (publicado);
+grant select on public.conteudos to authenticated;
+
+-- Documentos dos alunos: privados, e com dois fatores como as fotografias.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('documentos', 'documentos', false, 10485760, array['application/pdf', 'image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update
+  set public = false,
+      file_size_limit = 10485760,
+      allowed_mime_types = array['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+
+drop policy if exists "documentos_ler_proprios" on storage.objects;
+create policy "documentos_ler_proprios" on storage.objects for select to authenticated
+using (bucket_id = 'documentos' and (storage.foldername(name))[1] = (select auth.uid()::text));
+drop policy if exists "documentos_carregar_proprios" on storage.objects;
+create policy "documentos_carregar_proprios" on storage.objects for insert to authenticated
+with check (bucket_id = 'documentos' and (storage.foldername(name))[1] = (select auth.uid()::text));
+drop policy if exists "documentos_apagar_proprios" on storage.objects;
+create policy "documentos_apagar_proprios" on storage.objects for delete to authenticated
+using (bucket_id = 'documentos' and (storage.foldername(name))[1] = (select auth.uid()::text));
+drop policy if exists "documentos_exige_aal2" on storage.objects;
+create policy "documentos_exige_aal2" on storage.objects as restrictive to authenticated
+using (bucket_id <> 'documentos' or public.aal_suficiente())
+with check (bucket_id <> 'documentos' or public.aal_suficiente());

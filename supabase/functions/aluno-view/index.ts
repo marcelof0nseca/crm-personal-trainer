@@ -6,6 +6,9 @@
 // alunos inteira, nunca os programas de outro aluno -- o mesmo princípio do
 // `admin-overview`, que também nunca devolve `app_data` em bruto.
 
+import { ambiente, lerBlocos } from '../_shared/aluno.ts';
+import { vistaDoAluno } from '../_shared/vista-aluno.ts';
+
 const ALLOWED_ORIGIN = Deno.env.get('APP_ORIGIN') || '*';
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -52,6 +55,7 @@ Deno.serve(async (req) => {
 
     let userId: string | null = null;
     let alunoId: string | null = null;
+    const via = token ? 'token' : 'conta';
 
     if (token) {
       if (token.length < 20) return json({ error: 'Link inválido.' }, 401);
@@ -91,32 +95,16 @@ Deno.serve(async (req) => {
 
     if (!userId || !alunoId) return json({ error: 'Link inválido ou revogado.' }, 401);
 
-    const dadosRes = await rest(
-      `app_data?user_id=eq.${userId}&data_key=in.(alunos,treinos,execucoes:${alunoId})&select=data_key,value`,
-    );
-    if (!dadosRes.ok) return json({ error: 'Não foi possível ler os dados.' }, 500);
-    const linhas = (await dadosRes.json()) as { data_key: string; value: unknown }[];
+    const env = ambiente();
+    const blocos = env ? await lerBlocos(userId, alunoId, env) : null;
+    if (!blocos) return json({ error: 'Não foi possível ler os dados.' }, 500);
 
-    const alunosBlob = (linhas.find((l) => l.data_key === 'alunos')?.value as any[]) || [];
-    const alunoEncontrado = alunosBlob.find((a) => a && a.id === alunoId);
     // O aluno pode ter sido eliminado depois do link ser gerado -- o acesso
-    // não se apaga sozinho em todos os caminhos, por isso confirma-se aqui
-    // também, não só na tabela de acessos.
-    if (!alunoEncontrado) return json({ error: 'Link inválido ou revogado.' }, 401);
-
-    const treinosBlob = (linhas.find((l) => l.data_key === 'treinos')?.value as any) || {};
-    const prescricoes = Array.isArray(treinosBlob.prescricoes)
-      ? treinosBlob.prescricoes.filter((p: any) => p && p.studentId === alunoId && !p.arquivado)
-      : [];
-
-    const execucaoBlob = linhas.find((l) => l.data_key === `execucoes:${alunoId}`)?.value;
-    const execucao = execucaoBlob && typeof execucaoBlob === 'object' ? execucaoBlob : { sessoes: [] };
-
-    return json({
-      aluno: { id: alunoEncontrado.id, name: alunoEncontrado.name, color: alunoEncontrado.color || null },
-      prescricoes,
-      execucao,
-    });
+    // não se apaga sozinho em todos os caminhos, por isso a vista também o confirma.
+    const agoraMs = Date.now();
+    const vista = vistaDoAluno(blocos, alunoId, { hoje: new Date(agoraMs).toISOString().slice(0, 10), agoraMs, via });
+    if (!vista) return json({ error: 'Link inválido ou revogado.' }, 401);
+    return json(vista);
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : 'Erro inesperado.' }, 500);
   }

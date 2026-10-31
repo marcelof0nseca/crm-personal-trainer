@@ -171,5 +171,7 @@ export async function correr(reportar) {
   esperar(FI.nps([{ nota: 10 }, { nota: 0 }]).nps === null, 'com poucas respostas não mostra o NPS');
   esperar(FI.nps([10, 10, 9, 7, 3].map((nota) => ({ nota }))).nps === 40, 'o NPS');
   esperar(FI.notaBaixa({ nota: 5 }) && !FI.notaBaixa({ nota: 8 }), 'nota baixa por regra');
+  const quarta = await import('./validar-modulos-4.mjs');
+  falhas += await quarta.correr();
   return falhas;
 }

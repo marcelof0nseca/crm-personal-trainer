@@ -66,6 +66,7 @@ import { clonarPrograma, clonarTreinosCom, rirValido } from './src/data/prescric
 import { ConfirmDialog, EmptyState, FormField, Modal } from './src/components/UiAtoms';
 import { ModulosProvider, useModulo } from './src/features/useModulo';
 import { colarMarcacoes, conflitosDeLocal } from './src/features/agenda/logica';
+import { ProvedorIdioma } from './src/features/i18n';
 import { apagarDocumentos, limparAlunoNoServidor, limparContaNoServidor } from './src/features/servidor';
 import { PREFIXO_MODULO, chaveModulo, modulosAoEliminarAluno, NOMES_MODULOS } from './src/features/modulos';
 import { aplicarPreset, presetDeSelecao, replicarSerie } from './src/features/treino/presets';
@@ -20392,6 +20393,7 @@ function AppInner() {
 }
 
 const CentroModulos = React.lazy(() => import('./src/features/CentroModulos'));
+const PaginaPublica = React.lazy(() => import('./src/features/publico/PaginaPublica'));
 
 export default function App() {
   // O link do aluno (`?a=<token>`) ou a conta própria dele (`?aluno=1`,
@@ -20401,11 +20403,14 @@ export default function App() {
   // `GlobalStyles`, aqui em cima dos dois.
   const tokenAluno = typeof window !== 'undefined' ? tokenDaUrl(window.location.href) : null;
   const areaDoAluno = Boolean(tokenAluno) || (typeof window !== 'undefined' && quiserAreaDoAluno(window.location.href));
+  // A página pública também decide antes de qualquer hook do treinador montar.
+  const slugPublico = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('p') : null;
   return (
     <>
       <GlobalStyles />
       <ErrorBoundary>
-        {areaDoAluno ? <AreaDoAluno token={tokenAluno} /> : <AppInner />}
+        {slugPublico ? <React.Suspense fallback={null}><ProvedorIdioma><PaginaPublica slug={slugPublico} /></ProvedorIdioma></React.Suspense>
+          : areaDoAluno ? <AreaDoAluno token={tokenAluno} /> : <AppInner />}
       </ErrorBoundary>
     </>
   );

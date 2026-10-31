@@ -24,7 +24,7 @@
 // treinador leem as sessões do aluno exatamente como as dele próprias.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  CalendarDays, Check, Clock, Flame, History as HistoryIcon, Home, Loader2, LogOut, Mail,
+  CalendarDays, Check, Clock, Flame, History as HistoryIcon, Home, LineChart, Loader2, LogOut, Mail, MoreHorizontal,
 } from 'lucide-react';
 import { supabase, supabaseConfigured } from '../supabaseClient';
 import { supabaseAluno } from '../supabaseClientAluno';
@@ -37,6 +37,8 @@ import {
   ultimaVezDoExercicio, valoresSugeridos,
 } from '../data/sessoes';
 import { PARAM_AREA_ALUNO, PARAM_CONVITE_ALUNO } from '../data/acessoAluno';
+import { AgendaDoAluno, MaisDoAluno, ProgressoDoAluno, contarPorLer } from '../features/aluno/AreaAlunoExtra';
+import { ProvedorIdioma, useIdioma } from '../features/i18n';
 
 // `supabase`/`supabaseConfigured` (de `../supabaseClient`) só serve para a
 // leitura inicial do token (`aluno-view` não exige sessão nenhuma para um
@@ -48,10 +50,10 @@ import { PARAM_AREA_ALUNO, PARAM_CONVITE_ALUNO } from '../data/acessoAluno';
 
 function saudacao() {
   const h = new Date().getHours();
-  if (h < 6) return 'Boa noite';
-  if (h < 12) return 'Bom dia';
-  if (h < 20) return 'Boa tarde';
-  return 'Boa noite';
+  if (h < 6) return 'boa_noite';
+  if (h < 12) return 'bom_dia';
+  if (h < 20) return 'boa_tarde';
+  return 'boa_noite';
 }
 function primeiroNome(nomeCompleto) {
   return String(nomeCompleto || '').trim().split(/\s+/)[0] || '';
@@ -853,8 +855,11 @@ function DefinirPasswordAluno({ onDefinida }) {
 /* ============================== navegação ============================== */
 
 const ABAS = [
-  { id: 'inicio', label: 'Início', icon: Home },
-  { id: 'historico', label: 'Histórico', icon: HistoryIcon },
+  { id: 'inicio', chave: 'nav_inicio', icon: Home },
+  { id: 'agenda', chave: 'nav_agenda', icon: CalendarDays },
+  { id: 'progresso', chave: 'nav_progresso', icon: LineChart },
+  { id: 'historico', chave: 'nav_historico', icon: HistoryIcon },
+  { id: 'mais', chave: 'nav_mais', icon: MoreHorizontal },
 ];
 
 // Mesma estrutura e classes (`vidro`, `tab-fundo`, `tab-icone`, `--nav-h`) da
@@ -863,7 +868,8 @@ const ABAS = [
 // precisam de CSS novo nenhum aqui. Só visível fora de um programa aberto
 // (ver `AreaDoAluno`, mais abaixo) -- uma sub-vista tapa a navegação,
 // CLAUDE.md secção 6.
-function BarraInferior({ aba, onMudar }) {
+function BarraInferior({ aba, onMudar, porLer = 0 }) {
+  const { t } = useIdioma();
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 border-t border-hair vidro"
@@ -874,23 +880,25 @@ function BarraInferior({ aba, onMudar }) {
         className="flex max-w-3xl mx-auto"
         style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}
       >
-        {ABAS.map((t) => {
-          const Icon = t.icon;
-          const active = aba === t.id;
+        {ABAS.map((t2) => {
+          const Icon = t2.icon;
+          const active = aba === t2.id;
           return (
             <button
-              key={t.id}
+              key={t2.id}
               type="button"
-              onClick={() => onMudar(t.id)}
+              onClick={() => onMudar(t2.id)}
+              aria-label={t2.id === 'mais' && porLer > 0 ? `${t(t2.chave)} (${porLer})` : undefined}
               aria-current={active ? 'page' : undefined}
               className="flex-1 flex flex-col items-center justify-center gap-1 min-w-0 tab-fundo"
               style={{ height: 'var(--nav-h)', color: active ? 'var(--brass)' : 'var(--text-faint)' }}
             >
-              <span className="tab-icone" style={{ backgroundColor: active ? 'var(--brass-soft)' : 'transparent' }}>
+              <span className="tab-icone" style={{ position: 'relative', backgroundColor: active ? 'var(--brass-soft)' : 'transparent' }}>
                 <Icon size={19} style={{ display: 'block' }} />
+                {t2.id === 'mais' && porLer > 0 && <span aria-hidden="true" className="font-mono" style={{ position: 'absolute', top: -3, right: -3, minWidth: 15, height: 15, borderRadius: 8, fontSize: 9, lineHeight: '15px', textAlign: 'center', color: 'var(--bg-base)', backgroundColor: 'var(--gold)' }}>{porLer}</span>}
               </span>
               <span className="font-body truncate w-full text-center px-0.5" style={{ fontSize: '0.625rem', lineHeight: 1, fontWeight: active ? 600 : 400 }}>
-                {t.label}
+                {t(t2.chave)}
               </span>
             </button>
           );
@@ -915,6 +923,11 @@ function fasesDeArranque(token) {
 }
 
 export default function AreaDoAluno({ token }) {
+  return <ProvedorIdioma><AreaDoAlunoInterior token={token} /></ProvedorIdioma>;
+}
+
+function AreaDoAlunoInterior({ token }) {
+  const { t } = useIdioma();
   const [fase, setFase] = useState(() => fasesDeArranque(token));
   const [erro, setErro] = useState('');
   const [dados, setDados] = useState(null);
@@ -986,6 +999,21 @@ export default function AreaDoAluno({ token }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, eraConvite]);
 
+  async function recarregarEmSilencio() {
+    const { data, error } = await cliente.functions.invoke('aluno-view', { body: token ? { token } : {} });
+    if (!error && data && !data.error) setDados(data);
+  }
+
+  async function invocarAcao(op, corpo) {
+    try {
+      const { data, error } = await cliente.functions.invoke('aluno-acao', { body: { op, dados: corpo, ...(token ? { token } : {}) } });
+      if (error || !data || data.error) return { ok: false, erro: await mensagemDeErro(error, data, t('erro_enviar')) };
+      return { ok: true, ...data };
+    } catch {
+      return { ok: false, erro: t('erro_enviar') };
+    }
+  }
+
   async function sair() {
     if (supabaseAluno) await supabaseAluno.auth.signOut();
     setDados(null);
@@ -1044,12 +1072,12 @@ export default function AreaDoAluno({ token }) {
           <div className="flex items-center gap-2 min-w-0">
             <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: aluno.color || 'var(--brass)' }} />
             <h1 className="font-display font-semibold text-xl text-primary tracking-wide truncate" style={{ margin: 0 }}>
-              {saudacao()}{primeiro ? `, ${primeiro}` : ''}
+              {t(saudacao())}{primeiro ? `, ${primeiro}` : ''}
             </h1>
           </div>
           {!token && (
             <button type="button" onClick={sair} className="btn btn-ghost flex-shrink-0" style={{ fontSize: 12 }} aria-label="Sair da conta">
-              <LogOut size={14} /> Sair
+              <LogOut size={14} /> {t('sair')}
             </button>
           )}
         </div>
@@ -1067,11 +1095,20 @@ export default function AreaDoAluno({ token }) {
           />
         ) : aba === 'historico' ? (
           <HistoricoGeral sessoes={sessoesAnteriores} />
+        ) : aba === 'agenda' ? (
+          <AgendaDoAluno dados={dados} invocar={invocarAcao} onRecarregar={recarregarEmSilencio} />
+        ) : aba === 'progresso' ? (
+          <ProgressoDoAluno dados={dados} sessoes={sessoesAnteriores} />
+        ) : aba === 'mais' ? (
+          <MaisDoAluno dados={dados} invocar={invocarAcao} onRecarregar={recarregarEmSilencio} onLerLocal={(id) => setDados((d) => ({ ...d, notificacoes: (d.notificacoes || []).map((n) => (n.id === id ? { ...n, lida: true } : n)) }))} />
         ) : (
-          <InicioDoAluno prescricoes={prescricoes} sessoesAnteriores={sessoesAnteriores} onAbrir={abrirPrograma} />
+          <>
+            {dados.restrito && <p className="text-sm font-body rounded-lg px-3 py-2" role="status" style={{ margin: 0, color: 'var(--gold)', backgroundColor: 'var(--gold-soft)' }}>{t('restrito')}</p>}
+            <InicioDoAluno prescricoes={prescricoes} sessoesAnteriores={sessoesAnteriores} onAbrir={abrirPrograma} />
+          </>
         )}
       </Ecra>
-      {!aberto && <BarraInferior aba={aba} onMudar={setAba} />}
+      {!aberto && <BarraInferior aba={aba} onMudar={setAba} porLer={contarPorLer(dados)} />}
     </>
   );
 }

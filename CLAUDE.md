@@ -242,9 +242,11 @@ Consequências que decidem quase tudo:
   ~300 kB de exercícios que já estão no *bundle*. O id de um exercício de origem
   é `'e:' + nome`, estável entre versões, para as prescrições não perderem a
   ligação.
-- **Um exercício pode ter um vídeo**, demonstração para o treinador, não para o
-  aluno (ver secção 10 — o aluno continua sem acesso à aplicação, isto não sai
-  no PDF). Como as fotografias: o exercício guarda só `videoPath`, no balde
+- **Um exercício tem um vídeo só: um ficheiro ou um link do YouTube**, e guardar um
+  substitui o outro (decisão do dono do produto). Do link guarda-se só o id
+  (`videoYoutube`, `src/data/youtube.ts`), e o leitor só carrega depois de se tocar. O
+  link chega à área do aluno (`videos` em `vistaDoAluno`); o ficheiro é só para o
+  treinador. Nenhum sai no PDF. Como as fotografias: o exercício guarda só `videoPath`, no balde
   privado `videos` (`<user_id>/<id>.<ext>`), lido por URL assinado de oito
   horas; sem conta ligada fica `videoDataUri`. Vive dentro de
   `bibliotecaExtra`/`bibliotecaEdicoes`, como qualquer outro campo do
@@ -808,6 +810,11 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
 - **Comparar dois campos que podem faltar dá verdadeiro sem haver nada.** No conflito
   de local, `undefined !== undefined` é falso: duas aulas sem grupo pareciam do mesmo
   grupo, e o aviso nunca disparava. Confirmar primeiro que o campo existe.
+- **A CSP vive em dois sítios, e valem as duas.** O `index.html` e o `vercel.json`
+  somam-se: uma origem nova tem de entrar nos dois. O `vercel.json` não tinha
+  `media-src`, e os vídeos carregados nunca tocaram em produção, sem nenhum teste dar
+  por isso, porque em desenvolvimento só conta o `index.html`. O tipo de letra da
+  landing também estava bloqueado.
 - **O Chromium do Playwright usa o tema claro por omissão.** Sem
   `colorScheme: 'dark'` no contexto, uma captura dita «escura» sai clara e o tema
   escuro fica por testar sem ninguém dar por isso.

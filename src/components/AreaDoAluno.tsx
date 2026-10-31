@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { supabase, supabaseConfigured } from '../supabaseClient';
 import { supabaseAluno } from '../supabaseClientAluno';
-import { CAMPO_SERIE, ExercicioVista, descreverLinha, tipoDeSerie } from './TreinoAtoms';
+import { CAMPO_SERIE, ExercicioVista, VideoYoutube, descreverLinha, tipoDeSerie } from './TreinoAtoms';
 import { StatCard } from './DashboardAtoms';
 import { CronometroDescanso, CronometroMetodo } from '../features/treino/Cronometros';
 import {
@@ -273,7 +273,7 @@ function LinhaRegisto({ linha, indice, estado, onMudarCampo, onAlternar }) {
   );
 }
 
-function ExercicioRegisto({ ex, estado, ultima, onMudar }) {
+function ExercicioRegisto({ ex, estado, ultima, videoYoutube, onMudar }) {
   const linhas = Array.isArray(ex.linhas) ? ex.linhas : [];
   const saltado = Boolean(estado.saltado);
 
@@ -296,6 +296,7 @@ function ExercicioRegisto({ ex, estado, ultima, onMudar }) {
   return (
     <div className="rounded-lg px-3 py-2.5 flex flex-col gap-1 min-w-0" style={{ backgroundColor: 'var(--bg-elevated)', opacity: saltado ? 0.6 : 1 }}>
       <span className="font-body text-sm text-primary" style={{ fontWeight: 600 }}>{ex.nome || 'Exercício'}</span>
+      {videoYoutube && <VideoYoutube id={videoYoutube} nome={ex.nome} />}
       {ultima && (
         <p className="text-2xs font-body text-faint" style={{ margin: 0 }}>
           Última vez ({dataCurta(ultima.data)}): {ultima.series.slice(0, 4).join(' · ')}
@@ -409,7 +410,7 @@ function BarraDeProgresso({ feitos, total }) {
   );
 }
 
-function RegistoSessaoAluno({ cliente, token, student, prescricao, treino, sessoesAnteriores, onConcluido, onVoltar }) {
+function RegistoSessaoAluno({ cliente, token, student, prescricao, treino, videos = [], sessoesAnteriores, onConcluido, onVoltar }) {
   const dep = useMemo(() => ({ descreverLinha, camposDoTipo: (l) => tipoDeSerie(l.tipo).campos }), []);
   const chave = useMemo(() => chaveRascunho(student.id, treino.id), [student.id, treino.id]);
   const inicioMsRef = useRef(null);
@@ -513,6 +514,7 @@ function RegistoSessaoAluno({ cliente, token, student, prescricao, treino, sesso
       <div className="flex flex-col gap-2">
         {(treino.exercicios || []).map((ex) => (
           <ExercicioRegisto
+            videoYoutube={(videos.find((v) => v.id === ex.exercicioId) || {}).videoYoutube}
             key={ex.id}
             ex={ex}
             estado={itens[ex.id] || { series: {} }}
@@ -620,7 +622,7 @@ function HistoricoGeral({ sessoes }) {
 
 /* ============================== programa (vista) ============================== */
 
-function ProgramaDoAluno({ student, prescricao, sessoesAnteriores, onVoltar, token, cliente, treinoInicialId, modoInicial = 'ver' }) {
+function ProgramaDoAluno({ student, prescricao, videos = [], sessoesAnteriores, onVoltar, token, cliente, treinoInicialId, modoInicial = 'ver' }) {
   const treinos = Array.isArray(prescricao.treinos) ? prescricao.treinos : [];
   const [treinoId, setTreinoId] = useState(treinoInicialId || treinos[0]?.id || null);
   const [modo, setModo] = useState(modoInicial); // ver | registar | concluido
@@ -629,6 +631,7 @@ function ProgramaDoAluno({ student, prescricao, sessoesAnteriores, onVoltar, tok
   if (treino && modo === 'registar') {
     return (
       <RegistoSessaoAluno
+        videos={videos}
         cliente={cliente}
         token={token}
         student={student}
@@ -687,7 +690,7 @@ function ProgramaDoAluno({ student, prescricao, sessoesAnteriores, onVoltar, tok
               // a carga já vêm na própria prescrição. onMudar={() => {}} é o
               // mesmo padrão já usado na landing para uma vista só de leitura
               // (LandingPage.tsx) -- o componente é real, só não persiste.
-              <ExercicioVista key={ex.id} ex={ex} biblioteca={[]} onMudar={() => {}} comCabecalho />
+              <ExercicioVista key={ex.id} ex={ex} biblioteca={videos} onMudar={() => {}} comCabecalho />
             ))}
           </div>
         )
@@ -1086,6 +1089,7 @@ function AreaDoAlunoInterior({ token }) {
           <ProgramaDoAluno
             student={aluno}
             prescricao={aberto}
+            videos={dados.videos || []}
             sessoesAnteriores={sessoesAnteriores}
             onVoltar={voltarAoInicio}
             token={token}

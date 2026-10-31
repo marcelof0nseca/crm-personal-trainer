@@ -27,6 +27,7 @@ import {
   tipoDeSerie, camposDoMetodo, extrasPreenchidos, descreverLinha,
   rotuloDePapel, rotuloCurtoDePapel,
   CargaDaSerie, NumerosDoMetodo, ExercicioVista,
+  VideoYoutube,
 } from './src/components/TreinoAtoms';
 import Turnstile from './src/components/Turnstile';
 import { gerarTokenAcesso, hashTokenAcesso, linkDeAcesso, quiserAreaDoAluno, tokenDaUrl } from './src/data/acessoAluno';
@@ -66,6 +67,7 @@ import { clonarPrograma, clonarTreinosCom, rirValido } from './src/data/prescric
 import { ConfirmDialog, EmptyState, FormField, Modal } from './src/components/UiAtoms';
 import { ModulosProvider, useModulo } from './src/features/useModulo';
 import { colarMarcacoes, conflitosDeLocal } from './src/features/agenda/logica';
+import { idDoYoutube } from './src/data/youtube';
 import { ProvedorIdioma } from './src/features/i18n';
 import { apagarDocumentos, limparAlunoNoServidor, limparContaNoServidor } from './src/features/servidor';
 import { PREFIXO_MODULO, chaveModulo, modulosAoEliminarAluno, NOMES_MODULOS } from './src/features/modulos';
@@ -10327,10 +10329,23 @@ function AlternativasModal({ exercicio, treinos, onTrocar, onClose }) {
 // O vídeo de um exercício: até 10 s, 4:5 (1080×1350), para caber na vista do
 // treino sem dominar o ecrã. Só existe depois de o exercício já ter sido
 // criado -- um exercício "novo" ainda sem id não tem onde o anexar.
-function VideoDoExercicio({ exercicio, onGuardar, onApagar }) {
+function VideoDoExercicio({ exercicio, onGuardar, onGuardarYoutube, onApagar }) {
   const [aEnviar, setAEnviar] = useState(false);
   const [aApagar, setAApagar] = useState(false);
-  const temVideo = Boolean(exercicio.videoPath || exercicio.videoDataUri);
+  const [link, setLink] = useState('');
+  const [erroLink, setErroLink] = useState('');
+  const temFicheiro = Boolean(exercicio.videoPath || exercicio.videoDataUri);
+  const temVideo = temFicheiro || Boolean(exercicio.videoYoutube);
+
+  async function guardarLink() {
+    const id = idDoYoutube(link);
+    if (!id) { setErroLink('Este endereço não é de um vídeo do YouTube.'); return; }
+    setErroLink('');
+    setAEnviar(true);
+    await onGuardarYoutube(exercicio, id);
+    setAEnviar(false);
+    setLink('');
+  }
 
   async function escolher(ficheiro) {
     if (!ficheiro) return;
@@ -10341,8 +10356,9 @@ function VideoDoExercicio({ exercicio, onGuardar, onApagar }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-xs font-body text-muted">Vídeo (opcional, até 10 s)</span>
-      {temVideo && exercicio.videoUrl && (
+      <span className="text-xs font-body text-muted">Vídeo (opcional, um por exercício)</span>
+      {exercicio.videoYoutube && <VideoYoutube id={exercicio.videoYoutube} nome={exercicio.nome} />}
+      {temFicheiro && exercicio.videoUrl && (
         <video
           key={exercicio.videoUrl}
           src={exercicio.videoUrl}
@@ -10357,7 +10373,7 @@ function VideoDoExercicio({ exercicio, onGuardar, onApagar }) {
       <div className="flex items-center gap-2 flex-wrap">
         <label className="btn btn-ghost self-start" style={{ fontSize: 12, cursor: aEnviar ? 'default' : 'pointer', opacity: aEnviar ? 0.6 : 1 }}>
           {aEnviar ? <Loader2 size={14} className="spin" /> : <Camera size={14} />}
-          {aEnviar ? 'A enviar...' : (temVideo ? 'Trocar vídeo' : 'Carregar vídeo')}
+          {aEnviar ? 'A enviar...' : (temVideo ? 'Trocar por um ficheiro' : 'Carregar ficheiro')}
           <input
             type="file"
             accept="video/*"
@@ -10372,9 +10388,26 @@ function VideoDoExercicio({ exercicio, onGuardar, onApagar }) {
           </button>
         )}
       </div>
+      <div className="flex items-start gap-2 flex-wrap">
+        <input
+          value={link}
+          onChange={(e) => { setLink(e.target.value); setErroLink(''); }}
+          inputMode="url"
+          aria-label="Link do YouTube"
+          aria-invalid={Boolean(erroLink)}
+          placeholder="Link do YouTube"
+          className="input-field"
+          style={{ flex: '1 1 200px', minWidth: 0 }}
+        />
+        <button type="button" onClick={guardarLink} disabled={aEnviar || !link.trim()} className="btn btn-ghost" style={{ fontSize: 12, opacity: link.trim() ? 1 : 0.45 }}>
+          {exercicio.videoYoutube || temFicheiro ? 'Trocar pelo link' : 'Guardar link'}
+        </button>
+      </div>
+      {erroLink && <p className="text-xs font-body" role="alert" style={{ margin: 0, color: 'var(--rust)' }}>{erroLink}</p>}
       <p className="text-2xs font-body text-faint" style={{ margin: 0 }}>
-        Fica visível na vista do treino, por cima das séries. Corte o ficheiro
-        para 10 segundos ou menos antes de enviar -- é recusado se vier mais comprido.
+        Um ficheiro até 10 segundos ou um link do YouTube: guardar um substitui o outro.
+        Fica por cima das séries, na vista do treino. O link do YouTube também aparece na
+        área do aluno; use só vídeos seus ou que possa partilhar.
       </p>
       {aApagar && (
         <ConfirmDialog
@@ -10389,7 +10422,7 @@ function VideoDoExercicio({ exercicio, onGuardar, onApagar }) {
   );
 }
 
-function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEditar, onApagar, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onGuardarVideo, onApagarVideo, onFechar }) {
+function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEditar, onApagar, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onGuardarVideo, onGuardarYoutubeExercicio, onApagarVideo, onFechar }) {
   const biblioteca = treinos.biblioteca;
   const grupos = gruposDe(treinos);
   const categorias = categoriasDe(treinos);
@@ -10624,6 +10657,7 @@ function BibliotecaPicker({ treinos, usosDoExercicio, onEscolher, onCriar, onEdi
               <VideoDoExercicio
                 exercicio={biblioteca.find((b) => b.id === emEdicao.id) || emEdicao}
                 onGuardar={onGuardarVideo}
+                onGuardarYoutube={onGuardarYoutubeExercicio}
                 onApagar={onApagarVideo}
               />
             )}
@@ -11601,7 +11635,7 @@ function DuplicarProgramaModal({ prescricao, alunos, onDuplicar, onClose }) {
   );
 }
 
-function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivar, onGuardarModelo, onImprimir, onEliminar, onVerTreino, onGuardarVideoExercicio, onApagarVideoExercicio, alunos, onDuplicarPrograma, quem }) {
+function PrescricaoBuilder({ onGuardarYoutubeExercicio, prescricao, treinos, usosDoExercicio, onMudar, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivar, onGuardarModelo, onImprimir, onEliminar, onVerTreino, onGuardarVideoExercicio, onApagarVideoExercicio, alunos, onDuplicarPrograma, quem }) {
   const [aDuplicar, setADuplicar] = useState(false);
   const [presetsDe, setPresetsDe] = useState(null); // id do treino que recebe o preset
   const [guardarPresetDe, setGuardarPresetDe] = useState(null);
@@ -11960,6 +11994,7 @@ function PrescricaoBuilder({ prescricao, treinos, usosDoExercicio, onMudar, onCr
           onAlternarFavorito={onAlternarFavorito}
           onCriarPasta={onCriarPasta}
           onGuardarVideo={onGuardarVideoExercicio}
+          onGuardarYoutubeExercicio={onGuardarYoutubeExercicio}
           onApagarVideo={onApagarVideoExercicio}
           onEscolher={(exercicio) => {
             const t = prescricao.treinos.find((x) => x.id === picker);
@@ -13301,7 +13336,7 @@ function EvolucaoFolha({ student, sessoes, onFechar }) {
   );
 }
 
-function TreinosView({ student, alunos, onDuplicarPrograma, quem, treinos, onMudarPrescricao, onCriarPrescricao, onEliminarPrescricao, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivarPrescricao, onGuardarModelo, onCriarDeModelo, onApagarModelo, usosDoExercicio, onImprimir, onVoltar, execucoes, onCarregarExecucoes, onGuardarSessao, onCorrigirSessao, onApagarSessao, sessaoInicial, onSessaoInicialLida, onGuardarVideoExercicio, onApagarVideoExercicio }) {
+function TreinosView({ onGuardarYoutubeExercicio, student, alunos, onDuplicarPrograma, quem, treinos, onMudarPrescricao, onCriarPrescricao, onEliminarPrescricao, onCriarExercicio, onEditarExercicio, onApagarExercicio, onCriarGrupo, onCriarCategoria, onAlternarFavorito, onCriarPasta, onArquivarPrescricao, onGuardarModelo, onCriarDeModelo, onApagarModelo, usosDoExercicio, onImprimir, onVoltar, execucoes, onCarregarExecucoes, onGuardarSessao, onCorrigirSessao, onApagarSessao, sessaoInicial, onSessaoInicialLida, onGuardarVideoExercicio, onApagarVideoExercicio }) {
   const [abertoId, setAbertoId] = useState(null);
   // Um programa que já tem trabalho escrito abre para ser visto; um acabado de
   // criar abre no construtor, que é o que falta fazer-lhe.
@@ -13416,6 +13451,7 @@ function TreinosView({ student, alunos, onDuplicarPrograma, quem, treinos, onMud
           onArquivar={onArquivarPrescricao}
           onGuardarModelo={onGuardarModelo}
           onGuardarVideoExercicio={onGuardarVideoExercicio}
+          onGuardarYoutubeExercicio={onGuardarYoutubeExercicio}
           onApagarVideoExercicio={onApagarVideoExercicio}
           alunos={alunos}
           quem={quem}
@@ -18708,13 +18744,13 @@ function AppInner() {
       if (!userId) { showToast('Sem sessão iniciada.', 'error'); return false; }
       try {
         const caminho = await guardarVideoNoBalde(userId, uid(), ficheiro);
-        campos = { videoPath: caminho, videoDataUri: undefined };
+        campos = { videoPath: caminho, videoDataUri: undefined, videoYoutube: undefined };
       } catch (e) {
         showToast('Não foi possível enviar o vídeo.', 'error');
         return false;
       }
     } else {
-      campos = { videoPath: undefined, videoDataUri: await blobParaDataUri(ficheiro) };
+      campos = { videoPath: undefined, videoYoutube: undefined, videoDataUri: await blobParaDataUri(ficheiro) };
     }
     aplicarCamposDeVideo(exercicio.id, campos);
     // O antigo apaga-se depois do novo já estar gravado: se o envio tivesse
@@ -18725,9 +18761,16 @@ function AppInner() {
     return true;
   }
 
+  // Um vídeo por exercício: o link substitui o ficheiro, que sai do balde.
+  async function guardarYoutubeDoExercicio(exercicio, id) {
+    aplicarCamposDeVideo(exercicio.id, { videoPath: undefined, videoDataUri: undefined, videoYoutube: id });
+    if (exercicio.videoPath) apagarVideoDoBalde([exercicio.videoPath]);
+    showToast('Link guardado.');
+  }
+
   async function apagarVideoDoExercicio(exercicio) {
     if (exercicio.videoPath) await apagarVideoDoBalde([exercicio.videoPath]);
-    aplicarCamposDeVideo(exercicio.id, { videoPath: undefined, videoDataUri: undefined });
+    aplicarCamposDeVideo(exercicio.id, { videoPath: undefined, videoDataUri: undefined, videoYoutube: undefined });
     showToast('Vídeo removido.');
   }
 
@@ -18740,11 +18783,11 @@ function AppInner() {
     Object.entries(campos).forEach(([k, v]) => { if (v !== undefined) limpos[k] = v; });
     persistTreinos((t) => {
       if (!ehExercicioBase(idExercicio)) {
-        return { ...t, bibliotecaExtra: t.bibliotecaExtra.map((e) => (e.id === idExercicio ? { ...e, videoPath: undefined, videoDataUri: undefined, ...limpos } : e)) };
+        return { ...t, bibliotecaExtra: t.bibliotecaExtra.map((e) => (e.id === idExercicio ? { ...e, videoPath: undefined, videoDataUri: undefined, videoYoutube: undefined, ...limpos } : e)) };
       }
       const edicoes = { ...t.bibliotecaEdicoes };
       const atual = { ...edicoes[idExercicio] };
-      delete atual.videoPath; delete atual.videoDataUri;
+      delete atual.videoPath; delete atual.videoDataUri; delete atual.videoYoutube;
       const proxima = { ...atual, ...limpos };
       if (Object.keys(proxima).length) edicoes[idExercicio] = proxima; else delete edicoes[idExercicio];
       return { ...t, bibliotecaEdicoes: edicoes };
@@ -20055,6 +20098,7 @@ function AppInner() {
             onEditarExercicio={editarExercicioBiblioteca}
             onApagarExercicio={apagarExercicioBiblioteca}
             onGuardarVideoExercicio={guardarVideoDoExercicio}
+            onGuardarYoutubeExercicio={guardarYoutubeDoExercicio}
             onApagarVideoExercicio={apagarVideoDoExercicio}
             onCriarGrupo={criarGrupoMuscular}
             onCriarCategoria={criarCategoriaExercicio}

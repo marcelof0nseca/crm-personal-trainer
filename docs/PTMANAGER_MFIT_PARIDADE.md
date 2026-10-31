@@ -30,7 +30,7 @@ marcadas como Parcial, Externo e Falta.
 | 5.1 | Prazo de retenção da lixeira | Falta | Recupera-se sem limite; a eliminação definitiva continua na ficha | |
 | 5.1 | Último acesso do aluno, revogar sessões | Falta | Reenvio e estado do convite já existiam | |
 | 5.1 | Ficha 360º com os módulos novos | Parcial | Não mostra documentos, faturas, contactos nem desafios | |
-| 5.2 | Vários media, GIF, YouTube, limites configuráveis, transcodificação | Falta | Continua o vídeo único até 10 s | |
+| 5.2 | Vídeo do exercício | Parcial | Um por exercício, por decisão do dono do produto: ficheiro até 10 s ou link do YouTube. O link chega à área do aluno; o ficheiro não. Sem GIF nem limites configuráveis | `validar-modulos-4`, browser |
 | 5.3 | Clonar programa | Parcial | Falta destino em grupo e para modelos | `validar-prescricao`, browser |
 | 5.3 | Presets, versões, publicação, ciclos, treino extra, replicar série, RIR | Parcial | Presets ao nível de exercício e treino, não de série; sem favoritar nem versionar presets | `validar-modulos`, browser |
 | 5.3 | Partilha por link e PDF | Parcial | Link com token e PDF timbrado; sem expiração nem atalho de WhatsApp no link | |

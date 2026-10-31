@@ -76,6 +76,18 @@ export function saldoDePontos(movimentos, alunoId, hoje) {
   }, 0);
 }
 
+// Só o id de um link do YouTube dos exercícios dos programas dele, confirmado de novo.
+// Os ficheiros carregados continuam a ser só para o treinador.
+function videosDosProgramas(treinos, prescricoes) {
+  const ids = new Set(prescricoes.flatMap((p) => (p.treinos || []).flatMap((t) => (t.exercicios || []).map((e) => e.exercicioId))).filter(Boolean));
+  const extra = (treinos && treinos.bibliotecaExtra) || [];
+  const edicoes = (treinos && treinos.bibliotecaEdicoes) || {};
+  const valido = (v) => /^[A-Za-z0-9_-]{11}$/.test(String(v || ''));
+  const daExtra = extra.filter((e) => e && ids.has(e.id) && valido(e.videoYoutube)).map((e) => ({ id: e.id, videoYoutube: e.videoYoutube }));
+  const dasEdicoes = Object.entries(edicoes).filter(([id, e]) => ids.has(id) && e && valido(e.videoYoutube)).map(([id, e]) => ({ id, videoYoutube: e.videoYoutube }));
+  return [...daExtra, ...dasEdicoes];
+}
+
 const somarDias = (iso, n) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 
 // `via` é 'token' ou 'conta'. O link sem conta vê o programa, a agenda e os avisos;
@@ -108,6 +120,7 @@ export function vistaDoAluno(blocos, alunoId, { hoje, agoraMs, via }) {
     via,
     restrito,
     prescricoes: restrito ? [] : prescricoes,
+    videos: restrito ? [] : videosDosProgramas(treinos, prescricoes),
     execucao: execucao && typeof execucao === 'object' ? execucao : { sessoes: [] },
     agenda: minhas.filter((s) => s.date >= inicio && s.date <= fim).map((s) => ({ id: s.id, date: s.date, startTime: s.startTime, endTime: s.endTime, type: s.type, status: s.status, localId: s.localId || '', reposicaoDeSessionId: s.reposicaoDeSessionId || '' })),
     creditos: minhas.filter((s) => s.status === 'falta' && s.faltaPrecisaReposicao && !s.reposicaoSessionId && (!s.faltaCreditoValidade || s.faltaCreditoValidade >= hoje)).map((s) => ({ id: s.id, date: s.date, validade: s.faltaCreditoValidade || '' })),

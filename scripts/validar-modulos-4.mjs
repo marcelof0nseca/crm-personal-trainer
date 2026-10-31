@@ -100,6 +100,17 @@ export async function correr() {
   esperar(comMeta.metas.length === 1 && !/SEGREDO/.test(JSON.stringify(comMeta.metas)), 'só as metas visíveis e dele');
   esperar(V.vistaDoAluno({ ...blocos, respondidas: [`checkin:${hoje}`] }, 'a', { hoje, agoraMs, via: 'conta' }).checkinFeito === true, 'o check-in de hoje não se repete');
 
+  const Y = await import('../src/data/youtube.ts');
+  const VID = 'dQw4w9WgXcQ';
+  [`https://www.youtube.com/watch?v=${VID}`, `https://youtube.com/watch?t=10&v=${VID}`, `https://youtu.be/${VID}?si=abc`, `youtu.be/${VID}`, `https://m.youtube.com/watch?v=${VID}`, `https://www.youtube.com/shorts/${VID}`, `https://www.youtube.com/embed/${VID}`, `  https://www.youtube.com/live/${VID}  `]
+    .forEach((u) => esperar(Y.idDoYoutube(u) === VID, `reconhece o link ${u.trim()}`));
+  ['', 'abc', 'https://www.youtube.com/', 'https://www.youtube.com/watch?v=curto', `https://youtube.com.falso.pt/watch?v=${VID}`, `https://falso.pt/youtu.be/${VID}`, `javascript:alert(1)//youtu.be/${VID}`, `https://www.youtube.com/watch?v=${VID}"><script>`, `https://www.youtube.com/channel/${VID}`]
+    .forEach((u) => esperar(Y.idDoYoutube(u) === null, `recusa ${u || 'vazio'}`));
+  const comVideos = { ...blocos, treinos: { ...blocos.treinos, prescricoes: [{ ...prog('meu', 'a'), treinos: [{ exercicios: [{ exercicioId: 'x1' }, { exercicioId: 'e:Base' }, { exercicioId: 'semlink' }] }] }, { ...prog('dele', 'b'), treinos: [{ exercicios: [{ exercicioId: 'x2' }] }] }], bibliotecaExtra: [{ id: 'x1', videoYoutube: VID, videoPath: 'SEGREDO', nome: 'SEGREDO' }, { id: 'x2', videoYoutube: 'SEGREDOxxxx' }, { id: 'semlink', videoPath: 'SEGREDO' }], bibliotecaEdicoes: { 'e:Base': { videoYoutube: VID }, 'e:Outro': { videoYoutube: 'SEGREDOyyyy' } } } };
+  const vv = V.vistaDoAluno(comVideos, 'a', { hoje, agoraMs, via: 'token' }).videos;
+  esperar(vv.length === 2 && !/SEGREDO/.test(JSON.stringify(vv)), 'o aluno recebe só os links dos exercícios dele, e nenhum ficheiro');
+  esperar(V.vistaDoAluno({ ...comVideos, treinos: { ...comVideos.treinos, bibliotecaExtra: [{ id: 'x1', videoYoutube: '"><script>' }], bibliotecaEdicoes: {} } }, 'a', { hoje, agoraMs, via: 'token' }).videos.length === 0, 'um id que não o é não sai');
+
   // ações
   const ctx = { via: 'conta', vista: conta, agenda: blocos.agenda, alunoId: 'a', agoraMs };
   esperar(A.validarAcao('apagar_tudo', {}, ctx).estado === 400, 'um pedido fora da lista é recusado');

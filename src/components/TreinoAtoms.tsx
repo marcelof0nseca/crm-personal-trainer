@@ -3,6 +3,7 @@
 // são na landing (LandingPage.tsx), sem depender de painel-pt.tsx -- que
 // passa a importar tudo isto daqui, em vez de o definir localmente.
 import { useState } from 'react';
+import { leitorYoutube, ligacaoYoutube } from '../data/youtube';
 
 export const CAMPO_SERIE = {
   reps: ['Reps', '10'],
@@ -222,6 +223,32 @@ export function NumerosDoMetodo({ campos, params, prefixo, onMudar }) {
   );
 }
 
+// O leitor só carrega depois de se tocar: até lá, o YouTube não sabe que esta página
+// existe. Alguns vídeos não deixam ver fora do YouTube, daí a ligação ao lado.
+export function VideoYoutube({ id, nome }) {
+  const [aVer, setAVer] = useState(false);
+  return (
+    <div className="flex flex-col gap-1.5 min-w-0">
+      {aVer ? (
+        <iframe
+          src={leitorYoutube(id)}
+          title={`Vídeo de ${nome || 'exercício'}`}
+          allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+          allowFullScreen
+          style={{ width: '100%', maxWidth: 420, aspectRatio: '16 / 9', border: 0, borderRadius: 'var(--r-lg)', backgroundColor: '#000' }}
+        />
+      ) : (
+        <button type="button" onClick={() => setAVer(true)} className="btn btn-ghost" style={{ alignSelf: 'flex-start', fontSize: 12 }}>
+          Ver vídeo
+        </button>
+      )}
+      <a href={ligacaoYoutube(id)} target="_blank" rel="noopener noreferrer" className="text-2xs font-body link-sky" style={{ alignSelf: 'flex-start' }}>
+        Abrir no YouTube
+      </a>
+    </div>
+  );
+}
+
 export function ExercicioVista({ ex, biblioteca, grupoInfo, onMudar, comCabecalho }) {
   const [numeros, setNumeros] = useState(false);
   const daBiblioteca = biblioteca.find((b) => b.id === ex.exercicioId);
@@ -281,6 +308,8 @@ export function ExercicioVista({ ex, biblioteca, grupoInfo, onMudar, comCabecalh
           )
         )}
       </div>
+
+      {daBiblioteca && daBiblioteca.videoYoutube && <VideoYoutube id={daBiblioteca.videoYoutube} nome={ex.nome} />}
 
       {daBiblioteca && daBiblioteca.videoUrl && (
         // Em loop e sem som: lê-se como uma demonstração curta, não como um

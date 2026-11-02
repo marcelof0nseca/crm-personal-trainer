@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
 
     if (!contaId && body.apenasEstado) return json({ ativa: true, pagamentos: false, transferencias: false, requisitos: [] });
     if (!contaId) {
-      const nova = await stripe(cfg.chave!, 'accounts', { type: 'express', country: 'PT', 'capabilities[card_payments][requested]': 'true', 'capabilities[transfers][requested]': 'true', 'metadata[user_id]': userId });
+      const nova = await stripe(cfg.chave!, 'accounts', { type: 'standard', country: 'PT', 'metadata[user_id]': userId });
       contaId = nova.id;
       const g = await env.rest('cobranca_contas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: userId, stripe_account_id: contaId, ...estadoDaConta(nova) }) });
       if (!g.ok) return json({ error: 'Não foi possível guardar a conta.' }, 500);

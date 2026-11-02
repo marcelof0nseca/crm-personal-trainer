@@ -11,7 +11,9 @@ const ID = /^[A-Za-z0-9_:.-]{1,80}$/;
 export const TIPOS_FOTO = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 export const LIMITE_FOTO_BASE64 = 6 * 1024 * 1024;
 
-export const ACOES_SO_COM_CONTA = ['check_in', 'publicar_progresso', 'pedir_aula', 'cancelar_aula', 'responder_formulario', 'responder_avaliacao', 'aceitar_contrato', 'atualizar_perfil', 'responder_pesquisa', 'abrir_documento', 'pagar_fatura', 'ligacao_calendario'];
+import { subscricaoValida } from './push.ts';
+
+export const ACOES_SO_COM_CONTA = ['push_subscrever', 'push_cancelar', 'check_in', 'publicar_progresso', 'pedir_aula', 'cancelar_aula', 'responder_formulario', 'responder_avaliacao', 'aceitar_contrato', 'atualizar_perfil', 'responder_pesquisa', 'abrir_documento', 'pagar_fatura', 'ligacao_calendario'];
 export const ACOES_COM_TOKEN = ['marcar_lida'];
 
 function horasAte(data, hora, agoraMs) {
@@ -37,6 +39,8 @@ export function validarAcao(op, dados, { via, vista, agenda, alunoId, agoraMs })
   if (![...ACOES_SO_COM_CONTA, ...ACOES_COM_TOKEN].includes(op)) return { erro: 'Pedido desconhecido.', estado: 400 };
   if (ACOES_SO_COM_CONTA.includes(op) && via !== 'conta') return { erro: 'Para isto precisa de entrar com a sua conta.', estado: 403 };
 
+  if (op === 'push_subscrever' && !subscricaoValida(d)) return { erro: 'Esta subscrição não é válida.', estado: 400 };
+  if (op === 'pagar_fatura' && !(vista.faturas || []).some((f) => f.id === d.id && ['aberta', 'vencida', 'parcial'].includes(f.estado))) return { erro: 'Esta fatura não está por pagar.', estado: 400 };
   if (op === 'check_in') {
     const dia = new Date(agoraMs).toISOString().slice(0, 10);
     const escala = (k) => { const n = Number(d[k]); return Number.isInteger(n) && n >= 1 && n <= 5 ? n : null; };

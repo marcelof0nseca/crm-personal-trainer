@@ -56,7 +56,7 @@ function Campanhas({ modulo, crm, students }) {
   const nova = () => modulo.gravar((m) => ({ ...m, campanhas: [...m.campanhas, { id: uid(), titulo: 'Aviso novo', texto: '', alvo: 'todos', alunos: [], grupoId: '', enviarEm: new Date().toISOString(), recorrencia: 'nenhuma', estado: 'rascunho' }] }));
   return (
     <div className="flex flex-col gap-3">
-      <Aviso>O aviso aparece na área do aluno a partir da data escolhida. Só o vê quem tiver acesso à área. Notificações no telemóvel ficam por ligar: faltam as chaves do serviço.</Aviso>
+      <Aviso>O aviso aparece na área do aluno a partir da data escolhida. Só o vê quem tiver acesso à área.{import.meta.env.VITE_VAPID_PUBLIC_KEY ? ' Quem ligou as notificações recebe-o também no telemóvel, fora do horário de silêncio.' : ''}</Aviso>
       <button type="button" onClick={nova} className="btn btn-primary" style={{ alignSelf: 'flex-start' }}>Novo aviso</button>
       {campanhas.length === 0 && <Vazio>Sem avisos.</Vazio>}
       {campanhas.map((c) => (

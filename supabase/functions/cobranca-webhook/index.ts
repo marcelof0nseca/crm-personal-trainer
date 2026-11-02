@@ -32,7 +32,13 @@ Deno.serve(async (req) => {
     if ((await reg.json()).length === 0) return json({ received: true, repetido: true });
 
     const o = evento.data?.object || {};
-    if (evento.type === 'checkout.session.completed' && o.payment_status === 'paid' && o.metadata?.dominio === 'aluno') {
+    // Um pagamento só vale se vier da conta ligada a esse treinador: o dono de uma conta
+    // escreve os metadados que quiser na sua, e não pode dar por paga a fatura de outro.
+    const pago = (evento.type === 'checkout.session.completed' && o.payment_status === 'paid') || evento.type === 'checkout.session.async_payment_succeeded';
+    if (pago && o.metadata?.dominio === 'aluno') {
+      const dona = await env.rest(`cobranca_contas?stripe_account_id=eq.${evento.account}&user_id=eq.${o.metadata.user_id}&select=user_id&limit=1`);
+      if (!dona.ok) return json({ error: 'Não foi possível confirmar a conta.' }, 500);
+      if ((await dona.json()).length === 0) return json({ received: true, ignorado: true });
       const g = await env.rest('cobranca_pagamentos?on_conflict=referencia', { method: 'POST', headers: { 'Content-Type': 'application/json', Prefer: 'resolution=ignore-duplicates' }, body: JSON.stringify({ user_id: o.metadata.user_id, aluno_id: o.metadata.aluno_id, fatura_id: o.metadata.fatura_id, centimos: o.amount_total, moeda: String(o.currency || 'eur').toUpperCase(), metodo: 'stripe', referencia: o.payment_intent || o.id, estado: 'pago' }) });
       if (!g.ok) return json({ error: 'Não foi possível gravar o pagamento.' }, 500);
     } else if (evento.type === 'charge.refunded' && o.payment_intent) {

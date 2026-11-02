@@ -61,7 +61,7 @@ export function ocorrenciaAtual(c, agoraMs) {
   return null;
 }
 
-function campanhaParaAluno(c, alunoId, aluno, grupos) {
+export function campanhaParaAluno(c, alunoId, aluno, grupos) {
   if (c.alvo === 'todos') return aluno.active !== false;
   if (c.alvo === 'grupo') return (grupos || []).some((g) => g.id === c.grupoId && (g.alunos || []).includes(alunoId));
   return (c.alunos || []).includes(alunoId);
@@ -141,6 +141,7 @@ export function vistaDoAluno(blocos, alunoId, { hoje, agoraMs, via }) {
   const pagosConfirmados = new Map(pagamentos.filter((p) => p.estado === 'pago').map((p) => [p.fatura_id, p]));
   return {
     ...base,
+    pagarOnline: Boolean(blocos.pagarOnline),
     faturas: faturasMinhas.filter((f) => f.estado !== 'rascunho').map((f) => {
       const confirmado = pagosConfirmados.get(f.id);
       const e = confirmado && pagoDaFatura(f) < totalDaFatura(f) ? 'paga' : estadoDaFatura(f, hoje);

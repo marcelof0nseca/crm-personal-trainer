@@ -934,7 +934,9 @@ function AreaDoAlunoInterior({ token }) {
   const [fase, setFase] = useState(() => fasesDeArranque(token));
   const [erro, setErro] = useState('');
   const [dados, setDados] = useState(null);
-  const [aba, setAba] = useState('inicio');
+  // O regresso do pagamento: lê-se uma vez, porque o endereço assenta logo em ?aluno=1.
+  const pagamento = useRef(typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('pagamento') : null).current;
+  const [aba, setAba] = useState(pagamento ? 'mais' : 'inicio');
   const [abertoId, setAbertoId] = useState(null);
   const [treinoInicialId, setTreinoInicialId] = useState(null);
   const [modoInicial, setModoInicial] = useState('ver');
@@ -1104,7 +1106,10 @@ function AreaDoAlunoInterior({ token }) {
         ) : aba === 'progresso' ? (
           <ProgressoDoAluno dados={dados} sessoes={sessoesAnteriores} invocar={invocarAcao} />
         ) : aba === 'mais' ? (
+          <>
+          {pagamento && <p className="text-sm font-body rounded-lg px-3 py-2" role="status" style={{ margin: 0, color: pagamento === 'ok' ? 'var(--ok)' : 'var(--text-muted)', backgroundColor: 'var(--bg-elevated)' }}>{t(pagamento === 'ok' ? 'pag_ok' : 'pag_cancelado')}</p>}
           <MaisDoAluno dados={dados} invocar={invocarAcao} onRecarregar={recarregarEmSilencio} onLerLocal={(id) => setDados((d) => ({ ...d, notificacoes: (d.notificacoes || []).map((n) => (n.id === id ? { ...n, lida: true } : n)) }))} />
+          </>
         ) : (
           <>
             {dados.restrito && <p className="text-sm font-body rounded-lg px-3 py-2" role="status" style={{ margin: 0, color: 'var(--gold)', backgroundColor: 'var(--gold-soft)' }}>{t('restrito')}</p>}

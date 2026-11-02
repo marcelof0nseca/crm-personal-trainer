@@ -1,6 +1,6 @@
 // Agenda, progresso e «Mais» da área do aluno. Cada pedido passa pela `aluno-acao`, e o
 // aluno vê apenas o que a `vistaDoAluno` deixou sair. Nunca importa de painel-pt.tsx.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FormField } from '../../components/UiAtoms';
 import EvolucaoAluno from '../treino/EvolucaoAluno';
 import { IDIOMAS, useIdioma } from '../i18n';
@@ -380,6 +380,65 @@ function Pesquisa({ p, invocar, onRecarregar }) {
   );
 }
 
+const CHAVE_PUSH = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+const paraBytes = (b64) => Uint8Array.from(atob(`${b64}${'='.repeat((4 - (b64.length % 4)) % 4)}`.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+const emBase64Url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+// O iPhone só dá notificações a uma página adicionada ao ecrã inicial.
+function Notificacoes({ invocar }) {
+  const { t } = useIdioma();
+  const [estado, setEstado] = useState('a-ver');
+  const [erro, setErro] = useState('');
+  const registo = () => navigator.serviceWorker.getRegistration();
+
+  useEffect(() => {
+    (async () => {
+      const iphone = /iPhone|iPad/.test(navigator.userAgent);
+      const instalada = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+      if (!CHAVE_PUSH) { setEstado('indisponivel'); return; }
+      if (iphone && !instalada) { setEstado('instalar'); return; }
+      if (!('PushManager' in window) || !('serviceWorker' in navigator)) { setEstado('indisponivel'); return; }
+      if (Notification.permission === 'denied') { setEstado('negado'); return; }
+      const r = await registo();
+      const s = r ? await r.pushManager.getSubscription() : null;
+      setEstado(s ? 'ativas' : 'por-ativar');
+    })().catch(() => setEstado('indisponivel'));
+  }, []);
+
+  async function ativar() {
+    setErro('');
+    const permissao = await Notification.requestPermission();
+    if (permissao !== 'granted') { setEstado(permissao === 'denied' ? 'negado' : 'por-ativar'); return; }
+    try {
+      const r = await registo();
+      const s = await r.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: paraBytes(CHAVE_PUSH) });
+      const g = await invocar('push_subscrever', { endpoint: s.endpoint, p256dh: emBase64Url(s.getKey('p256dh')), auth: emBase64Url(s.getKey('auth')) });
+      if (!g.ok) { await s.unsubscribe(); setErro(g.erro); return; }
+      setEstado('ativas');
+    } catch { setErro(t('erro_enviar')); }
+  }
+  async function desligar() {
+    setErro('');
+    const r = await registo();
+    const s = r ? await r.pushManager.getSubscription() : null;
+    if (s) { await invocar('push_cancelar', { endpoint: s.endpoint }); await s.unsubscribe(); }
+    setEstado('por-ativar');
+  }
+
+  if (estado === 'a-ver') return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <Titulo>{t('notificacoes')}</Titulo>
+      {estado === 'indisponivel' && <p className="text-xs font-body text-faint" style={{ margin: 0 }}>{t('notificacoes_indisponivel')}</p>}
+      {estado === 'instalar' && <p className="text-xs font-body text-muted" style={{ margin: 0 }}>{t('notif_instalar')}</p>}
+      {estado === 'negado' && <p className="text-xs font-body text-muted" style={{ margin: 0 }}>{t('notif_negado')}</p>}
+      {estado === 'por-ativar' && <><p className="text-xs font-body text-muted" style={{ margin: 0 }}>{t('notif_ajuda')}</p><button type="button" onClick={ativar} className="btn btn-primary" style={{ alignSelf: 'flex-start', fontSize: 12 }}>{t('notif_ativar')}</button></>}
+      {estado === 'ativas' && <div className="flex items-center gap-2 flex-wrap"><span className="text-xs font-body text-muted">{t('notif_ativas')}</span><button type="button" onClick={desligar} className="btn btn-ghost" style={{ fontSize: 12 }}>{t('notif_desligar')}</button></div>}
+      {erro && <p className="text-xs font-body" role="alert" style={{ margin: 0, color: 'var(--rust)' }}>{erro}</p>}
+    </div>
+  );
+}
+
 export const contarPorLer = (dados) => (dados.notificacoes || []).filter((n) => !n.lida).length + (dados.formularios || []).length + (dados.contratos || []).length + (dados.avaliacoesOnline || []).length;
 
 export function MaisDoAluno({ dados, invocar, onRecarregar, onLerLocal }) {
@@ -388,6 +447,11 @@ export function MaisDoAluno({ dados, invocar, onRecarregar, onLerLocal }) {
   const [perfil, setPerfil] = useState({ phone: dados.aluno.phone || '', email: dados.aluno.email || '' });
   const acaoPerfil = useAcao(invocar);
   const acaoDoc = useAcao(invocar);
+  const acaoPagar = useAcao(invocar);
+  async function pagar(f) {
+    const r = await acaoPagar.enviar('pagar_fatura', { id: f.id });
+    if (r && r.url) window.location.href = r.url;
+  }
   const avisos = dados.notificacoes || [];
   const faturas = dados.faturas || [];
   const pendentes = useMemo(() => [...(dados.pesquisas || [])], [dados.pesquisas]);
@@ -429,10 +493,14 @@ export function MaisDoAluno({ dados, invocar, onRecarregar, onLerLocal }) {
           {faturas.map((f) => (
             <div key={f.id} className="flex items-center justify-between gap-2 border-b border-hair py-2 flex-wrap">
               <span className="min-w-0"><span className="block text-sm font-body text-primary">{f.descricao}</span><span className="block text-2xs font-body text-faint">{t('vence')} {data(f.vencimento)} · {t(`fatura_estado_${f.estado}`)}</span></span>
-              <span className="font-mono text-sm text-primary">{euros(f.total, f.moeda)}</span>
+              <span className="flex items-center gap-2 flex-shrink-0">
+                <span className="font-mono text-sm text-primary">{euros(f.total, f.moeda)}</span>
+                {dados.pagarOnline && ['aberta', 'vencida', 'parcial'].includes(f.estado) && <button type="button" disabled={acaoPagar.aEnviar} onClick={() => pagar(f)} className="btn btn-primary" style={{ fontSize: 12 }}>{t('pagar')}</button>}
+              </span>
             </div>
           ))}
-          {faturas.some((f) => ['aberta', 'vencida', 'parcial'].includes(f.estado)) && <p className="text-xs font-body text-faint" style={{ margin: 0 }}>{t('pagar_ajuda')}</p>}
+          <Mensagens a={acaoPagar} />
+          {!dados.pagarOnline && faturas.some((f) => ['aberta', 'vencida', 'parcial'].includes(f.estado)) && <p className="text-xs font-body text-faint" style={{ margin: 0 }}>{t('pagar_ajuda')}</p>}
         </div>
       )}
 
@@ -462,7 +530,7 @@ export function MaisDoAluno({ dados, invocar, onRecarregar, onLerLocal }) {
       <FormField label={t('idioma')}>
         <select value={idioma} onChange={(e) => mudar(e.target.value)} className="input-field">{Object.entries(IDIOMAS).map(([k, r]) => <option key={k} value={k}>{r}</option>)}</select>
       </FormField>
-      <p className="text-xs font-body text-faint" style={{ margin: 0 }}>{t('notificacoes')}: {t('notificacoes_indisponivel')}</p>
+      {conta && <Notificacoes invocar={invocar} />}
       <p className="text-xs font-body text-faint" style={{ margin: 0 }}>{t('dados_ajuda')}</p>
     </div>
   );

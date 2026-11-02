@@ -8,6 +8,7 @@ export const corsHeaders = {
   Vary: 'Origin',
 };
 const ID_VALIDO = /^[A-Za-z0-9_-]{1,64}$/;
+import { configuracaoConnect } from './cobranca.ts';
 
 export function json(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -73,7 +74,8 @@ export async function lerBlocos(userId: string, alunoId: string, env: NonNullabl
   const leituras = (await lista(`notificacao_leituras?user_id=eq.${userId}&aluno_id=eq.${alunoId}&select=ocorrencia_id`)).map((l: any) => l.ocorrencia_id);
   const pagamentos = await lista(`cobranca_pagamentos?user_id=eq.${userId}&aluno_id=eq.${alunoId}&select=fatura_id,estado`);
   const respondidas = (await lista(`entradas?user_id=eq.${userId}&aluno_id=eq.${alunoId}&select=ref&limit=500`)).map((e: any) => e.ref).filter(Boolean);
-  return { alunos: valor('alunos') || [], treinos: valor('treinos') || {}, agenda: valor('agenda') || [], execucao: valor(`execucoes:${alunoId}`), modulos, leituras, pagamentos, respondidas };
+  const contaPag = configuracaoConnect().ativa ? await lista(`cobranca_contas?user_id=eq.${userId}&select=pagamentos_ativos&limit=1`) : [];
+  return { pagarOnline: Boolean(contaPag[0]?.pagamentos_ativos), alunos: valor('alunos') || [], treinos: valor('treinos') || {}, agenda: valor('agenda') || [], execucao: valor(`execucoes:${alunoId}`), modulos, leituras, pagamentos, respondidas };
 }
 
 export async function gravarEntrada(env: NonNullable<ReturnType<typeof ambiente>>, linha: Record<string, unknown>) {

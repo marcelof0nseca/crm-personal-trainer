@@ -47,7 +47,7 @@ marcadas como Parcial, Externo e Falta.
 | 5.6.4 | Lembretes | Parcial | Aviso na área do aluno nas 24 h anteriores; sem minutos configuráveis nem envio | `validar-modulos-4` |
 | 5.6.5 | Agenda do aluno, pedidos, cancelamento, reposições à vista | Parcial | Sem reservar em horários livres nem usar o crédito sozinho: tudo passa pelo treinador | `validar-modulos-4`, browser simulado |
 | 5.6.6 | Turmas, lista de espera com ordem determinística | Parcial | Promove à mão; a aceitação com prazo não chega ao aluno | `validar-modulos-3`, browser |
-| 5.7.1 | Push | Externo | Faltam chaves VAPID e um agendador; há avisos na área do aluno | |
+| 5.7.1 | Push | Externo | Ativar e desligar na área do aluno, lembretes de aula e avisos, silêncio das 22:00 às 08:00. Falta criar as chaves VAPID e o agendador, e **nunca correu com um serviço real** | `validar-modulos-4`, browser simulado |
 | 5.7.2, 5.7.3 | Modelos com variáveis, WhatsApp por ligação | Feito | | `validar-modulos-3`, browser |
 | 5.7.4 | Feed de atualizações | Parcial | Aniversários, faturas, avaliações em atraso, créditos e pedidos; sem recordes nem treinos concluídos | browser simulado |
 | 5.7.5 | Comentários contextuais | Parcial | Resposta ao feedback; sem progresso nem documentos | |
@@ -56,7 +56,7 @@ marcadas como Parcial, Externo e Falta.
 | 5.10 | Documentos | Parcial | PDF e imagem, balde privado, visibilidade; sem substituir por versão, validade nem profissional parceiro | browser simulado |
 | 5.11 | Área do aluno | Parcial | Início, agenda, progresso, histórico, avisos, formulários, contratos, avaliações, faturas, documentos, língua; sem unidades, sem gerir password a partir do perfil | `validar-modulos-4`, browser simulado |
 | 5.12 | Planos, faturas, estados, IVA, inadimplência, relatórios | Parcial | Em cêntimos; sem parcelamento, upgrade nem lembretes automáticos | `validar-modulos-3`, browser |
-| 5.12 | Cobrança online, KYC, payout | Externo | Funções escritas, desligadas por omissão e só em modo de teste; sem saldo nem lista de payouts. **Nunca correu contra o Stripe** | conciliação em browser simulado |
+| 5.12 | Cobrança online, KYC, payout | Externo | Botão «Pagar» do aluno e ligação do treinador, em conta Stripe Standard de cada treinador, que paga as taxas e responde às disputas. Desligada por omissão e só em modo de teste; sem saldo nem lista de payouts. **Nunca correu contra o Stripe** | `validar-modulos-4`, browser simulado |
 | 5.13 | Página pública de vendas | Parcial | Publicação por retrato, consentimento, Turnstile, limite de pedidos; sem checkout, FAQ, fotografia, funil UTM nem Open Graph por página (a aplicação é SPA) | `validar-modulos-4`, browser simulado |
 | 5.14 | Desafios | Parcial | Link público, etapas, acompanhamento, passar a contacto; sem duplicar, capacidade, recado nem converter logo em aluno | `validar-modulos-3`, `validar-modulos-4` |
 | 5.15 | Pontos, conquistas, recompensas | Parcial | Registo imutável, idempotência, resgate e reversão; só treinos pontuam sozinhos, e não se desliga por aluno | `validar-modulos-3`, browser |

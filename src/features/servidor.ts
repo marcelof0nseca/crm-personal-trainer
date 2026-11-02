@@ -142,7 +142,8 @@ export async function limparAlunoNoServidor(alunoId) {
   const a = await supabase.from('entradas').delete().eq('aluno_id', alunoId);
   const b = await supabase.from('notificacao_leituras').delete().eq('aluno_id', alunoId);
   const c = await supabase.from('push_subscricoes').delete().eq('aluno_id', alunoId);
-  return tolerarTabelaEmFalta(a) && tolerarTabelaEmFalta(b) && tolerarTabelaEmFalta(c);
+  const d = await supabase.from('push_envios').delete().eq('aluno_id', alunoId);
+  return tolerarTabelaEmFalta(a) && tolerarTabelaEmFalta(b) && tolerarTabelaEmFalta(c) && tolerarTabelaEmFalta(d);
 }
 
 // Ao apagar todos os dados: tudo o que vive fora de `app_data`, ficheiros incluídos.
@@ -154,6 +155,6 @@ export async function limparContaNoServidor() {
   if (lista.error) { console.error('[PTMANAGER] listar documentos', lista.error); }
   const paths = (lista.data || []).map((f) => `${userId}/${f.name}`);
   if (!(await apagarDocumentos(paths))) return false;
-  const rs = await Promise.all(['entradas', 'publico_enderecos', 'notificacao_leituras', 'push_subscricoes'].map((t) => supabase.from(t).delete().eq('user_id', userId)));
+  const rs = await Promise.all(['entradas', 'publico_enderecos', 'notificacao_leituras', 'push_subscricoes', 'push_envios'].map((t) => supabase.from(t).delete().eq('user_id', userId)));
   return rs.every(tolerarTabelaEmFalta);
 }

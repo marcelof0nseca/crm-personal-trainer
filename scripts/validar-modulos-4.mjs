@@ -111,6 +111,25 @@ export async function correr() {
   esperar(vv.length === 2 && !/SEGREDO/.test(JSON.stringify(vv)), 'o aluno recebe só os links dos exercícios dele, e nenhum ficheiro');
   esperar(V.vistaDoAluno({ ...comVideos, treinos: { ...comVideos.treinos, bibliotecaExtra: [{ id: 'x1', videoYoutube: '"><script>' }], bibliotecaEdicoes: {} } }, 'a', { hoje, agoraMs, via: 'token' }).videos.length === 0, 'um id que não o é não sai');
 
+  const PU = await import('../supabase/functions/_shared/push.ts');
+  const meioDia = Date.parse('2026-10-30T12:00:00Z');
+  const aulaP = (id, date, startTime, extra = {}) => ({ id, studentId: 'a', date, startTime, endTime: '23:00', status: 'agendado', ...extra });
+  const baseP = { alunos: [{ id: 'a', name: 'R', active: true }, { id: 'b', name: 'B', active: true }], agenda: [aulaP('am', '2026-10-31', '09:00', { notes: 'SEGREDO-JOELHO', assessWeight: '80' }), aulaP('longe', '2026-11-05', '09:00'), aulaP('passou', '2026-10-30', '08:00'), aulaP('canc', '2026-10-31', '09:00', { status: 'cancelado' }), aulaP('ev', '2026-10-31', '10:00', { kind: 'evento' }), { ...aulaP('dele', '2026-10-31', '09:00'), studentId: 'b' }], mensagens: { campanhas: [{ id: 'c', estado: 'ativa', titulo: 'T', texto: 'X', alvo: 'todos', enviarEm: '2026-10-30T09:00:00Z' }, { id: 'velha', estado: 'ativa', titulo: 'V', texto: 'V', alvo: 'todos', enviarEm: '2026-01-01T09:00:00Z' }, { id: 'p', estado: 'pausada', titulo: 'P', texto: 'P', alvo: 'todos', enviarEm: '2026-10-30T09:00:00Z' }] } };
+  const pend = PU.pushesPendentes(baseP, ['a'], [], meioDia);
+  esperar(pend.map((x) => x.ocorrenciaId.split(':')[0] === 'aula' ? x.ocorrenciaId.split(':')[1] : x.ocorrenciaId).sort().join() === 'am,c:0', `só a aula das próximas 24 h e o aviso recente, de quem tem subscrição (${pend.map((x) => x.ocorrenciaId).join()})`);
+  esperar(!/SEGREDO|80/.test(JSON.stringify(pend)), 'a notificação não leva dados de saúde');
+  esperar(PU.pushesPendentes(baseP, ['a'], pend.map((x) => `${x.alunoId}|${x.ocorrenciaId}`), meioDia).length === 0, 'o que já saiu não sai de novo');
+  esperar(PU.pushesPendentes(baseP, ['a'], [], Date.parse('2026-10-30T23:00:00Z')).length === 0, 'às 23:00 há silêncio');
+  esperar(PU.pushesPendentes(baseP, ['a'], [], Date.parse('2026-07-15T06:30:00Z')).length === 0 && PU.emSilencio(7) && !PU.emSilencio(8), 'às 07:30 em Lisboa, no verão, ainda há silêncio');
+  esperar(PU.paredeEmLisboa(Date.parse('2026-07-15T07:00:00Z')).hora === 8 && PU.paredeEmLisboa(Date.parse('2026-01-15T08:00:00Z')).hora === 8, 'o relógio segue a hora de verão de Lisboa');
+  const remarcada = { ...baseP, agenda: [aulaP('am', '2026-10-31', '10:00')] };
+  esperar(PU.pushesPendentes(remarcada, ['a'], pend.map((x) => `${x.alunoId}|${x.ocorrenciaId}`), meioDia).length === 1, 'uma aula remarcada avisa outra vez');
+  const subOk = { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', p256dh: 'A'.repeat(87), auth: 'B'.repeat(22) };
+  esperar(PU.subscricaoValida(subOk) && PU.subscricaoValida({ ...subOk, endpoint: 'https://web.push.apple.com/x' }), 'aceita os serviços de push');
+  ['https://169.254.169.254/latest', 'http://fcm.googleapis.com/x', 'https://fcm.googleapis.com.falso.pt/x', 'https://falsopush.apple.com/x', 'nada'].forEach((endpoint) => esperar(!PU.subscricaoValida({ ...subOk, endpoint }), `recusa o endereço ${endpoint}`));
+  esperar(V.vistaDoAluno({ ...blocos, pagarOnline: true }, 'a', { hoje, agoraMs, via: 'conta' }).pagarOnline === true, 'com a carteira ativa, o aluno pode pagar');
+  esperar(!('pagarOnline' in V.vistaDoAluno({ ...blocos, pagarOnline: true }, 'a', { hoje, agoraMs, via: 'token' })), 'pelo link sem conta, não');
+
   // ações
   const ctx = { via: 'conta', vista: conta, agenda: blocos.agenda, alunoId: 'a', agoraMs };
   esperar(A.validarAcao('apagar_tudo', {}, ctx).estado === 400, 'um pedido fora da lista é recusado');
@@ -145,6 +164,10 @@ export async function correr() {
   const pf = A.validarAcao('publicar_progresso', { foto: png, consentimentoFoto: true, texto: 'ok' }, ctx);
   esperar(pf.fotoInfo.extensao === 'png' && pf.entrada.dados.comFoto && !JSON.stringify(pf.entrada).includes('AAAA'), 'a fotografia não fica na entrada');
   esperar(A.validarAcao('publicar_progresso', { peso: '60' }, ctx).entrada.dados.peso === '60', 'o peso é opcional, e a fotografia também');
+  esperar(A.validarAcao('pagar_fatura', { id: 'f1' }, { ...ctx, via: 'token' }).estado === 403, 'pagar exige conta');
+  esperar(A.validarAcao('pagar_fatura', { id: 'f2' }, ctx).erro && A.validarAcao('pagar_fatura', { id: 'f1' }, ctx).semEntrada, 'só a fatura dele e por pagar');
+  esperar(A.validarAcao('push_subscrever', { endpoint: 'https://169.254.169.254/x', p256dh: 'A'.repeat(87), auth: 'B'.repeat(22) }, ctx).erro, 'a subscrição não aponta o servidor para onde se quiser');
+  esperar(A.validarAcao('push_subscrever', { endpoint: 'https://fcm.googleapis.com/x', p256dh: 'A'.repeat(87), auth: 'B'.repeat(22) }, { ...ctx, via: 'token' }).estado === 403, 'as notificações exigem conta');
   esperar(A.validarAcao('atualizar_perfil', { email: 'mau' }, ctx).erro && A.validarAcao('atualizar_perfil', { phone: '91' }, ctx).entrada.tipo === 'perfil', 'o perfil passa pelo treinador');
 
   // público

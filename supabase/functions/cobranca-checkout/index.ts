@@ -1,8 +1,7 @@
-// Ligação de pagamento de uma fatura, na conta do treinador. O valor vem da fatura
-// gravada, nunca do pedido, e a fatura só fica paga pelo webhook.
+// Ligação de pagamento de uma fatura, pedida pelo treinador. O aluno com conta paga pela
+// `aluno-acao`. O valor vem da fatura gravada, e a fatura só fica paga pelo webhook.
 import { ambiente, corsHeaders, json, treinadorPede } from '../_shared/aluno.ts';
-import { configuracaoConnect, stripe } from '../_shared/cobranca.ts';
-import { estadoDaFatura, pagoDaFatura, totalDaFatura } from '../_shared/vista-aluno.ts';
+import { configuracaoConnect, sessaoDaFatura } from '../_shared/cobranca.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -17,25 +16,12 @@ Deno.serve(async (req) => {
     if (!userId) return json({ error: 'Sessão em falta.' }, 401);
     const { faturaId } = await req.json().catch(() => ({}));
 
-    const c = await env.rest(`cobranca_contas?user_id=eq.${userId}&select=stripe_account_id,pagamentos_ativos&limit=1`);
-    const conta = c.ok ? (await c.json())[0] : null;
-    if (!conta || !conta.pagamentos_ativos) return json({ error: 'Conclua primeiro a verificação da carteira.' }, 400);
-
     const p = await env.rest(`app_data?user_id=eq.${userId}&data_key=eq.modulo:planos&select=value`);
     const planos = p.ok ? (await p.json())[0]?.value : null;
     const fatura = (planos?.faturas || []).find((f: any) => f.id === faturaId);
     if (!fatura) return json({ error: 'Fatura não encontrada.' }, 404);
-    const hoje = new Date().toISOString().slice(0, 10);
-    if (!['aberta', 'vencida', 'parcial'].includes(estadoDaFatura(fatura, hoje))) return json({ error: 'Esta fatura não está por pagar.' }, 400);
-    const emFalta = totalDaFatura(fatura) - pagoDaFatura(fatura);
-    if (!(emFalta > 0)) return json({ error: 'Esta fatura não está por pagar.' }, 400);
-
-    const sessao = await stripe(cfg.chave!, 'checkout/sessions', {
-      mode: 'payment', success_url: `${origem}/?pagamento=ok`, cancel_url: `${origem}/?pagamento=cancelado`,
-      'line_items[0][quantity]': '1', 'line_items[0][price_data][currency]': String(fatura.moeda || 'EUR').toLowerCase(), 'line_items[0][price_data][unit_amount]': String(emFalta), 'line_items[0][price_data][product_data][name]': String(fatura.itens?.[0]?.descricao || 'Fatura').slice(0, 120),
-      client_reference_id: fatura.id, 'metadata[user_id]': userId, 'metadata[aluno_id]': fatura.studentId, 'metadata[fatura_id]': fatura.id, 'metadata[dominio]': 'aluno',
-    }, conta.stripe_account_id);
-    return json({ url: sessao.url });
+    const r = await sessaoDaFatura(cfg.chave!, env, { userId, fatura, sucesso: `${origem}/?aluno=1&pagamento=ok`, cancelado: `${origem}/?aluno=1&pagamento=cancelado` });
+    return r.erro ? json({ error: r.erro }, r.estado) : json({ url: r.url });
   } catch (error) {
     console.error('[cobranca-checkout]', error);
     return json({ error: 'Não foi possível criar a ligação de pagamento.' }, 502);

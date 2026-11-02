@@ -2,6 +2,7 @@
 // pedido vira uma entrada que o treinador trata. O aluno nunca escreve nos dados da conta.
 import { ambiente, corsHeaders, gravarEntrada, json, lerBlocos, quemPede } from '../_shared/aluno.ts';
 import { validarAcao } from '../_shared/acoes-aluno.ts';
+import { configuracaoConnect, sessaoDaFatura } from '../_shared/cobranca.ts';
 import { vistaDoAluno } from '../_shared/vista-aluno.ts';
 
 Deno.serve(async (req) => {
@@ -64,7 +65,23 @@ Deno.serve(async (req) => {
       }
       return json({ url: `${env.url}/functions/v1/publico-calendario?c=${slug}` });
     }
-    if (op === 'pagar_fatura') return json({ error: 'A cobrança online ainda não está disponível. Fale com o seu treinador.' }, 503);
+    if (op === 'pagar_fatura') {
+      const cfg = configuracaoConnect();
+      const origem = Deno.env.get('APP_ORIGIN');
+      if (!cfg.ativa || !origem) return json({ error: 'O pagamento online não está disponível. Fale com o seu treinador.' }, 503);
+      const fatura = ((blocos.modulos.planos || {}).faturas || []).find((f: any) => f.id === dados.id && f.studentId === quem.alunoId);
+      if (!fatura) return json({ error: 'Esta fatura já não existe.' }, 404);
+      const s = await sessaoDaFatura(cfg.chave!, env, { userId: quem.userId, fatura, sucesso: `${origem}/?aluno=1&pagamento=ok`, cancelado: `${origem}/?aluno=1&pagamento=cancelado` });
+      return s.erro ? json({ error: s.erro }, s.estado) : json({ url: s.url });
+    }
+    if (op === 'push_subscrever') {
+      const g = await env.rest('push_subscricoes?on_conflict=endpoint', { method: 'POST', headers: { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' }, body: JSON.stringify({ endpoint: dados.endpoint, p256dh: dados.p256dh, auth: dados.auth, user_id: quem.userId, aluno_id: quem.alunoId }) });
+      return g.ok ? json({ ok: true }) : json({ error: 'Não foi possível guardar.' }, 500);
+    }
+    if (op === 'push_cancelar') {
+      const g = await env.rest(`push_subscricoes?endpoint=eq.${encodeURIComponent(String(dados.endpoint || ''))}&user_id=eq.${quem.userId}&aluno_id=eq.${quem.alunoId}`, { method: 'DELETE' });
+      return g.ok ? json({ ok: true }) : json({ error: 'Não foi possível guardar.' }, 500);
+    }
     return json({ error: 'Pedido desconhecido.' }, 400);
   } catch (error) {
     console.error('[aluno-acao]', error);

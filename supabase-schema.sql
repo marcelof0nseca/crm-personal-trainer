@@ -699,3 +699,19 @@ create policy "audit_events_escrever" on public.audit_events for insert to authe
 drop policy if exists "audit_events_exige_aal2" on public.audit_events;
 create policy "audit_events_exige_aal2" on public.audit_events as restrictive to authenticated using (public.aal_suficiente()) with check (public.aal_suficiente());
 grant select, insert on public.audit_events to authenticated;
+
+-- As notificações já enviadas: uma ocorrência sai uma só vez por aluno.
+create table if not exists public.push_envios (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  aluno_id text not null,
+  ocorrencia_id text not null,
+  enviado_em timestamptz not null default now(),
+  primary key (user_id, aluno_id, ocorrencia_id)
+);
+alter table public.push_envios enable row level security;
+drop policy if exists "push_envios_dono" on public.push_envios;
+create policy "push_envios_dono" on public.push_envios for all to authenticated using (public.has_personal_app_access(user_id)) with check (public.has_personal_app_access(user_id));
+grant select, delete on public.push_envios to authenticated;
+grant select, insert on public.push_envios to service_role;
+-- O mesmo telemóvel pode voltar a subscrever, e passar a ser de outro aluno.
+grant update on public.push_subscricoes to service_role;

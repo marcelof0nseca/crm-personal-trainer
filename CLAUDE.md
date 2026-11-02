@@ -831,6 +831,16 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   incluem avaliações físicas e fotografias corporais, categoria especial do
   RGPD. **Mudar de região obriga a atualizar `HOSTING_REGION` em
   `LegalDocs.tsx`** — é uma declaração legal.
+- **Cobrança dos alunos (Stripe Connect)** — à parte da subscrição: outro segredo, outro
+  webhook. Cada treinador tem uma conta **Standard** e a cobrança é direta, por isso as
+  taxas e as disputas são dele e não do PTMANAGER. Desligada por omissão
+  (`STRIPE_CONNECT_ENABLED`), e chaves de produção só com `STRIPE_CONNECT_LIVE=true`.
+  O webhook ignora um pagamento cuja conta não seja a desse treinador: o dono de uma conta
+  escreve os metadados que quiser.
+- **Notificações (push)** — chaves VAPID, `VITE_VAPID_PUBLIC_KEY` no Vercel, e um
+  agendador a chamar `notificacoes-despachar` com `CRON_SECRET`. Silêncio das 22:00 às
+  08:00, e o texto nunca leva dados de saúde. No iPhone só funciona com a página no ecrã
+  inicial.
 - **Stripe** — conta portuguesa. Cartão, Apple Pay, Google Pay e MB WAY.
   MB WAY e Multibanco **não fazem subscrição recorrente**: o MB WAY é pagamento
   único e o webhook concede os meses de acesso.

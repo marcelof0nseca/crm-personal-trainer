@@ -1,1462 +1,568 @@
-import { useRef, useState, useEffect, Fragment } from 'react';
-import {
-  MessageCircle, CalendarDays, RotateCcw, ClipboardCheck, Images, Wallet, TrendingDown,
-  ShieldCheck, ChevronDown, CheckCircle2, TrendingUp, UserPlus, Gift, Mail,
-  MousePointerClick, CalendarX2, FileSignature, Stamp, BarChart3, UserSearch, Clock, Percent,
-} from 'lucide-react';
+// A página pública de vendas. Conta um dia de trabalho, hora a hora, e o que se vê dentro
+// do telemóvel são gravações da aplicação real, com alunos fictícios (public/landing/).
+// Um texto só promete o que a aplicação já faz hoje: ver CLAUDE.md, secção 10.
+import { useEffect, useRef, useState } from 'react';
+import { Mail, Play, Plus } from 'lucide-react';
 import LegalModal from './LegalDocs';
-import { SessionCard } from './AgendaAtoms';
-import { StatCard, RevenueLoadBar, StudentCard } from './DashboardAtoms';
-import { ExercicioVista } from './TreinoAtoms';
 
-/* ============================== MOCK DATA (previews) ============================== */
-
-const MOCK_STATS = [
-  { label: 'Alunos ativos', value: '24', icon: UserPlus },
-  { label: 'Aulas esta semana', value: '18', icon: CalendarDays },
-  { label: 'Faltas pendentes', value: '3', icon: RotateCcw },
-  { label: 'Receita do mês', value: '€2.340', icon: TrendingUp },
-];
-
-const MOCK_SESSIONS = [
-  { time: '08:00', name: 'Rita Almeida', type: 'Horário Fixo', color: '#5DA9E9' },
-  { time: '10:30', name: 'João Pereira', type: 'Avaliação Física', color: '#D6764A' },
-  { time: '17:00', name: 'Marta Silva', type: 'Reposição', color: '#5FBFA0' },
-];
-
-// O mesmo StudentCard do painel (ver DashboardAtoms.tsx).
-const STUDENTS_DEMO = [
-  { student: { name: 'Rita Almeida', color: '#5DA9E9', active: true, planType: '3x/semana', memberNumber: '014' }, finance: { gross: 160, tax: 16, gymFee: 8, net: 136 }, pendingFaltasCount: 0 },
-  { student: { name: 'João Pereira', color: '#C77DFF', active: true, planType: '2x/semana', memberNumber: '027' }, finance: { gross: 120, tax: 12, gymFee: 6, net: 102 }, pendingFaltasCount: 1 },
-  { student: { name: 'Marta Silva', color: '#6FCF97', active: true, planType: '1x/semana', memberNumber: '031' }, finance: { gross: 60, tax: 6, gymFee: 3, net: 51 }, pendingFaltasCount: 0 },
-  { student: { name: 'Tiago Costa', color: '#8FA6C2', active: false, planType: 'Personalizado', memberNumber: '009' }, finance: { gross: 0, tax: 0, gymFee: 0, net: 0 }, pendingFaltasCount: 0 },
-];
-
-const WEEK_DAYS = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM'];
-// Dia · nº de marcações — o dia ativo é o índice 3 (quinta).
-const MOCK_WEEK_DAYS = [
-  { d: '03', n: 3 }, { d: '04', n: 2 }, { d: '05', n: 0 }, { d: '06', n: 4 },
-  { d: '07', n: 2 }, { d: '08', n: 1 }, { d: '09', n: 0 },
-];
-
-// O mesmo SessionCard do painel (ver AgendaAtoms.tsx) -- por isso os dados
-// aqui têm a forma real de uma sessão, não uma reprodução à parte.
-const AGENDA_DEMO_STUDENTS = [
-  { id: 'd1', name: 'Rita Almeida', color: '#5DA9E9', active: true },
-  { id: 'd2', name: 'João Pereira', color: '#C77DFF', active: true },
-  { id: 'd3', name: 'Tiago Costa', color: '#8FA6C2', active: true },
-];
-const AGENDA_DEMO_SESSIONS = [
-  { id: 'ds1', kind: 'aula', studentId: 'd1', date: '2026-08-06', startTime: '08:00', endTime: '09:00', type: 'fixo', status: 'realizado', notes: '' },
-  { id: 'ds2', kind: 'aula', studentId: 'd2', date: '2026-08-06', startTime: '10:30', endTime: '11:30', type: 'fixo', status: 'agendado', notes: '' },
-  { id: 'ds3', kind: 'evento', studentId: null, date: '2026-08-06', startTime: '13:00', endTime: '13:30', type: 'almoco', status: 'agendado', notes: '' },
-  { id: 'ds4', kind: 'aula', studentId: 'd3', date: '2026-08-06', startTime: '17:00', endTime: '18:00', type: 'reposicao', status: 'agendado', notes: '' },
-];
-
-const FAT_TREND = [22, 20.5, 19.4, 18.2];
-
-// Rótulos iguais aos do painel (BIA_FIELDS em painel-pt.tsx).
-const MOCK_BIA = [
-  { label: '% Massa Muscular', value: '38,4' },
-  { label: 'Massa Gorda (kg)', value: '11,7' },
-  { label: '% Água Corporal', value: '54,2' },
-  { label: 'Gordura Visceral', value: '4' },
-  { label: 'TMB (kcal)', value: '1.412' },
-  { label: 'Idade Metabólica', value: '27' },
-];
-
-// Os cinco protocolos de dobras realmente implementados no app.
-const FOLD_PROTOCOLS_MOCK = [
-  'Jackson-Pollock 7 Dobras',
-  'Jackson-Pollock 3 Dobras',
-  'Durnin-Womersley 4 Dobras',
-  'Faulkner 4 Dobras',
-  'Guedes 3 Dobras',
-];
-
-// As 11 combinações realmente disponíveis (METODOS_COMBINACAO, em
-// painel-pt.tsx) -- "e mais oito" não bastava para quem quisesse mesmo saber
-// quais são, por isso ficam todas nomeadas aqui.
-const COMBO_METHODS_MOCK = [
-  'Bi-set', 'Supersérie', 'Superset antagonista', 'Pré-exaustão',
-  'Pós-exaustão', 'Série composta', 'Trissérie', 'Giant set',
-  'Circuito', 'Contraste', 'Complexo',
-];
-
-const PHOTO_GRADIENTS = [
-  'linear-gradient(135deg, #1EA6B4 0%, #14343a 100%)',
-  'linear-gradient(135deg, #5DA9E9 0%, #1c2a3a 100%)',
-  'linear-gradient(135deg, #6FCF97 0%, #17301f 100%)',
-  'linear-gradient(135deg, #D6534A 0%, #331917 100%)',
-];
-
-// Só o mensal cobra por mês -- os outros dois cobram o período inteiro de
-// uma vez. Evita um "€27,90/mês" que a Stripe nunca cobraria assim.
 const CADENCIA_POR_PLANO = { mensal: '/mês', trimestral: ' a cada 3 meses', anual: ' a cada 12 meses' };
 
-const PAIN_POINTS = [
-  { icon: MessageCircle, text: 'Alunos espalhados no WhatsApp', depois: 'Cada aluno, num único perfil' },
-  { icon: CalendarDays, text: 'Agenda desorganizada', depois: 'A semana inteira, sob controlo' },
-  { icon: RotateCcw, text: 'Reposições esquecidas', depois: 'Crédito com validade e histórico' },
-  { icon: ClipboardCheck, text: 'Avaliações físicas perdidas', depois: 'Evolução sempre documentada' },
-  { icon: Images, text: 'Fotos sem histórico', depois: 'Fotos ligadas a cada avaliação' },
-  { icon: Wallet, text: 'Falta de clareza financeira', depois: 'Saldo e categorias à vista' },
-  { icon: TrendingDown, text: 'Dificuldade em saber o lucro real', depois: 'Receita líquida, calculada sozinha' },
+/* ============================== O DIA ============================== */
+
+const MOMENTOS = [
+  {
+    hora: '07:00',
+    titulo: 'Antes do primeiro aluno',
+    texto: 'Abre o telemóvel e já sabe como vai o mês e o que precisa da sua decisão.',
+    areas: [
+      { clip: 'painel', nome: 'Painel', texto: 'Receita bruta e líquida, impostos, taxa do ginásio, horas pagas, comparência e faltas. Navega para qualquer mês.' },
+      { clip: 'novidades', nome: 'Novidades', texto: 'Aniversários, faturas em atraso e o que os alunos pediram. Nada entra nos seus dados sem o aceitar.' },
+      { clip: 'tarefas', nome: 'Tarefas e regras', texto: 'O que fazer hoje, o que ficou atrasado e o que vem aí. Regras simples criam tarefas por si.' },
+      { clip: 'relatorio', nome: 'Relatório do período', texto: 'Atividade, ocupação da agenda e receita, pronto a imprimir com o seu timbre.' },
+    ],
+  },
+  {
+    hora: '08:00',
+    titulo: 'A semana, sob controlo',
+    texto: 'Marcar, confirmar, trocar. Vários alunos à mesma hora, se for o seu caso.',
+    areas: [
+      { clip: 'agenda', nome: 'Agenda', texto: 'Dia, semana, mês e lista. Aula dada, falta ou falta com reposição, num toque. Avisa se houver choque, mas nunca o impede.' },
+      { clip: 'agenda-avancada', nome: 'Horários, turmas e locais', texto: 'Férias e feriados sem mexer no horário normal, turmas com lista de espera, salas, regras de reserva e calendário para o telemóvel.' },
+      { clip: 'faltas', nome: 'Faltas e reposições', texto: 'Cada falta guarda o motivo, o crédito, a validade e quem o concedeu. Nada fica esquecido numa conversa.' },
+    ],
+  },
+  {
+    hora: '09:30',
+    titulo: 'Na sala de treino',
+    texto: 'O programa aberto na mão, um exercício de cada vez, e o que o aluno fez fica escrito.',
+    areas: [
+      { clip: 'treino', nome: 'Vista de treino', texto: 'Completa ou passo a passo. Escreve a carga ali mesmo, com a percentagem do modelo à vista, e o volume faz-se sozinho.' },
+      { clip: 'registar', nome: 'Registar a sessão', texto: 'Última vez ao lado, cronómetro de descanso e um toque por série. Se o telemóvel bloquear, o rascunho não se perde.' },
+      { clip: 'construtor', nome: 'Construir o treino', texto: '2 076 exercícios, 38 métodos e 15 combinações. Bi-set, drop-set, cluster, EMOM: os campos mudam com o método.' },
+      { clip: 'modelos', nome: '1 060 modelos prontos', texto: 'Por objetivo, nível, frequência e equipamento. Um toque cria o programa do aluno, e depois é seu para alterar.' },
+    ],
+  },
+  {
+    hora: '11:00',
+    titulo: 'Avaliar sem papel',
+    texto: 'Medidas, testes, questionários e assinaturas, ligados ao aluno e fáceis de comparar.',
+    areas: [
+      { clip: 'avaliacao', nome: 'Avaliação física', texto: 'Dobras cutâneas, bioimpedância, perímetros, metas e fotografias, com o gráfico de evolução. Rascunho, final e revisões com motivo.' },
+      { clip: 'centro-avaliacoes', nome: 'Postural, funcional e neuromotora', texto: 'Grelha e ângulos sobre a fotografia, baterias e modelos seus, recorrência e envio ao aluno. Assinala, nunca diagnostica.' },
+      { clip: 'formularios', nome: 'PAR-Q, anamnese e consentimentos', texto: 'Preenche com o aluno ao lado, com assinatura no ecrã. Também pode criar os seus formulários.' },
+      { clip: 'pdf', nome: 'PDF com o seu timbre', texto: 'Logótipo, número profissional e contactos. Escolhe as secções e vê o documento antes de imprimir.' },
+    ],
+  },
+  {
+    hora: '14:00',
+    titulo: 'Cada aluno, inteiro',
+    texto: 'Em vez de procurar em conversas antigas, abre a ficha.',
+    areas: [
+      { clip: 'alunos', nome: 'Alunos e Ficha 360º', texto: 'Plano, preço e contactos. Aulas, faltas, avaliações, treinos e formulários numa linha só, com procura.' },
+      { clip: 'metas', nome: 'Metas', texto: 'Ponto de partida, alvo, prazo e marcos. O aluno vê as que quiser partilhar.' },
+      { clip: 'documentos', nome: 'Documentos', texto: 'Ficheiros guardados em privado, formulários enviados, resultados partilhados e os dados do aluno, se ele os pedir.' },
+    ],
+  },
+  {
+    hora: '16:00',
+    titulo: 'Do lado do aluno',
+    texto: 'O aluno tem a área dele, com conta ou por um link. Vê o treino e regista o que fez, sem lhe pedir nada.',
+    areas: [
+      { clip: 'aluno-inicio', nome: 'O treino dele', texto: 'Próximo treino, um toque para começar, última carga à vista e vídeo do exercício. O registo chega à sua ficha.' },
+      { clip: 'aluno-areas', nome: 'Agenda, progresso e mais', texto: 'Próximas aulas, pedidos, metas, evolução, avisos, formulários, faturas e documentos. Em português, inglês ou espanhol.' },
+    ],
+  },
+  {
+    hora: '18:00',
+    titulo: 'Quem está a desaparecer',
+    texto: 'Antes de perder um aluno, costuma haver sinais. Aqui ficam à vista, com o motivo escrito.',
+    areas: [
+      { clip: 'retencao', nome: 'Retenção', texto: 'Engajado, oscilando, em risco, abandono e recuperado, por regras suas. Mostra porque está ali e abre o WhatsApp com a mensagem.' },
+      { clip: 'mensagens', nome: 'Mensagens', texto: 'Modelos com o nome do aluno já preenchido, e avisos que aparecem na área dele. Quem envia é sempre o treinador.' },
+      { clip: 'contactos', nome: 'Contactos', texto: 'Quem ainda não é aluno, etapa a etapa. Converter não duplica ninguém, e há importação por CSV, grupos, etiquetas e lixeira.' },
+    ],
+  },
+  {
+    hora: '20:00',
+    titulo: 'Trazer alunos novos',
+    texto: 'A sua página, as suas ligações e um motivo para os atuais continuarem.',
+    areas: [
+      { clip: 'vendas', nome: 'Página de vendas e imagens', texto: 'Monta a página sem saber programar, com depoimentos autorizados, ligações de inscrição e de indicação, e imagens para as redes.' },
+      { clip: 'pagina-publica', nome: 'O que o cliente vê', texto: 'Quem preenche entra nos seus contactos, com o consentimento guardado. Nunca vira aluno sem a sua decisão.' },
+      { clip: 'fidelizacao', nome: 'Desafios, pontos e satisfação', texto: 'Desafios por link, pontos por treino e recompensas definidas por si. NPS com nota baixa a pedir contacto.' },
+    ],
+  },
+  {
+    hora: '21:30',
+    titulo: 'As contas do dia',
+    texto: 'O que recebeu, o que falta receber e quanto sobra mesmo.',
+    areas: [
+      { clip: 'planos', nome: 'Planos e faturas dos alunos', texto: 'Planos, faturas geradas ao abrir, IVA, pagamentos registados, atrasos, contratos com versão e aceite, e relatório por plano.' },
+      { clip: 'financas', nome: 'Finanças', texto: 'As suas entradas e saídas, por categoria, com o saldo do mês e as pendências destacadas.' },
+    ],
+  },
 ];
 
-// Tudo o que existe de verdade e não tem secção própria mais acima — cada
-// item aqui é uma funcionalidade real do painel (ver CLAUDE.md, secção 10),
-// nunca uma promessa. É aqui, e só aqui, que se fala de segurança: a antiga
-// secção "Confiança" duplicava a mesma mensagem noutro sítio da página.
-const FEATURE_INDEX = [
-  {
-    icon: CalendarX2,
-    heading: 'Faltas e reposições',
-    items: [
-      'Direito a reposição registado na própria falta, ligado à aula de origem',
-      'Validade do crédito com estado "Expirada" quando o prazo passa',
-      'Registo de auditoria: quem concedeu, quando, e o que aconteceu depois',
-    ],
-  },
-  {
-    icon: FileSignature,
-    heading: 'Formulários de saúde',
-    items: [
-      'PAR-Q, anamnese e consentimentos — com construtor próprio para os seus',
-      'Assinatura desenhada no ecrã, guardada junto com a resposta',
-      'PDF timbrado, com os pontos a ter em conta assinalados como avisos',
-    ],
-  },
-  {
-    icon: Stamp,
-    heading: 'Documentos com o seu timbre',
-    items: [
-      'Logótipo, estúdio, número profissional e contactos em cada folha',
-      'Escolhe que secções saem, com pré-visualização antes de imprimir',
-      'Aviso de confidencialidade em todas as páginas',
-    ],
-  },
-  {
-    icon: BarChart3,
-    heading: 'Relatórios',
-    items: [
-      'Relatório do período: atividade, ocupação da agenda, receita e lançamentos',
-      'Relatório de progresso: primeira avaliação contra a mais recente, com gráfico',
-      'Ambos prontos a imprimir, com o mesmo timbre dos restantes documentos',
-    ],
-  },
-  {
-    icon: UserSearch,
-    heading: 'Ficha 360º',
-    items: [
-      'Aulas, faltas, avaliações, treinos e formulários de um aluno, numa linha só',
-      'Procura livre sobre todo o histórico, com filtros por tipo e período',
-      'Comparência e créditos de reposição resumidos no topo',
-    ],
-  },
-  {
-    icon: ShieldCheck,
-    heading: 'Segurança e fiabilidade',
-    items: [
-      'Autenticação de dois fatores e dados isolados por conta, alojados na UE',
-      'Gravação imediata, com aviso se outro dispositivo escrever primeiro',
-      'Exportação ou eliminação dos seus dados sempre que quiser',
-    ],
-  },
+const ECRAS_MURO = ['agenda', 'treino', 'registar', 'avaliacao', 'retencao', 'aluno-areas', 'formularios', 'modelos', 'financas', 'pagina-publica', 'contactos', 'planos'];
+
+/* ============================== A LISTA COMPLETA ============================== */
+
+const LISTA = [
+  { nome: 'Agenda', itens: ['Dia, semana, mês e lista, com procura e filtros', 'Aula dada, falta e falta com reposição num toque', 'Vários alunos no mesmo horário, cada um com o seu estado', 'Horários livres em lote, com pré-visualização', 'Selecionar várias: mover, copiar, mudar duração, bloquear ou apagar', 'Séries semanais: só esta ou toda a série', 'Arrastar entre dias no computador, com confirmação', 'Exceções por data, férias e feriados', 'Turmas, lista de espera, locais e tempo de preparação', 'Aviso de conflito que nunca bloqueia', 'Regras de reserva e pedidos do aluno', 'Exportação .ics e calendário por ligação privada'] },
+  { nome: 'Faltas e reposições', itens: ['Motivo, justificação e direito a reposição', 'Crédito ligado à aula de origem', 'Validade e estado «Expirada»', 'Histórico de quem concedeu e quando', 'Filtros por aluno, período e estado'] },
+  { nome: 'Alunos', itens: ['Alunos sem limite', 'Plano, preço, imposto e taxa do ginásio por aluno', 'Data de início e de nascimento', 'Ficha 360º com procura e filtros', 'Etiquetas e grupos', 'Lixeira recuperável e eliminação definitiva', 'Importação por CSV com pré-visualização', 'Exportação dos dados de um aluno'] },
+  { nome: 'Treinos', itens: ['Treinos A/B/C, blocos e arquivo', 'Séries individuais, cada uma com os seus campos', '38 métodos, com a explicação de cada um', '15 combinações com etiquetas A1/A2 e cor', 'Sub-etapas geradas: drop-set, cluster, pirâmide, myo-reps, ladder', 'Vista completa ou passo a passo', 'RIR alvo em valor ou faixa', 'Presets prontos e seus', 'Rascunho, programado, publicado e versões', 'Ciclos, semanas e deload', 'Treino extra, à parte do programa', 'Duplicar programas entre alunos', 'PDF timbrado'] },
+  { nome: 'Biblioteca', itens: ['2 076 exercícios em português', 'Procura em pt-PT, pt-BR e inglês de ginásio', 'Sinónimos, favoritos e pastas', 'Progressões, regressões e substituições', 'Exercícios seus, sem limite', 'Um vídeo por exercício: ficheiro ou link do YouTube'] },
+  { nome: 'Modelos de treino', itens: ['1 060 fichas prontas a usar', 'Filtros por objetivo, nível, frequência, método e equipamento', 'Aquecimento, parte principal e volta à calma', 'Critérios de entrada, progressão e regressão', 'Avisos de validação clínica e supervisão', 'Guardar nos seus modelos'] },
+  { nome: 'Treino realizado', itens: ['Registo pelo treinador ou pelo aluno', 'Carga, repetições, tempo, RIR e RPE reais', 'Última vez à vista', 'Cronómetro de descanso e de EMOM, AMRAP, Tabata', 'Rascunho no aparelho', 'Duração, esforço, sintomas referidos e notas', 'Central de feedbacks', 'Frequência, cargas, recordes e 1RM com a fórmula à vista', 'Corrigir ou apagar uma sessão'] },
+  { nome: 'Avaliações', itens: ['Dobras cutâneas: 6 protocolos', 'Bioimpedância com 12 campos', '14 perímetros e cintura-anca', 'Conversão de Siri e de Brozek', 'Fotografias de progresso em armazenamento privado', 'Rascunho, final e revisões com motivo', 'Comparar avaliações e repor versões', 'Avaliação postural com grelha, fio de prumo e ângulos', 'Baterias funcional, neuromotora e de força', 'Condicionamento e mobilidade', 'Modelos seus e recorrência', 'Medidas preenchidas pelo aluno, para rever', 'Faixas de referência que assinalam, sem diagnosticar'] },
+  { nome: 'Formulários', itens: ['PAR-Q, anamnese e consentimentos', 'Construtor de formulários', 'Assinatura desenhada no ecrã', 'Envio para o aluno preencher', 'Pontos a ter em conta, ditos como avisos', 'PDF timbrado'] },
+  { nome: 'Documentos', itens: ['Timbre com logótipo, estúdio e nº profissional', 'Aviso de confidencialidade em todas as folhas', 'Escolher secções e pré-visualizar', 'Ficheiros PDF e imagem por aluno', 'Partilhar resultados com o aluno, sem fotografias'] },
+  { nome: 'Área do aluno', itens: ['Entrada por conta ou por link, à sua escolha', 'Próximo treino e registo da sessão', 'Vídeo do exercício no treino', 'Agenda, pedidos e reposições', 'Check-in «Como está hoje?»', 'Metas, evolução, recordes e pontos', 'Fotografias de progresso com autorização', 'Avisos, formulários, contratos, faturas e documentos', 'Português, inglês e espanhol', 'Instalável no ecrã do telemóvel'] },
+  { nome: 'Retenção e tarefas', itens: ['Cinco estados, por regras que pode alterar', 'O motivo escrito, aluno a aluno', 'Números com o denominador à vista', 'Retrato semanal e tendência', 'WhatsApp com a mensagem pronta', 'Tarefas de hoje, atrasadas e próximas', 'Regras quando/então'] },
+  { nome: 'Contactos e mensagens', itens: ['Etapas, do contacto novo ao convertido', 'Próximo contacto, notas e motivo de perda', 'Converter sem duplicar', 'Modelos com variáveis e pré-visualização', 'Avisos na área do aluno, únicos ou repetidos', 'Novidades com tudo o que chegou'] },
+  { nome: 'Planos e faturas dos alunos', itens: ['Mensal, trimestral, anual, livre e pacote', 'Faturas com IVA, desconto e estados', 'Registo de pagamentos e devoluções', 'Atrasos, tolerância e exceções', 'Contratos com versão e aceite do aluno', 'Comprovativos internos e exportação CSV', 'Receita recorrente dos alunos, à parte'] },
+  { nome: 'Vendas e fidelização', itens: ['Página de vendas sua, publicada por ligação', 'Depoimentos só com autorização', 'Ligações de inscrição e de indicação', 'Imagens para publicações e histórias', 'Desafios por link, com etapas', 'Pontos, conquistas, recompensas e resgates', 'NPS e alerta de nota baixa'] },
+  { nome: 'Finanças e relatórios', itens: ['Painel: bruto, líquido, impostos e taxa do ginásio', 'Horas pagas, calculadas pelo plano', 'Entradas e saídas por categoria', 'Pendências destacadas', 'Relatório do período', 'Relatório de progresso do aluno'] },
+  { nome: 'Segurança e dados', itens: ['Dados alojados na União Europeia', 'Dois fatores e fechar sessão em todo o lado', 'Dados isolados por conta', 'Fotografias e documentos privados', 'Aviso se outro aparelho gravar primeiro', 'Cópia de segurança e restauro completos', 'Apagar um aluno ou todos os dados', 'Registo de alterações', 'Tema claro, escuro e automático'] },
 ];
 
 const FAQ_ITEMS = [
-  { q: 'Preciso de instalar alguma coisa?', a: 'Não. O PTMANAGER funciona diretamente no navegador, em qualquer computador ou telemóvel — sem instalar nada.' },
-  { q: 'Funciona no telemóvel e no tablet?', a: 'Sim. O painel é totalmente responsivo e funciona igualmente bem no telemóvel, tablet e computador.' },
-  { q: 'Como funcionam os meses grátis?', a: 'No plano trimestral paga 3 meses e fica com 4. No anual paga 12 meses e fica com 14. Somam-se aos 7 dias grátis: os meses extra entram já na primeira cobrança, feita ao fim do período gratuito.' },
-  { q: 'Como funcionam os 7 dias grátis?', a: 'Regista o cartão ao criar a conta, mas não é cobrado nada nesse momento — em qualquer dos três planos. Só ao 8º dia, se não tiver cancelado antes, a Stripe cobra automaticamente o valor do plano escolhido (no trimestral e no anual, já com os meses grátis incluídos). Vale só na primeira vez — não se repete ao cancelar e voltar a assinar.' },
-  { q: 'Posso cancelar quando quiser?', a: 'Sim, a qualquer momento, no portal de subscrição da Stripe — inclui os 7 dias grátis: cancelar antes do fim do período não gera nenhuma cobrança.' },
-  { q: 'Os meus alunos acedem ao sistema?', a: 'Não. O acesso é exclusivo do personal trainer — os seus alunos não precisam de conta nem de iniciar sessão.' },
-  { q: 'Funciona em Portugal?', a: 'Sim. Preços em euros e suporte pensados para o mercado português.' },
-  { q: 'O pagamento é seguro?', a: 'Sim. Todos os pagamentos são processados pela Stripe, com encriptação de nível bancário.' },
-  { q: 'Como ativo o meu plano depois de pagar?', a: 'Automaticamente. Assim que a Stripe confirma o pagamento, o plano fica ativo em poucos segundos — se demorar, o botão "Verificar subscrição" confirma de imediato.' },
-];
-
-// Os três planos (SALES_PLANS, em painel-pt.tsx) diferem só no preço, no
-// período e no bónus — a funcionalidade é sempre a mesma. Por isso há uma
-// lista só, mostrada uma vez, em vez de repetir o mesmo bloco em cada
-// cartão: repetir três vezes sugeriria uma diferença que não existe.
-const PLAN_INCLUDES = [
-  'Alunos, planos e preços sem limite',
-  'Agenda com dia, semana, mês e lista',
-  'Faltas, reposições e crédito com validade',
-  'Avaliações físicas, com fotos de progresso',
-  'Prescrição de treino e biblioteca com 2076 exercícios',
-  'Documentos e formulários com o seu timbre',
-  'Relatórios de atividade e de progresso do aluno',
-  'Ficha 360º de cada aluno',
-  'Controlo financeiro completo',
-  'Autenticação de dois fatores e suporte por e-mail',
-];
-
-const FEATURE_SECTIONS = [
-  {
-    heading: 'Cada aluno, com contexto completo',
-    body: 'Nome, número de sócio, plano, estado e dados físicos organizados num único perfil — sem andar à procura de informação em conversas antigas.',
-    bullets: ['Registo completo por aluno', 'Planos e valores personalizados', 'Ativo, inativo ou em pausa'],
-    Mockup: StudentsMockup,
-  },
-  {
-    heading: 'A sua semana, sob controlo',
-    body: 'Vê a semana inteira com o nome de cada aluno e a hora de cada aula. Basta tocar no aluno para marcar presença, falta ou reposição — e ajustar horário, tipo de aula ou notas.',
-    bullets: [
-      'Nome do aluno e hora visíveis em cada dia',
-      'Presença, falta e reposição num toque',
-      'Eventos pessoais na mesma agenda, com vista semanal e mensal',
-    ],
-    Mockup: AgendaMockup,
-  },
-  {
-    heading: 'A biblioteca toda, na ponta dos dedos',
-    body: '2076 exercícios pesquisáveis em português, português do Brasil ou inglês de ginásio. Combine em bi-set, superset ou trissérie — cada combinação com a sua cor, para o treino se ler num relance.',
-    bullets: [
-      '2076 exercícios, com sinónimos, favoritos e pastas',
-      '11 combinações com nome e cor, de bi-set a circuito — todas à vista',
-      'Duas formas de ver: o treino completo, ou um exercício de cada vez',
-    ],
-    Mockup: TreinosMockup,
-  },
-  {
-    heading: 'Evolução documentada, não só recordada',
-    body: 'Registe por bioimpedância — massa muscular, água corporal, gordura visceral, TMB — ou por dobras cutâneas, com cinco protocolos à escolha. Com fotos de progresso ligadas a cada avaliação.',
-    bullets: [
-      'Bioimpedância com 12 campos, ou dobras com cinco protocolos à escolha',
-      'Fotos de progresso ligadas a cada avaliação, por data',
-      '% de gordura e IMC calculados automaticamente',
-    ],
-    Mockup: AssessmentMockup,
-  },
-  {
-    heading: 'As suas contas, não só as dos alunos',
-    body: 'A receita dos alunos já aparece sozinha no Painel — bruta, líquida, com impostos e taxa de ginásio. A aba Finanças é para o resto: as suas entradas e saídas pessoais, por categoria, com saldo do mês e pendências à vista.',
-    bullets: ['Entradas e saídas próprias, por categoria', 'Saldo do mês sempre em evidência', 'Pendências por regularizar, destacadas'],
-    Mockup: FinanceMockup,
-  },
+  { q: 'Os vídeos desta página são reais?', a: 'São. Foram gravados na própria aplicação, em tamanho de telemóvel, e nada foi desenhado à parte. Só os alunos e os números são fictícios.' },
+  { q: 'Preciso de instalar alguma coisa?', a: 'Não. Funciona no navegador do telemóvel, do tablet ou do computador. Se preferir, pode adicioná-la ao ecrã inicial do telemóvel.' },
+  { q: 'Os meus alunos têm acesso?', a: 'Se quiser, sim. Cada aluno pode ter uma conta própria ou um link pessoal, e vê apenas o que é dele. Se preferir, não ativa nada e os alunos continuam a receber o PDF.' },
+  { q: 'Como funcionam os 7 dias grátis?', a: 'Regista o cartão ao criar a conta, mas nada é cobrado nesse momento, em qualquer dos três planos. Ao 8º dia, se não tiver cancelado, a Stripe cobra o plano escolhido. Vale só na primeira vez.' },
+  { q: 'Como funcionam os meses grátis?', a: 'No trimestral paga 3 meses e fica com 4. No anual paga 12 e fica com 14. Somam-se aos 7 dias grátis e entram logo na primeira cobrança.' },
+  { q: 'Posso cancelar quando quiser?', a: 'Sim, a qualquer momento, no portal da Stripe. Cancelar durante os 7 dias grátis não gera nenhuma cobrança.' },
+  { q: 'O PTMANAGER emite faturas legais?', a: 'Não. As faturas dos alunos servem para organizar o que cada um paga, e o comprovativo é interno. A faturação legal em Portugal exige software certificado pela AT, que continua a usar à parte.' },
+  { q: 'Onde ficam os dados dos meus alunos?', a: 'Na União Europeia, separados por conta. As fotografias ficam em armazenamento privado, e pode exportar ou apagar os dados sempre que precisar.' },
+  { q: 'Como ativo o plano depois de pagar?', a: 'É automático. Assim que a Stripe confirma, o plano fica ativo em poucos segundos. Se demorar, o botão «Verificar subscrição» confirma de imediato.' },
 ];
 
 /* ============================== MOVIMENTO ============================== */
 
-function useRevelar() {
+const CURVA = 'cubic-bezier(0.23, 1, 0.32, 1)';
+
+function semMovimento() {
+  if (typeof window === 'undefined') return true;
+  const reduzido = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const ligacao = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  const poupar = ligacao && (ligacao.saveData || /^(slow-2g|2g)$/.test(ligacao.effectiveType || ''));
+  return Boolean(reduzido || poupar);
+}
+
+function useNaVista(limiar = 0.3, umaVez = false) {
   const ref = useRef(null);
   const [visivel, setVisivel] = useState(false);
   useEffect(() => {
     const el = ref.current;
     if (!el || typeof IntersectionObserver === 'undefined') { setVisivel(true); return undefined; }
-    const obs = new IntersectionObserver(([entrada]) => {
-      if (entrada.isIntersecting) { setVisivel(true); obs.disconnect(); }
-    }, { threshold: 0.15, rootMargin: '0px 0px -8% 0px' });
+    const obs = new IntersectionObserver(([e]) => {
+      setVisivel(e.isIntersecting);
+      if (e.isIntersecting && umaVez) obs.disconnect();
+    }, { threshold: limiar });
     obs.observe(el);
     return () => obs.disconnect();
-  }, []);
+  }, [limiar, umaVez]);
   return [ref, visivel];
 }
 
-// `atraso` da o efeito de cascata a uma lista de cartões sem escrever uma
-// transition-delay por item à mão.
-function Revelar({ children, className = '', atraso = 0, style }) {
-  const [ref, visivel] = useRevelar();
+function Revelar({ children, className = '', atraso = 0, style, as: Tag = 'div' }) {
+  const [ref, visivel] = useNaVista(0.12, true);
   return (
-    <div
-      ref={ref}
-      className={`revelar ${visivel ? 'revelar-visivel' : ''} ${className}`}
-      style={{ ...style, transitionDelay: visivel ? `${atraso}ms` : '0ms' }}
-    >
+    <Tag ref={ref} className={`lp-revelar ${visivel ? 'lp-visivel' : ''} ${className}`} style={{ ...style, transitionDelay: visivel ? `${atraso}ms` : '0ms' }}>
       {children}
-    </div>
+    </Tag>
   );
 }
 
-// O vídeo de fundo da hero -- ver a explicação completa junto da secção
-// que o usa. `mostrar` decide-se de uma vez, antes da primeira pintura
-// (não em useEffect), para nunca pedir o vídeo a quem não o vai ver: só
-// isso já poupa a descarga a quem tem "Reduzir movimento" ou dados
-// limitados ligados -- não é só uma troca de CSS depois de o ficheiro já
-// ter chegado.
-function decidirMostrarVideo() {
-  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
-  const reduzido = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const ligacao = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-  const dadosLimitados = ligacao && (ligacao.saveData || /^(slow-2g|2g)$/.test(ligacao.effectiveType || ''));
-  return !reduzido && !dadosLimitados;
-}
+/* ============================== O TELEMÓVEL ============================== */
 
-function HeroVideoFundo() {
-  const [mostrar] = useState(decidirMostrarVideo);
-  const estiloCamada = { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' };
-  return (
-    <>
-      {mostrar ? (
-        <video
-          autoPlay muted loop playsInline preload="auto"
-          poster="/landing-hero-poster.jpg"
-          aria-hidden="true"
-          style={{ ...estiloCamada, filter: 'grayscale(1) brightness(0.8) contrast(1.08)' }}
-        >
-          <source src="/landing-hero.mp4" type="video/mp4" />
-        </video>
-      ) : (
-        <img
-          src="/landing-hero-poster.jpg"
-          alt=""
-          aria-hidden="true"
-          style={{ ...estiloCamada, filter: 'grayscale(1) brightness(0.8) contrast(1.08)' }}
-        />
-      )}
-      <div className="hero-duotone" style={estiloCamada} />
-      <div className="hero-escurecer" style={estiloCamada} />
-    </>
-  );
-}
+// O vídeo só carrega quando aparece. Sem autorização para tocar sozinho (movimento
+// reduzido, modo de poupança do iPhone), fica o último fotograma e um botão.
+function TelemovelReal({ clip, tocar, rotulo, onFim, onTempo, tamanho }) {
+  const video = useRef(null);
+  const [parado, setParado] = useState(semMovimento);
+  const [aTrocar, setATrocar] = useState(false);
+  const [comecou, setComecou] = useState(false);
 
-/* ============================== MOCKUP ATOMS ============================== */
-
-// `chromeless` despe a moldura de janela (os tres pontos fazem sentido numa
-// pagina, nao dentro de um ecra de telemovel) e reduz o padding, para o mesmo
-// conteudo caber num PhoneFrame sem parecer encolhido a forca.
-function MockupFrame({ label, chromeless, children }) {
-  if (chromeless) {
-    // O padding de cima e maior de proposito: e a "safe area" por baixo da
-    // barra de estado e da ilha dinamica, que se sobrepoem ao ecra nos
-    // primeiros ~44px.
-    return <div className="w-full h-full" style={{ backgroundColor: 'var(--bg-base)', padding: '44px 12px 14px' }}>{children}</div>;
-  }
-  return (
-    <div
-      className="bg-surface border border-hair rounded-2xl p-4 sm:p-5 card-hover"
-      style={{ boxShadow: '0 30px 70px -34px rgba(30,166,180,0.35), 0 14px 30px -18px rgba(0,0,0,0.65)' }}
-    >
-      <div className="flex items-center gap-1.5 mb-4">
-        <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: 'var(--rust)' }} />
-        <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#8C8C8C' }} />
-        <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: 'var(--brass)' }} />
-        <span className="text-2xs font-mono text-faint ml-2 truncate">{label}</span>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-// Os quatro numeros do resumo sobem ao ecra em vez de aparecerem prontos: e
-// a primeira coisa que se ve na pagina, e um numero que "chega" da mais
-// sensacao de um produto vivo do que um numero que simplesmente esta la.
-function useContagem(alvo, ativo, duracaoMs = 900) {
-  const [valor, setValor] = useState(ativo ? 0 : alvo);
   useEffect(() => {
-    if (!ativo) return undefined;
-    const reduzido = typeof window !== 'undefined' && window.matchMedia
-      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduzido) { setValor(alvo); return undefined; }
-    let quadro;
-    const inicio = performance.now();
-    function passo(agora) {
-      const t = Math.min(1, (agora - inicio) / duracaoMs);
-      const suave = 1 - (1 - t) ** 3;
-      setValor(Math.round(alvo * suave));
-      if (t < 1) quadro = requestAnimationFrame(passo);
+    const v = video.current;
+    if (!v) return undefined;
+    if (!tocar || parado) { v.pause(); return undefined; }
+    const destino = `/landing/${clip}.mp4`;
+    if (!v.src.endsWith(destino)) {
+      setATrocar(true);
+      v.src = destino;
+      v.load();
     }
-    quadro = requestAnimationFrame(passo);
-    return () => cancelAnimationFrame(quadro);
-  }, [ativo, alvo, duracaoMs]);
-  return valor;
-}
-
-// "24", "18" ou "€2.340" -- extrai o numero, mantem o € e o separador de
-// milhar ao estilo português.
-function numeroDoStat(texto) { return parseInt(texto.replace(/[^\d]/g, ''), 10) || 0; }
-function formatarStat(valor, modelo) {
-  const texto = valor.toLocaleString('pt-PT');
-  return modelo.trim().startsWith('€') ? `€${texto}` : texto;
-}
-
-function StatMock({ s, ativo }) {
-  const alvo = numeroDoStat(s.value);
-  const valor = useContagem(alvo, ativo);
-  return (
-    <div className="bg-elevated border border-hair rounded-xl p-3 flex flex-col gap-1.5">
-      <div className="flex items-center justify-between">
-        <span className="text-2xs uppercase tracking-wide text-muted font-body">{s.label}</span>
-        <s.icon size={14} className="text-brass" />
-      </div>
-      <span className="font-mono text-lg text-primary font-semibold tabular-nums">{formatarStat(valor, s.value)}</span>
-    </div>
-  );
-}
-
-function DashboardMockup({ chromeless } = {}) {
-  const [ativo, setAtivo] = useState(false);
-  useEffect(() => {
-    const t = setTimeout(() => setAtivo(true), 260);
-    return () => clearTimeout(t);
-  }, []);
-  return (
-    <MockupFrame label="painel · hoje" chromeless={chromeless}>
-      <div className="grid grid-cols-2 gap-2.5 mb-3">
-        {MOCK_STATS.map((s) => <StatMock key={s.label} s={s} ativo={ativo} />)}
-      </div>
-      <div className="bg-elevated border border-hair rounded-xl p-3 flex flex-col gap-2">
-        {MOCK_SESSIONS.map((s) => (
-          <div key={s.time} className="flex items-center gap-2.5 py-1">
-            <span className="font-mono text-2xs text-muted w-10 flex-shrink-0">{s.time}</span>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: s.color, flexShrink: 0 }} />
-            <span className="text-xs font-body text-primary truncate flex-1">{s.name}</span>
-            <span className="text-2xs font-body text-faint flex-shrink-0">{s.type}</span>
-          </div>
-        ))}
-      </div>
-    </MockupFrame>
-  );
-}
-
-function StudentsMockup({ chromeless } = {}) {
-  return (
-    <MockupFrame label="alunos · 24 ativos" chromeless={chromeless}>
-      <div className="flex flex-col gap-2">
-        {STUDENTS_DEMO.map((d) => (
-          <StudentCard key={d.student.name} student={d.student} finance={d.finance} pendingFaltasCount={d.pendingFaltasCount} onClick={() => {}} />
-        ))}
-      </div>
-    </MockupFrame>
-  );
-}
-
-function AgendaMockup({ chromeless } = {}) {
-  const activeDay = 3;
-  return (
-    <MockupFrame label="agenda · semana de 3 a 9 de agosto" chromeless={chromeless}>
-      {/* Seletor de dia da semana, com o nº de marcações de cada dia */}
-      <div className="grid grid-cols-7 gap-1.5 mb-3">
-        {WEEK_DAYS.map((d, i) => {
-          const active = i === activeDay;
-          return (
-            <div
-              key={d}
-              className="flex flex-col items-center gap-0.5 rounded-lg border py-1.5"
-              style={{
-                borderColor: active ? 'var(--brass)' : 'var(--border-hair)',
-                backgroundColor: active ? 'rgba(30,166,180,0.12)' : 'transparent',
-              }}
-            >
-              <span className="text-2xs font-body" style={{ color: active ? 'var(--brass)' : 'var(--text-faint)' }}>{d}</span>
-              <span className="font-mono text-xs" style={{ color: active ? 'var(--brass)' : 'var(--text-primary)' }}>{MOCK_WEEK_DAYS[i].d}</span>
-              <span className="font-mono text-2xs text-faint">{MOCK_WEEK_DAYS[i].n || '–'}</span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Marcações do dia selecionado -- o mesmo SessionCard do painel */}
-      <div className="flex flex-col gap-2">
-        {AGENDA_DEMO_SESSIONS.map((s) => (
-          <SessionCard
-            key={s.id}
-            session={s}
-            student={AGENDA_DEMO_STUDENTS.find((st) => st.id === s.studentId)}
-            onOpen={() => {}}
-            onQuickStatus={() => {}}
-            compact
-          />
-        ))}
-      </div>
-
-      <div className="flex items-start gap-2 mt-3 text-2xs font-body text-faint">
-        <MousePointerClick size={12} className="text-brass flex-shrink-0" style={{ marginTop: 1 }} />
-        <span>Toque no nome do aluno para marcar presença, falta ou reposição.</span>
-      </div>
-    </MockupFrame>
-  );
-}
-
-function AssessmentMockup({ chromeless } = {}) {
-  // Escala com margem em vez de partir do zero: entre 22% e 18,2% a diferença
-  // é pequena em absoluto, e a partir do zero a descida ficaria invisível.
-  const lo = Math.min(...FAT_TREND) - 1.5;
-  const hi = Math.max(...FAT_TREND) + 0.5;
-  const heightPct = (v) => ((v - lo) / (hi - lo)) * 100;
-  return (
-    <MockupFrame label="avaliação física · Rita Almeida" chromeless={chromeless}>
-      {/* Escolha do método, tal como no painel */}
-      <div className="text-2xs uppercase tracking-wide text-faint font-body mb-1.5">Método de avaliação</div>
-      <div className="grid grid-cols-2 gap-2 mb-3.5">
-        <div className="rounded-lg border px-3 py-2 text-center text-xs font-body" style={{ borderColor: 'var(--brass)', backgroundColor: 'rgba(30,166,180,0.12)', color: 'var(--brass)' }}>
-          Bioimpedância
-        </div>
-        <div className="rounded-lg border border-hair px-3 py-2 text-center text-xs font-body text-muted">
-          Dobras Cutâneas
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-2 mb-3">
-        {[
-          { l: 'Peso', v: '64,2 kg', accent: false },
-          { l: 'Gordura', v: '18,2%', accent: true },
-          { l: 'IMC', v: '21,4', accent: false },
-        ].map((m) => (
-          <div key={m.l} className="bg-elevated border border-hair rounded-lg p-2.5 flex flex-col gap-0.5">
-            <span className="text-2xs uppercase text-faint font-body">{m.l}</span>
-            <span className={`font-mono text-sm ${m.accent ? 'text-brass' : 'text-primary'}`}>{m.v}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Dados completos de bioimpedância */}
-      <div className="bg-elevated border border-hair rounded-lg p-3 mb-3">
-        <div className="text-2xs uppercase tracking-wide text-faint font-body mb-2">Dados de bioimpedância</div>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-          {MOCK_BIA.map((f) => (
-            <div key={f.label} className="flex items-baseline justify-between gap-2 min-w-0">
-              <span className="text-2xs font-body text-muted truncate">{f.label}</span>
-              <span className="font-mono text-2xs text-primary flex-shrink-0">{f.value}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Fotos ligadas à avaliação */}
-      <div className="bg-elevated border border-hair rounded-lg p-3 mb-3">
-        <div className="text-2xs uppercase tracking-wide text-faint font-body mb-2">Fotos desta avaliação</div>
-        <div className="grid grid-cols-4 gap-2">
-          {PHOTO_GRADIENTS.map((g, i) => (
-            <div key={i} className="rounded-md aspect-square" style={{ background: g }} />
-          ))}
-        </div>
-      </div>
-
-      {/* Todos os protocolos de dobras disponíveis */}
-      <div className="bg-elevated border border-hair rounded-lg p-3 mb-3">
-        <div className="text-2xs uppercase tracking-wide text-faint font-body mb-2">Protocolos de dobras disponíveis</div>
-        <div className="flex flex-wrap gap-1.5">
-          {FOLD_PROTOCOLS_MOCK.map((p, i) => (
-            <span
-              key={p}
-              className="rounded-md border px-2 py-1 text-2xs font-body"
-              style={{
-                borderColor: i === 0 ? 'var(--brass)' : 'var(--border-hair)',
-                color: i === 0 ? 'var(--brass)' : 'var(--text-muted)',
-                backgroundColor: i === 0 ? 'rgba(30,166,180,0.12)' : 'transparent',
-              }}
-            >
-              {p}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-elevated border border-hair rounded-lg p-3">
-        <div className="flex items-baseline justify-between gap-2 mb-2.5">
-          <span className="text-2xs uppercase text-faint font-body">Evolução da % de gordura</span>
-          <span className="text-2xs font-mono text-brass">−3,8 p.p.</span>
-        </div>
-        <div className="flex items-end gap-2" style={{ height: 56 }}>
-          {FAT_TREND.map((v, i) => (
-            <div
-              key={i}
-              className="flex-1 rounded-t"
-              style={{ height: `${heightPct(v)}%`, backgroundColor: i === FAT_TREND.length - 1 ? 'var(--brass)' : 'var(--border-hair)' }}
-            />
-          ))}
-        </div>
-        <div className="flex gap-2 mt-1.5">
-          {FAT_TREND.map((v, i) => (
-            <span
-              key={i}
-              className="flex-1 text-center font-mono text-2xs"
-              style={{ color: i === FAT_TREND.length - 1 ? 'var(--brass)' : 'var(--text-faint)' }}
-            >
-              {String(v).replace('.', ',')}%
-            </span>
-          ))}
-        </div>
-      </div>
-    </MockupFrame>
-  );
-}
-
-// A cor de uma combinação (bi-set, trissérie…) tal como no painel: um tom
-// forte no primeiro membro, mais clara nos seguintes -- vê-se que são um
-// bloco só, sem a ficha ficar aos quadrados. Os exercícios soltos usam a
-// mesma paleta, tom mais discreto, só para se lerem separados uns dos outros.
-const COR_COMBO = '#1EA6B4';
-
-// O mesmo ExercicioVista do painel (ver TreinoAtoms.tsx) -- os dados aqui já
-// têm a forma real de um exercício (linhas de série, não "3x10" em texto).
-const TREINO_DEMO_BIBLIOTECA = [
-  { id: 'ex1', grupo: 'Peito', equipamento: 'Barra' },
-  { id: 'ex2', grupo: 'Costas', equipamento: 'Barra' },
-  { id: 'ex3', grupo: 'Ombros', equipamento: 'Halteres' },
-  { id: 'ex4', grupo: 'Core', equipamento: 'Peso do corpo' },
-];
-const TREINO_DEMO_EXERCICIOS = [
-  {
-    ex: {
-      id: 'tx1', exercicioId: 'ex1', nome: 'Supino reto com barra',
-      linhas: [
-        { id: 'l1', tipo: 'reps_carga', reps: '10', carga: '40 kg' },
-        { id: 'l2', tipo: 'reps_carga', reps: '8', carga: '40 kg' },
-        { id: 'l3', tipo: 'reps_carga', reps: '8', carga: '40 kg' },
-      ],
-    },
-    grupoInfo: { etiqueta: 'A1', cor: COR_COMBO, tinta: 17 },
-  },
-  {
-    ex: {
-      id: 'tx2', exercicioId: 'ex2', nome: 'Remada curvada',
-      linhas: [
-        { id: 'l4', tipo: 'reps_carga', reps: '10', carga: '30 kg' },
-        { id: 'l5', tipo: 'reps_carga', reps: '10', carga: '30 kg' },
-        { id: 'l6', tipo: 'reps_carga', reps: '10', carga: '30 kg' },
-      ],
-    },
-    grupoInfo: { etiqueta: 'A2', cor: COR_COMBO, tinta: 11 },
-  },
-  {
-    ex: {
-      id: 'tx3', exercicioId: 'ex3', nome: 'Elevação lateral',
-      linhas: [
-        { id: 'l7', tipo: 'reps_carga', reps: '12', carga: '8 kg' },
-        { id: 'l8', tipo: 'reps_carga', reps: '12', carga: '8 kg' },
-        { id: 'l9', tipo: 'reps_carga', reps: '12', carga: '8 kg' },
-        { id: 'l10', tipo: 'reps_carga', reps: '12', carga: '8 kg' },
-      ],
-    },
-    grupoInfo: { cor: '#C77DFF', tinta: 12 },
-  },
-  {
-    ex: {
-      id: 'tx4', exercicioId: 'ex4', nome: 'Prancha frontal',
-      linhas: [
-        { id: 'l11', tipo: 'reps_tempo', tempo: '40 s' },
-        { id: 'l12', tipo: 'reps_tempo', tempo: '40 s' },
-        { id: 'l13', tipo: 'reps_tempo', tempo: '40 s' },
-      ],
-    },
-    grupoInfo: { cor: '#6FCF97', tinta: 7 },
-  },
-];
-
-function TreinosMockup({ chromeless } = {}) {
-  return (
-    <MockupFrame label="treino · Hipertrofia — Treino A" chromeless={chromeless}>
-      <div className="flex items-center justify-between mb-3">
-        <span className="font-display text-sm font-semibold text-primary">Treino A</span>
-        <div className="flex rounded-lg border border-hair overflow-hidden flex-shrink-0">
-          <span className="px-2.5 py-1 text-2xs font-body" style={{ backgroundColor: 'var(--brass-soft)', color: 'var(--brass)', fontWeight: 600 }}>Completo</span>
-          <span className="px-2.5 py-1 text-2xs font-body text-faint">Passo a passo</span>
-        </div>
-      </div>
-
-      <div
-        className="rounded-lg px-2.5 py-1.5 mb-2"
-        style={{ backgroundColor: `color-mix(in srgb, ${COR_COMBO} 12%, var(--bg-surface))`, borderLeft: `3px solid ${COR_COMBO}` }}
-      >
-        <span className="font-mono text-2xs flex-shrink-0" style={{ color: COR_COMBO, fontWeight: 700 }}>A</span>
-        <span className="text-xs font-body text-primary ml-1.5" style={{ fontWeight: 500 }}>Bi-set · 2 exercícios seguidos</span>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        {TREINO_DEMO_EXERCICIOS.map((item) => (
-          <ExercicioVista key={item.ex.id} ex={item.ex} biblioteca={TREINO_DEMO_BIBLIOTECA} grupoInfo={item.grupoInfo} onMudar={() => {}} comCabecalho={false} />
-        ))}
-      </div>
-
-      <div className="flex items-center gap-5 mt-3 pt-3 border-t border-hair">
-        {[['4', 'exercícios'], ['10', 'séries'], ['1.240 kg', 'de volume']].map(([v, l]) => (
-          <div key={l}>
-            <span className="font-mono text-sm text-primary" style={{ fontWeight: 600 }}>{v}</span>
-            <span className="block text-2xs font-body text-faint">{l}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex items-start gap-2 mt-3 mb-3 text-2xs font-body text-faint">
-        <MousePointerClick size={12} className="text-brass flex-shrink-0" style={{ marginTop: 1 }} />
-        <span>A carga de cada série edita-se aqui mesmo, a meio do treino.</span>
-      </div>
-
-      {/* As 11 combinações a sério -- para não ficar só no "e mais oito". */}
-      <div className="bg-elevated border border-hair rounded-lg p-3">
-        <div className="text-2xs uppercase tracking-wide text-faint font-body mb-2">Combinações disponíveis</div>
-        <div className="flex flex-wrap gap-1.5">
-          {COMBO_METHODS_MOCK.map((m, i) => (
-            <span
-              key={m}
-              className="rounded-md border px-2 py-1 text-2xs font-body"
-              style={{
-                borderColor: i === 0 ? 'var(--brass)' : 'var(--border-hair)',
-                color: i === 0 ? 'var(--brass)' : 'var(--text-muted)',
-                backgroundColor: i === 0 ? 'rgba(30,166,180,0.12)' : 'transparent',
-              }}
-            >
-              {m}
-            </span>
-          ))}
-        </div>
-      </div>
-    </MockupFrame>
-  );
-}
-
-// A aba "Finanças" a sério é sobre as contas PESSOAIS do treinador -- entradas
-// e saídas próprias, por categoria -- não a receita dos alunos (essa já vive
-// no Painel, ver DashboardMockup). Categorias iguais às reais (ver
-// EXPENSE_CATEGORIES/INCOME_CATEGORIES em painel-pt.tsx).
-const FINANCE_DEMO_GASTOS = [
-  { categoria: 'Moradia', cor: '#5DA9E9', valor: 420 },
-  { categoria: 'Alimentação', cor: '#F2A65A', valor: 180 },
-  { categoria: 'Transporte', cor: '#6FCF97', valor: 95 },
-  { categoria: 'Assinaturas', cor: '#C77DFF', valor: 40 },
-];
-
-function FinanceMockup({ chromeless } = {}) {
-  const totalGastos = FINANCE_DEMO_GASTOS.reduce((soma, g) => soma + g.valor, 0);
-  return (
-    <MockupFrame label="finanças pessoais · este mês" chromeless={chromeless}>
-      <div className="grid grid-cols-3 gap-2 mb-3">
-        <StatCard label="Entradas" value="€1.240" icon={TrendingUp} accent="brass" />
-        <StatCard label="Saídas" value={`€${totalGastos}`} icon={Wallet} accent="rust" />
-        <StatCard label="Saldo" value={`€${1240 - totalGastos}`} icon={CheckCircle2} accent="sky" />
-      </div>
-      <div className="bg-elevated border border-hair rounded-lg p-3">
-        <div className="text-2xs uppercase text-faint font-body mb-2.5">Gastos pessoais por categoria</div>
-        <div className="flex flex-col gap-1.5">
-          {FINANCE_DEMO_GASTOS.map((g) => (
-            <div key={g.categoria} className="flex items-center justify-between gap-2 text-xs font-body">
-              <span className="flex items-center gap-1.5 text-muted min-w-0">
-                <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: g.cor }} />
-                <span className="truncate">{g.categoria}</span>
-              </span>
-              <span className="font-mono text-primary flex-shrink-0">€{g.valor}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </MockupFrame>
-  );
-}
-
-/* ============================== UI ATOMS ============================== */
-
-function PrimaryButton({ children, onClick, className = '', style }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`btn btn-primary ${className}`}
-      style={{ padding: '13px 22px', fontSize: 14, fontWeight: 600, ...style }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function SecondaryButton({ children, onClick, className = '', style }) {
-  return (
-    <button type="button" onClick={onClick} className={`btn btn-ghost ${className}`} style={{ padding: '13px 22px', fontSize: 14, ...style }}>
-      {children}
-    </button>
-  );
-}
-
-function FaqItem({ item, open, onToggle, index }) {
-  const painelId = `faq-painel-${index}`;
-  return (
-    <div className="border border-hair rounded-xl bg-surface overflow-hidden">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        aria-controls={painelId}
-        className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left btn-surface"
-      >
-        <span className="text-sm font-body font-medium text-primary">{item.q}</span>
-        <ChevronDown size={16} className="text-faint flex-shrink-0" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 220ms var(--ease)' }} />
-      </button>
-      {/* `grid-template-rows: 0fr -> 1fr` anima uma altura que ninguem mediu
-          a mao -- a alternativa a max-height, que ou corta cedo de mais ou
-          deixa um resto de tempo morto no fim da transição. */}
-      <div id={painelId} role="region" className={`faq-colapso ${open ? 'aberto' : ''}`}>
-        <div>
-          <p className="px-4 pb-4 text-sm font-body text-muted" style={{ lineHeight: 1.6 }}>{item.a}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FeatureSection({ heading, body, bullets, Mockup, reverse }) {
-  return (
-    <section className="max-w-6xl mx-auto px-4 py-12 sm:py-16">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-14 items-center">
-        <div className={`flex flex-col gap-4 max-w-md order-1 ${reverse ? 'lg:order-2' : 'lg:order-1'}`}>
-          <h2 className="font-hero text-2xl sm:text-3xl font-semibold text-primary leading-snug" style={{ letterSpacing: '-0.01em' }}>{heading}</h2>
-          <p className="text-sm sm:text-base text-muted font-body">{body}</p>
-          <ul className="flex flex-col gap-2.5 mt-1">
-            {bullets.map((b) => (
-              <li key={b} className="flex items-start gap-2.5 text-sm font-body text-muted">
-                <CheckCircle2 size={15} className="text-brass flex-shrink-0 mt-0.5" />
-                <span>{b}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className={`order-2 ${reverse ? 'lg:order-1' : 'lg:order-2'}`}>
-          <Mockup />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ============================== TELEMÓVEL INTERATIVO ============================== */
-
-// A moldura em si: botões laterais, ilha dinâmica com câmara, barra de
-// estado, ecrã e barra de baixo. O conteúdo é sempre um dos Mockups reais da
-// aplicação, em modo `chromeless` -- nada aqui é uma imagem.
-function PhoneFrame({ children }) {
-  return (
-    <div className="phone-moldura">
-      <span className="phone-botao phone-botao-volume-1" aria-hidden="true" />
-      <span className="phone-botao phone-botao-volume-2" aria-hidden="true" />
-      <span className="phone-botao phone-botao-ligar" aria-hidden="true" />
-      <div className="phone-entalhe" aria-hidden="true">
-        <span className="phone-camara" />
-      </div>
-      <div className="phone-ecra">
-        <div className="phone-status" aria-hidden="true">
-          <span className="font-mono" style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)' }}>9:41</span>
-          <div className="flex items-center gap-1">
-            {/* Barras de rede, wifi e bateria -- desenhadas em SVG para não
-                depender de nenhuma fonte de ícones ter estes símbolos. */}
-            <svg width="15" height="10" viewBox="0 0 15 10" fill="none"><rect x="0" y="6" width="2.5" height="4" rx="0.5" fill="var(--text-primary)" /><rect x="4" y="4" width="2.5" height="6" rx="0.5" fill="var(--text-primary)" /><rect x="8" y="2" width="2.5" height="8" rx="0.5" fill="var(--text-primary)" /><rect x="12" y="0" width="2.5" height="10" rx="0.5" fill="var(--text-primary)" opacity="0.35" /></svg>
-            <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M7 8.5a1 1 0 100-2 1 1 0 000 2z" fill="var(--text-primary)" /><path d="M4 5.2a4.2 4.2 0 016 0" stroke="var(--text-primary)" strokeWidth="1.3" fill="none" strokeLinecap="round" /><path d="M1.8 2.8a7.4 7.4 0 0110.4 0" stroke="var(--text-primary)" strokeWidth="1.3" fill="none" strokeLinecap="round" opacity="0.55" /></svg>
-            <svg width="22" height="11" viewBox="0 0 22 11" fill="none"><rect x="0.5" y="0.5" width="18" height="10" rx="2.5" stroke="var(--text-primary)" /><rect x="2" y="2" width="14" height="7" rx="1.2" fill="var(--text-primary)" /><rect x="19.5" y="3.2" width="1.6" height="4.6" rx="0.8" fill="var(--text-primary)" /></svg>
-          </div>
-        </div>
-        {children}
-        <div className="phone-reflexo" />
-      </div>
-      <div className="phone-barra" aria-hidden="true" />
-    </div>
-  );
-}
-
-// Seis ecrãs bastam para explicar o produto sem repetir o que as secções de
-// funcionalidades mais abaixo já mostram em detalhe -- este é o resumo em
-// movimento; aquelas são a leitura demorada.
-const STORY_SCREENS = [
-  {
-    id: 'painel', label: 'Painel', eyebrow: 'Ao abrir a aplicação',
-    title: 'Tudo à vista, num relance',
-    body: 'Receita do mês, aulas da semana e faltas pendentes no primeiro ecrã — sem ter de ir procurar em três sítios diferentes.',
-    Mockup: DashboardMockup,
-  },
-  {
-    id: 'alunos', label: 'Alunos', eyebrow: 'Cada aluno, organizado',
-    title: 'Contexto completo, num toque',
-    body: 'Plano, estado e valores por aluno, à vista assim que abre a lista — sem histórico de conversas para reconstituir.',
-    Mockup: StudentsMockup,
-  },
-  {
-    id: 'agenda', label: 'Agenda', eyebrow: 'A semana inteira',
-    title: 'A sua agenda, sob controlo',
-    body: 'Nome do aluno e hora de cada aula, com presença, falta ou reposição a um toque de distância.',
-    Mockup: AgendaMockup,
-  },
-  {
-    id: 'treinos', label: 'Treinos', eyebrow: 'A prescrição',
-    title: 'O treino, tal como se faz',
-    body: 'Bi-sets e superséries com nome e cor próprios. Veja o treino completo ou um exercício de cada vez, com a carga a editar-se ali mesmo.',
-    Mockup: TreinosMockup,
-  },
-  {
-    id: 'avaliacao', label: 'Avaliação', eyebrow: 'Evolução do aluno',
-    title: 'Resultados, documentados',
-    body: 'Bioimpedância ou dobras cutâneas, fotos ligadas à avaliação e o gráfico de evolução sempre atualizado.',
-    Mockup: AssessmentMockup,
-  },
-  {
-    id: 'financas', label: 'Finanças', eyebrow: 'A sua vida, não só o negócio',
-    title: 'As suas contas pessoais, organizadas',
-    body: 'Entradas e saídas próprias, por categoria, com saldo do mês sempre à vista — a receita dos alunos já tem o seu lugar no Painel.',
-    Mockup: FinanceMockup,
-  },
-];
-
-// No rato, o texto rola numa coluna comprida e o telemóvel fica fixo ao lado
-// -- o ecrã ativo é o do bloco de texto que estiver mais perto do centro da
-// janela. No telemóvel não há coluna de sobra para os dois lado a lado, por
-// isso quem manda é uma aba tocada, e só o texto do ecrã ativo aparece.
-function FeatureStoryteller() {
-  const [ativo, setAtivo] = useState(0);
-  const blocosRef = useRef([]);
-
-  useEffect(() => {
-    if (typeof IntersectionObserver === 'undefined') return undefined;
-    const obs = new IntersectionObserver((entradas) => {
-      entradas.forEach((entrada) => {
-        if (entrada.isIntersecting) setAtivo(Number(entrada.target.dataset.storyIndex));
-      });
-    }, { rootMargin: '-45% 0px -45% 0px', threshold: 0 });
-    blocosRef.current.forEach((el) => { if (el) obs.observe(el); });
-    return () => obs.disconnect();
-  }, []);
-
-  const tela = (
-    <PhoneFrame>
-      {STORY_SCREENS.map((s, i) => (
-        <div key={s.id} className="phone-tela" style={{ opacity: i === ativo ? 1 : 0, pointerEvents: i === ativo ? 'auto' : 'none' }}>
-          <s.Mockup chromeless />
-        </div>
-      ))}
-    </PhoneFrame>
-  );
+    const p = v.play();
+    if (p && p.catch) p.then(() => setComecou(true)).catch((e) => { if (e && e.name === 'NotAllowedError') setParado(true); });
+    return undefined;
+  }, [clip, tocar, parado]);
 
   return (
-    <section className="max-w-6xl mx-auto px-4 py-12 sm:py-20">
-      <Revelar>
-        <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-14">
-          <h2 className="font-hero text-2xl sm:text-3xl font-semibold text-primary leading-snug" style={{ letterSpacing: '-0.01em' }}>Assim é usar o PTMANAGER</h2>
-          <p className="text-sm sm:text-base text-muted font-body mt-2">Um ecrã por tarefa, pensado para se usar com uma mão, no meio de uma aula.</p>
-        </div>
-      </Revelar>
-
-      {/* Abas: só se vêem no telemóvel, onde substituem o scroll como forma
-          de escolher o ecrã. */}
-      <div className="lg:hidden flex gap-2 overflow-x-auto pb-1 mb-6 -mx-4 px-4" role="tablist" aria-label="Ecrãs do aplicativo">
-        {STORY_SCREENS.map((s, i) => (
-          <button
-            key={s.id}
-            type="button"
-            role="tab"
-            aria-selected={ativo === i}
-            onClick={() => setAtivo(i)}
-            className="px-3.5 py-2.5 rounded-lg border text-xs font-body nowrap flex-shrink-0 btn-surface"
-            style={{
-              borderColor: ativo === i ? 'var(--brass)' : 'var(--border-hair)',
-              backgroundColor: ativo === i ? 'var(--brass-soft)' : 'transparent',
-              color: ativo === i ? 'var(--brass)' : 'var(--text-muted)',
-              fontWeight: ativo === i ? 600 : 400,
-            }}
-          >
-            {s.label}
+    <div className="lp-telemovel" style={tamanho ? { width: tamanho } : undefined}>
+      <span className="lp-botao lp-botao-a" />
+      <span className="lp-botao lp-botao-b" />
+      <span className="lp-botao lp-botao-c" />
+      <div className="lp-ecra">
+        <video
+          ref={video}
+          muted
+          playsInline
+          preload="none"
+          poster={(!comecou || parado) ? `/landing/${clip}.jpg` : undefined}
+          aria-label={`Gravação da aplicação: ${rotulo}`}
+          className={aTrocar ? 'lp-a-trocar' : ''}
+          onPlaying={() => setATrocar(false)}
+          onCanPlay={() => setATrocar(false)}
+          onEnded={onFim}
+          onTimeUpdate={(e) => { if (onTempo && e.currentTarget.duration) onTempo(e.currentTarget.currentTime / e.currentTarget.duration); }}
+        />
+        {parado && (
+          <button type="button" className="lp-tocar" onClick={() => setParado(false)} aria-label={`Ver a gravação: ${rotulo}`}>
+            <Play size={20} style={{ display: 'block' }} />
           </button>
-        ))}
+        )}
       </div>
+    </div>
+  );
+}
 
-      <div className="lg:hidden flex flex-col gap-6 items-center">
-        {tela}
-        <div className="text-center max-w-sm">
-          <span className="text-2xs uppercase tracking-widest text-brass font-mono">{STORY_SCREENS[ativo].eyebrow}</span>
-          <h3 className="font-display text-xl font-semibold text-primary mt-1.5 mb-2">{STORY_SCREENS[ativo].title}</h3>
-          <p className="text-sm text-muted font-body">{STORY_SCREENS[ativo].body}</p>
-        </div>
-      </div>
+function useEcraLargo() {
+  const [largo, setLargo] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 900px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 900px)');
+    const mudar = (e) => setLargo(e.matches);
+    mq.addEventListener('change', mudar);
+    return () => mq.removeEventListener('change', mudar);
+  }, []);
+  return largo;
+}
 
-      <div className="hidden lg:grid grid-cols-2 gap-16 items-start">
-        <div className="flex flex-col gap-[26vh] py-8">
-          {STORY_SCREENS.map((s, i) => (
-            <div
-              key={s.id}
-              data-story-index={i}
-              ref={(el) => { blocosRef.current[i] = el; }}
-              style={{ opacity: ativo === i ? 1 : 0.32, transition: 'opacity 320ms var(--ease)' }}
-            >
-              <span className="text-2xs uppercase tracking-widest text-brass font-mono">{s.eyebrow}</span>
-              <h3 className="font-hero text-2xl font-semibold text-primary mt-1.5 mb-2" style={{ letterSpacing: '-0.01em' }}>{s.title}</h3>
-              <p className="text-base text-muted font-body max-w-sm">{s.body}</p>
-            </div>
+function Momento({ m }) {
+  const largo = useEcraLargo();
+  const [ativa, setAtiva] = useState(0);
+  const [ref, visivel] = useNaVista(0.35);
+  const barra = useRef(null);
+  const area = m.areas[ativa];
+
+  function escolher(i) {
+    if (barra.current) barra.current.style.transform = 'scaleX(0)';
+    setAtiva(i);
+  }
+  const telemovel = (
+    <TelemovelReal clip={area.clip} tocar={visivel} rotulo={area.nome} onFim={() => escolher((ativa + 1) % m.areas.length)} onTempo={(f) => { if (barra.current) barra.current.style.transform = `scaleX(${f})`; }} />
+  );
+
+  return (
+    <section ref={ref} id={`hora-${m.hora.replace(':', '')}`} className="lp-momento">
+      <div className="lp-coluna-texto">
+        <Revelar className="lp-cabeca">
+          <span className="lp-hora font-mono">{m.hora}</span>
+          <h3 className="font-hero lp-h3">{m.titulo}</h3>
+          <p className="lp-corrido">{m.texto}</p>
+        </Revelar>
+        {!largo && <div className="lp-telemovel-movel">{telemovel}</div>}
+        <ul className="lp-areas">
+          {m.areas.map((a, i) => (
+            <li key={a.clip}>
+              <button type="button" onClick={() => escolher(i)} aria-pressed={i === ativa} className={`lp-area ${i === ativa ? 'lp-area-ativa' : ''}`}>
+                <span className="lp-area-nome">{a.nome}</span>
+                <span className="lp-area-corpo"><span>{a.texto}</span></span>
+                {i === ativa && <span className="lp-area-barra" ref={barra} />}
+              </button>
+            </li>
           ))}
-        </div>
-        <div style={{ position: 'sticky', top: '14vh', alignSelf: 'start' }}>
-          {tela}
-        </div>
+        </ul>
       </div>
+      {largo && <div className="lp-telemovel-largo">{telemovel}</div>}
     </section>
   );
 }
 
-/* ============================== LANDING PAGE ============================== */
+function Muro() {
+  const linha = [...ECRAS_MURO, ...ECRAS_MURO];
+  return (
+    <div className="lp-muro" aria-hidden="true">
+      <div className="lp-muro-fita">
+        {linha.map((c, i) => <img key={`${c}${i}`} src={`/landing/${c}.jpg`} alt="" loading="lazy" width="150" height="325" />)}
+      </div>
+    </div>
+  );
+}
+
+function Pergunta({ item, aberta, onToggle }) {
+  return (
+    <div className="lp-pergunta">
+      <button type="button" onClick={onToggle} aria-expanded={aberta} className="lp-pergunta-botao">
+        <span>{item.q}</span>
+        <Plus size={16} style={{ flexShrink: 0, transition: `transform 220ms ${CURVA}`, transform: aberta ? 'rotate(45deg)' : 'none', color: 'var(--text-faint)' }} />
+      </button>
+      <div className={`lp-colapso ${aberta ? 'lp-aberto' : ''}`}><div><p className="lp-corrido" style={{ paddingBottom: 18 }}>{item.a}</p></div></div>
+    </div>
+  );
+}
 
 export default function LandingPage({ logoSrc, plans, supportEmail, onGetStarted, onLogin }) {
   const mailto = (subject) => (supportEmail ? `mailto:${supportEmail}?subject=${encodeURIComponent(subject)}` : '');
   const [legalDoc, setLegalDoc] = useState(null);
-  const [openFaq, setOpenFaq] = useState(null);
+  const [aberta, setAberta] = useState(0);
+  const [heroIndice, setHeroIndice] = useState(0);
+  const [heroRef, heroVisivel] = useNaVista(0.2);
   const plansRef = useRef(null);
   const featuresRef = useRef(null);
-  // O mesmo plano que a secção de preços lê para decidir se mostra o selo do
-  // trial -- ler daqui em vez de escrever "7" e "mensal" à mão aqui em cima
-  // é o que garante que a hero e o pricing nunca dizem coisas diferentes.
   const trialPlan = plans.find((p) => p.trialDays);
-
-  function scrollTo(ref) {
-    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
+  const HERO = ['agenda', 'treino', 'registar', 'retencao'];
+  const irPara = (ref) => ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const cta = trialPlan ? `Experimentar ${trialPlan.trialDays} dias grátis` : 'Começar agora';
 
   return (
-    <div className="min-h-screen bg-base flex flex-col">
+    <div className="min-h-screen bg-base flex flex-col lp">
       <style>{`
         html { scroll-behavior: smooth; }
+        .lp { --lp-curva: ${CURVA}; overflow-x: clip; }
 
-        .revelar {
-          opacity: 0;
-          transform: translateY(20px);
-          transition: opacity 560ms cubic-bezier(0.16, 1, 0.3, 1), transform 560ms cubic-bezier(0.16, 1, 0.3, 1);
-          will-change: opacity, transform;
+        .lp-revelar { opacity: 0; transform: translateY(18px); transition: opacity 600ms var(--lp-curva), transform 600ms var(--lp-curva); }
+        .lp-visivel { opacity: 1; transform: none; }
+
+        .lp-progresso { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--brass); transform-origin: left; transform: scaleX(0); }
+        @supports (animation-timeline: scroll()) {
+          .lp-progresso { animation: lp-encher linear both; animation-timeline: scroll(root); }
+          @keyframes lp-encher { to { transform: scaleX(1); } }
         }
-        .revelar-visivel { opacity: 1; transform: translateY(0); }
+
+        .lp-cta { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 22px; border-radius: var(--r-md); font-weight: 600; font-size: 15px; background: var(--brass); color: var(--bg-base); transition: transform 160ms var(--lp-curva), filter 160ms ease; }
+        .lp-cta:active { transform: scale(0.97); }
+        @media (hover: hover) and (pointer: fine) { .lp-cta:hover { filter: brightness(1.08); } }
+        .lp-link { font-size: 14px; color: var(--text-muted); text-decoration: underline; text-underline-offset: 4px; text-decoration-color: var(--border-strong); }
+        .lp-link:hover { color: var(--text-primary); }
+
+        /* Topo */
+        .lp-topo { max-width: 1160px; margin: 0 auto; padding: 40px 20px 56px; display: grid; gap: 40px; }
+        .lp-h1 { font-size: clamp(2.5rem, 9.4vw, 4.6rem); line-height: 1; letter-spacing: -0.024em; font-weight: 650; color: var(--text-primary); margin: 0; text-wrap: balance; }
+        .lp-h1 span { display: block; overflow: hidden; padding-bottom: 0.08em; margin-bottom: -0.08em; }
+        .lp-h1 i { display: block; font-style: normal; animation: lp-subir 900ms var(--lp-curva) both; }
+        .lp-h1 span:nth-child(2) i { animation-delay: 70ms; }
+        .lp-h1 span:nth-child(3) i { animation-delay: 140ms; }
+        @keyframes lp-subir { from { transform: translateY(105%); } to { transform: none; } }
+        .lp-entrar { animation: lp-aparecer 800ms 220ms var(--lp-curva) both; }
+        .lp-entrar-tel { animation: lp-tel 1000ms 120ms var(--lp-curva) both; }
+        @keyframes lp-aparecer { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+        @keyframes lp-tel { from { opacity: 0; transform: translateY(44px) rotate(1.5deg); } to { opacity: 1; transform: none; } }
+        .lp-legenda { font-size: 12px; color: var(--text-faint); }
+        .lp-numeros { display: flex; flex-wrap: wrap; gap: 8px 24px; border-top: 1px solid var(--border-hair); padding-top: 18px; font-size: 13px; color: var(--text-muted); }
+        .lp-numeros b { color: var(--text-primary); font-weight: 600; }
+
+        /* O telemóvel */
+        .lp-telemovel { position: relative; width: clamp(214px, 60vw, 300px); margin: 0 auto; padding: 8px; border-radius: 42px; background: #0b0d10; box-shadow: 0 0 0 1px rgba(255,255,255,0.09) inset, 0 34px 70px -28px rgba(5,10,14,0.65); }
+        .lp-botao { position: absolute; background: #1b1f25; border-radius: 2px; }
+        .lp-botao-a { left: -2px; top: 19%; width: 2px; height: 7%; }
+        .lp-botao-b { left: -2px; top: 28%; width: 2px; height: 7%; }
+        .lp-botao-c { right: -2px; top: 23%; width: 2px; height: 11%; }
+        .lp-ecra { position: relative; aspect-ratio: 390 / 844; border-radius: 34px; overflow: hidden; background: #0a0b0d; }
+        .lp-ecra video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: opacity 260ms ease, filter 260ms ease; }
+        .lp-a-trocar { opacity: 0.25; filter: blur(4px); }
+        .lp-tocar { position: absolute; inset: auto 0 18px; margin: 0 auto; width: 52px; height: 52px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--brass); color: #0a0b0d; }
+
+        /* O dia */
+        .lp-secao { max-width: 1160px; margin: 0 auto; padding: 0 20px; }
+        .lp-h2 { font-size: clamp(1.9rem, 6vw, 3.1rem); line-height: 1.05; letter-spacing: -0.02em; font-weight: 640; color: var(--text-primary); margin: 0; text-wrap: balance; }
+        .lp-h3 { font-size: clamp(1.6rem, 5vw, 2.35rem); line-height: 1.08; letter-spacing: -0.016em; font-weight: 620; color: var(--text-primary); margin: 0; text-wrap: balance; }
+        .lp-corrido { font-size: 15px; line-height: 1.55; color: var(--text-muted); margin: 0; max-width: 58ch; }
+        .lp-horas { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 24px -20px 0; padding: 0 20px 4px; }
+        .lp-horas::-webkit-scrollbar { display: none; }
+        .lp-horas a { flex: none; padding: 7px 11px; border: 1px solid var(--border-hair); border-radius: var(--r-pill); font-size: 13px; color: var(--text-muted); transition: color 160ms ease, border-color 160ms ease; }
+        .lp-horas a:hover { color: var(--brass); border-color: var(--brass); }
+        .lp-momento { padding: 52px 0; border-top: 1px solid var(--border-hair); scroll-margin-top: 60px; display: grid; gap: 36px; }
+        .lp-cabeca { display: flex; flex-direction: column; gap: 10px; }
+        .lp-hora { font-size: 15px; color: var(--brass); }
+        .lp-coluna-texto { display: flex; flex-direction: column; gap: 26px; min-width: 0; }
+        .lp-areas { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--border-hair); }
+        .lp-area { position: relative; display: block; width: 100%; text-align: left; padding: 15px 0; border-bottom: 1px solid var(--border-hair); }
+        .lp-area-nome { display: block; font-size: 16px; font-weight: 600; color: var(--text-faint); transition: color 200ms ease; }
+        .lp-area:hover .lp-area-nome { color: var(--text-primary); }
+        .lp-area-ativa .lp-area-nome { color: var(--text-primary); }
+        .lp-area-corpo { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 320ms var(--lp-curva); }
+        .lp-area-corpo > span { overflow: hidden; min-height: 0; font-size: 14px; line-height: 1.5; color: var(--text-muted); max-width: 54ch; }
+        .lp-area-ativa .lp-area-corpo { grid-template-rows: 1fr; margin-top: 5px; }
+        .lp-area-barra { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--brass); transform: scaleX(0); transform-origin: left; transition: transform 260ms linear; }
+
+        /* Muro de ecrãs */
+        .lp-muro { overflow: hidden; padding: 12px 0 8px; -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent); mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent); }
+        .lp-muro-fita { display: flex; gap: 14px; width: max-content; animation: lp-fita 70s linear infinite; }
+        .lp-muro:hover .lp-muro-fita { animation-play-state: paused; }
+        .lp-muro img { width: 150px; height: auto; aspect-ratio: 390 / 844; border-radius: 20px; object-fit: cover; background: #0a0b0d; }
+        @keyframes lp-fita { to { transform: translateX(-50%); } }
+
+        /* A lista */
+        .lp-lista { columns: 1; column-gap: 40px; margin-top: 36px; }
+        .lp-grupo { break-inside: avoid; padding: 18px 0 22px; border-top: 1px solid var(--border-strong); }
+        .lp-grupo h3 { font-size: 14px; font-weight: 700; color: var(--text-primary); margin: 0 0 10px; }
+        .lp-grupo ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+        .lp-grupo li { font-size: 13.5px; line-height: 1.42; color: var(--text-muted); }
+
+        /* Planos */
+        .lp-plano { display: grid; gap: 14px; padding: 24px 0; border-top: 1px solid var(--border-hair); }
+        .lp-plano-nome { font-size: 18px; font-weight: 650; color: var(--text-primary); }
+        .lp-selo { display: block; font-size: 12px; color: var(--brass); font-weight: 600; margin-top: 2px; }
+        .lp-preco { font-size: clamp(1.7rem, 5vw, 2.2rem); font-weight: 600; color: var(--text-primary); letter-spacing: -0.02em; }
+        .lp-riscado { font-size: 14px; color: var(--text-faint); text-decoration: line-through; margin-right: 8px; }
+        .lp-nota { font-size: 13px; color: var(--text-muted); line-height: 1.45; }
+
+        /* Perguntas */
+        .lp-pergunta { border-top: 1px solid var(--border-hair); }
+        .lp-pergunta-botao { width: 100%; display: flex; justify-content: space-between; gap: 16px; align-items: center; text-align: left; padding: 16px 0; font-size: 16px; font-weight: 600; color: var(--text-primary); min-height: var(--tap); }
+        .lp-colapso { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 280ms var(--lp-curva); }
+        .lp-aberto { grid-template-rows: 1fr; }
+        .lp-colapso > div { overflow: hidden; }
+
+        @media (min-width: 900px) {
+          .lp-topo { grid-template-columns: minmax(0, 1fr) 320px; align-items: center; padding: 64px 20px 72px; gap: 56px; }
+          .lp-momento { grid-template-columns: minmax(0, 1fr) 320px; gap: 72px; padding: 84px 0; align-items: start; }
+          .lp-telemovel-largo { position: sticky; top: 84px; }
+          .lp-coluna-texto { min-height: 660px; }
+          .lp-lista { columns: 3; }
+          .lp-plano { grid-template-columns: 180px 240px minmax(0, 1fr) auto; align-items: center; gap: 28px; }
+          .lp-muro img { width: 180px; }
+        }
+        @media (min-width: 620px) and (max-width: 899px) { .lp-lista { columns: 2; } }
+
+        @supports (animation-timeline: view()) {
+          @media (prefers-reduced-motion: no-preference) {
+            .lp-telemovel-largo .lp-telemovel, .lp-telemovel-movel .lp-telemovel { animation: lp-chegar linear both; animation-timeline: view(); animation-range: entry 0% entry 55%; }
+            @keyframes lp-chegar { from { opacity: 0.35; transform: translateY(44px) scale(0.965); } to { opacity: 1; transform: none; } }
+          }
+        }
         @media (prefers-reduced-motion: reduce) {
-          .revelar { transition: opacity 200ms ease; transform: none; }
-        }
-
-        /* Camada de cor por cima do vídeo (a preto e branco) -- mix-blend-mode,
-           não filter: hue-rotate, que desbota a pele para um verde estranho
-           em vez de ler como uma escolha de marca. */
-        .hero-duotone {
-          background: linear-gradient(135deg, #0A3238 0%, #1EA6B4 50%, #0A0B0D 100%);
-          mix-blend-mode: color; opacity: 0.85; pointer-events: none;
-        }
-        /* Mais escuro à esquerda, onde fica o texto -- a mesma função de um
-           overlay discreto, só que a gradiente em vez de um preto plano. */
-        .hero-escurecer {
-          background: linear-gradient(90deg, rgba(10,11,13,0.92) 0%, rgba(10,11,13,0.72) 32%, rgba(10,11,13,0.2) 62%, rgba(10,11,13,0.5) 100%);
-          pointer-events: none;
-        }
-
-        .faq-colapso {
-          display: grid;
-          grid-template-rows: 0fr;
-          transition: grid-template-rows 280ms cubic-bezier(0.32, 0.72, 0, 1);
-        }
-        .faq-colapso.aberto { grid-template-rows: 1fr; }
-        .faq-colapso > div { overflow: hidden; }
-
-        /* Moldura com duas camadas de cor -- um titânio simulado (gradiente
-           muito subtil, de canto a canto) por baixo de um brilho fino no
-           rebordo superior esquerdo, como luz a apanhar uma aresta metálica
-           real. Os botões laterais são pequenos ressaltos, não decoração
-           colada -- têm sombra própria, como se estivessem lá mesmo. */
-        .phone-moldura {
-          position: relative;
-          width: clamp(232px, 74vw, 300px);
-          aspect-ratio: 9 / 19.3;
-          margin: 0 auto;
-          border-radius: 52px;
-          background:
-            linear-gradient(155deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0) 18%),
-            linear-gradient(200deg, var(--bg-elevated) 0%, color-mix(in srgb, var(--bg-elevated) 82%, black) 100%);
-          box-shadow:
-            0 50px 100px -30px rgba(0,0,0,0.55),
-            0 16px 32px -16px rgba(0,0,0,0.4),
-            inset 0 0 0 1px rgba(255,255,255,0.06);
-          padding: 13px;
-          display: flex;
-          flex-direction: column;
-        }
-        /* O anel entre a moldura e o vidro do ecrã -- é o que dá a sensação
-           de duas peças físicas distintas, em vez de um retângulo só. */
-        .phone-moldura::before {
-          content: '';
-          position: absolute; inset: 5px;
-          border-radius: 47px;
-          border: 1px solid rgba(255,255,255,0.05);
-          pointer-events: none;
-        }
-        .phone-botao {
-          position: absolute;
-          background: color-mix(in srgb, var(--bg-elevated) 60%, black);
-          box-shadow: -1px 0 2px rgba(0,0,0,0.3);
-        }
-        .phone-botao-volume-1 { left: -2px; top: 21%; width: 3px; height: 7%; border-radius: 2px 0 0 2px; }
-        .phone-botao-volume-2 { left: -2px; top: 30%; width: 3px; height: 7%; border-radius: 2px 0 0 2px; }
-        .phone-botao-ligar { right: -2px; top: 24%; width: 3px; height: 11%; border-radius: 0 2px 2px 0; }
-        .phone-entalhe {
-          position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
-          width: 34%; height: 26px; border-radius: 999px; background: #000;
-          z-index: 3;
-          display: flex; align-items: center; justify-content: flex-end; gap: 8px;
-          padding-right: 10px;
-        }
-        /* A câmara: um pequeno círculo mais escuro dentro do entalhe, com um
-           reflexo de vidro -- o detalhe que faz a ilha parecer uma peça de
-           vidro sobre o ecrã, e não uma forma pintada. */
-        .phone-camara {
-          width: 7px; height: 7px; border-radius: 50%;
-          background: radial-gradient(circle at 35% 35%, #3a3a3a, #050505 70%);
-          box-shadow: 0 0 0 1px rgba(255,255,255,0.04);
-        }
-        .phone-ecra {
-          flex: 1; min-height: 0; border-radius: 40px; overflow: hidden;
-          background: var(--bg-base); position: relative;
-        }
-        /* A barra de estado: hora + os ícones que qualquer ecrã de telemóvel
-           tem, para o conteúdo por baixo se ler como uma aplicação a sério
-           desde o primeiro fotograma, e não uma janela recortada. */
-        .phone-status {
-          position: absolute; top: 0; left: 0; right: 0; z-index: 2;
-          display: flex; align-items: center; justify-content: space-between;
-          padding: 16px 22px 0; pointer-events: none;
-        }
-        .phone-tela {
-          position: absolute; inset: 0; overflow-y: auto;
-          transition: opacity 320ms ease;
-        }
-        .phone-barra {
-          position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
-          width: 34%; height: 4px; border-radius: 999px; background: rgba(255,255,255,0.55);
-          z-index: 3;
-        }
-        /* Um brilho muito ténue a atravessar o vidro na diagonal -- não é um
-           reflexo literal, é só o suficiente para o ecrã deixar de parecer
-           uma cor plana. Desaparece com pouco movimento, de propósito. */
-        .phone-reflexo {
-          position: absolute; inset: 0; z-index: 4; pointer-events: none;
-          background: linear-gradient(115deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 20%, rgba(255,255,255,0) 100%);
+          html { scroll-behavior: auto; }
+          .lp-revelar { transform: none; transition: opacity 200ms ease; }
+          .lp-h1 i, .lp-entrar, .lp-entrar-tel { animation: none; }
+          .lp-muro { overflow-x: auto; }
+          .lp-muro-fita { animation: none; }
+          .lp-area-barra { display: none; }
         }
       `}</style>
 
-      {/* Header */}
-      <header className="border-b border-hair bg-surface sticky top-0" style={{ zIndex: 30 }}>
-        <div className="max-w-6xl mx-auto px-4 py-3.5 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <img src={logoSrc} alt="PTMANAGER" style={{ width: 30, height: 30, flexShrink: 0 }} />
-            <span className="font-display font-semibold text-lg tracking-wide text-primary truncate">
-              PT<span style={{ color: 'var(--brass)' }}>MANAGER</span>
-            </span>
+      <header className="vidro" style={{ position: 'sticky', top: 0, zIndex: 30, borderBottom: '1px solid var(--border-hair)' }}>
+        <div className="flex items-center justify-between gap-4" style={{ maxWidth: 1160, margin: '0 auto', padding: '11px 20px' }}>
+          <div className="flex items-center gap-2 min-w-0">
+            <img src={logoSrc} alt="" style={{ width: 28, height: 28, flexShrink: 0 }} />
+            <span className="font-display font-semibold text-primary truncate" style={{ fontSize: 17 }}>PT<span style={{ color: 'var(--brass)' }}>MANAGER</span></span>
           </div>
-          <div className="flex items-center gap-2 sm:gap-3">
-            <button type="button" onClick={() => scrollTo(featuresRef)} className="hidden sm:inline text-xs font-body link-sky">Recursos</button>
-            <button type="button" onClick={() => scrollTo(plansRef)} className="hidden sm:inline text-xs font-body link-sky">Planos</button>
-            <button type="button" onClick={onLogin} className="px-3.5 py-2 rounded-lg text-xs font-body font-medium border border-hair btn-surface text-primary">
-              Entrar
-            </button>
+          <div className="flex items-center gap-4">
+            <button type="button" onClick={() => irPara(featuresRef)} className="hidden sm:inline lp-link" style={{ textDecoration: 'none' }}>Tudo o que faz</button>
+            <button type="button" onClick={() => irPara(plansRef)} className="hidden sm:inline lp-link" style={{ textDecoration: 'none' }}>Preços</button>
+            <button type="button" onClick={onLogin} className="btn btn-ghost" style={{ fontSize: 13 }}>Entrar</button>
           </div>
         </div>
+        <span className="lp-progresso" aria-hidden="true" />
       </header>
 
       <main className="flex-1">
-        {/* Hero, com vídeo de fundo -- um treinador a acompanhar um aluno
-            num alongamento, câmara aérea parada, quase sem corte (plano
-            único). Pexels, licença gratuita, sem atribuição exigida
-            (vídeo 6892077, Kampus Production) -- testei vários antes
-            deste: a maioria tinha logótipos de marca na roupa/equipamento
-            ou um ginásio cheio a disputar atenção com o texto. Este tem
-            parede lisa e chão escuro à esquerda, espaço de propósito.
-            Preto e branco + camada turquesa (mix-blend-mode, não
-            hue-rotate -- isso desbota as cores da pele para um verde
-            estranho) em vez da cor original, que não combinava com a
-            paleta. Reduzido de 29 MB/4K para ~460 KB/960×540 sem ffmpeg
-            nesta máquina -- canvas + MediaRecorder do próprio Chromium. */}
-        <div style={{ position: 'relative', overflow: 'hidden' }}>
-          <HeroVideoFundo />
-        <section className="max-w-6xl mx-auto px-4 pt-12 pb-16 sm:pt-16 sm:pb-24 grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-14 items-center" style={{ position: 'relative' }}>
-          {/* Cores fixas nesta coluna, de propósito: o fundo é sempre o
-              vídeo escurecido, nos dois temas -- os tokens de texto (que
-              invertem no tema claro) ficariam ilegíveis em cima dele.
-              Mesmo princípio do papel timbrado, que também sai sempre a
-              preto sobre branco seja qual for o tema (ver CLAUDE.md,
-              armadilha "impressão"). */}
-          <div className="flex flex-col gap-5 order-1">
-            {trialPlan && (
-              <Revelar className="inline-flex w-fit items-center gap-2">
-                <Clock size={13} style={{ color: '#F5B44C', flexShrink: 0 }} />
-                <span className="text-2xs sm:text-xs font-body font-semibold uppercase tracking-wide" style={{ color: '#F5B44C' }}>
-                  {trialPlan.trialDays} dias grátis, sem cobrança agora
-                </span>
-              </Revelar>
-            )}
-            <h1
-              className="font-hero text-3xl sm:text-4xl lg:text-[2.9rem]"
-              style={{ fontWeight: 650, letterSpacing: '-0.02em', lineHeight: 1.04, color: '#F2F4F7' }}
-            >
-              Gestão completa para <span style={{ color: '#1EA6B4' }}>Personal Trainers</span>
+        <section ref={heroRef} className="lp-topo">
+          <div className="flex flex-col gap-6" style={{ minWidth: 0 }}>
+            <h1 className="font-hero lp-h1">
+              <span><i>O dia inteiro</i></span>
+              <span><i>de um personal,</i></span>
+              <span><i style={{ color: 'var(--brass)' }}>no telemóvel.</i></span>
             </h1>
-            <p className="text-sm sm:text-base font-body max-w-lg" style={{ color: '#A0A6B0' }}>
-              Um único painel para gerir alunos, agenda, avaliações físicas, fotos de progresso e finanças — sem folhas de cálculo, sem informação perdida no WhatsApp.
-              {trialPlan && ` Experimente ${trialPlan.trialDays} dias sem custo antes de decidir.`}
+            <p className="lp-entrar lp-corrido" style={{ fontSize: 17 }}>
+              Alunos, agenda, treinos, avaliações, faturas e uma área própria para cada aluno. Esse telemóvel não é uma ilustração: é a aplicação a funcionar.
             </p>
-            <div className="flex flex-col sm:flex-row gap-3 pt-1">
-              <PrimaryButton onClick={onGetStarted}>{trialPlan ? 'Começar grátis' : 'Começar agora'}</PrimaryButton>
-              <SecondaryButton onClick={() => scrollTo(plansRef)} style={{ borderColor: 'rgba(242,244,247,0.28)', color: '#F2F4F7' }}>Ver planos</SecondaryButton>
+            <div className="lp-entrar flex flex-wrap items-center gap-x-5 gap-y-3">
+              <button type="button" onClick={onGetStarted} className="lp-cta">{cta}</button>
+              <button type="button" onClick={() => irPara(plansRef)} className="lp-link">Ver preços</button>
             </div>
-            {trialPlan && (
-              <span className="text-2xs sm:text-xs font-body -mt-2" style={{ color: '#7C838F' }}>
-                {trialPlan.trialDays} dias grátis · depois {trialPlan.perMonth} · cancele quando quiser
-              </span>
-            )}
-            {supportEmail && (
-              <a href={mailto('Quero saber mais sobre o PTMANAGER')} className="inline-flex items-center gap-1.5 text-xs font-body link-sky w-fit" style={{ color: '#1EA6B4' }}>
-                <Mail size={14} /> Falar com o suporte
-              </a>
-            )}
+            {trialPlan && <p className="lp-entrar lp-legenda" style={{ margin: 0 }}>Sem cobrança agora. Depois, {trialPlan.perMonth}. Cancela quando quiser.</p>}
+            <div className="lp-entrar lp-numeros">
+              <span><b className="font-mono">2 076</b> exercícios</span>
+              <span><b className="font-mono">1 060</b> modelos de treino</span>
+              <span><b className="font-mono">38</b> métodos</span>
+              <span>Dados na <b>UE</b></span>
+            </div>
           </div>
-
-          <div className="relative order-2">
-            <div
-              className="hidden sm:flex absolute z-10 bg-elevated border border-hair rounded-xl px-3 py-2.5 items-center gap-2"
-              style={{ top: -18, right: -8, boxShadow: '0 16px 34px -14px rgba(0,0,0,0.7)' }}
-            >
-              <div className="p-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: 'rgba(30,166,180,0.18)' }}>
-                <UserPlus size={13} className="text-brass" />
-              </div>
-              <div className="flex flex-col leading-tight">
-                <span className="text-2xs font-body text-primary">Novo aluno</span>
-                <span className="text-2xs font-body text-faint">registado agora</span>
-              </div>
-            </div>
-
-            <DashboardMockup />
-
-            <div
-              className="hidden sm:flex absolute z-10 bg-elevated border border-hair rounded-xl px-3 py-2.5 items-center gap-2"
-              style={{ bottom: -16, left: -10, boxShadow: '0 16px 34px -14px rgba(0,0,0,0.7)' }}
-            >
-              <TrendingUp size={13} className="text-brass flex-shrink-0" />
-              <span className="text-2xs font-body text-primary">Receita líquida em dia</span>
-            </div>
+          <div className="lp-entrar-tel flex flex-col items-center gap-3">
+            <TelemovelReal clip={HERO[heroIndice]} tocar={heroVisivel} rotulo="Agenda, treino e retenção" onFim={() => setHeroIndice((i) => (i + 1) % HERO.length)} />
+            <span className="lp-legenda">Gravação real. Alunos fictícios.</span>
           </div>
         </section>
+
+        <Muro />
+
+        <div ref={featuresRef} className="lp-secao" style={{ paddingTop: 64, scrollMarginTop: 40 }}>
+          <Revelar className="flex flex-col gap-3" style={{ paddingBottom: 40 }}>
+            <h2 className="font-hero lp-h2">Um dia de trabalho, hora a hora.</h2>
+            <p className="lp-corrido">Cada gravação foi feita na própria aplicação, em tamanho de telemóvel. Toque numa área para a ver.</p>
+            <nav className="lp-horas font-mono" aria-label="Saltar para uma hora do dia">
+              {MOMENTOS.map((m) => <a key={m.hora} href={`#hora-${m.hora.replace(':', '')}`}>{m.hora}</a>)}
+            </nav>
+          </Revelar>
+          {MOMENTOS.map((m) => <Momento key={m.hora} m={m} />)}
         </div>
 
-        {/* Dores -- cada uma já com a resolução por baixo, numa lista só,
-            sempre equilibrada (uma coluna, nunca duas com números
-            diferentes de linhas). */}
-        <section className="max-w-3xl mx-auto px-4 py-12 sm:py-16">
-          <Revelar><h2 className="font-hero text-2xl sm:text-3xl font-semibold text-primary text-center leading-snug" style={{ letterSpacing: '-0.01em' }}>Isto soa-lhe familiar?</h2></Revelar>
-          {/* Tabela de comparação, não uma lista de pares empilhados -- duas
-              colunas com cabeçalho e divisórias, como um antes/depois a
-              sério, em vez do mesmo bloco ícone+texto repetido sete vezes. */}
-          <Revelar atraso={90} className="mt-8 border border-hair rounded-2xl bg-surface overflow-hidden">
-            <div className="grid grid-cols-2">
-              <div className="px-4 sm:px-5 py-2.5 border-b border-r border-hair" style={{ backgroundColor: 'var(--bg-inset)' }}>
-                <span className="text-2xs uppercase tracking-wide font-body font-semibold" style={{ color: 'var(--rust)' }}>Hoje</span>
-              </div>
-              <div className="px-4 sm:px-5 py-2.5 border-b border-hair" style={{ backgroundColor: 'var(--bg-inset)' }}>
-                <span className="text-2xs uppercase tracking-wide font-body font-semibold" style={{ color: 'var(--brass)' }}>Com o PTMANAGER</span>
-              </div>
-              {PAIN_POINTS.map((p, i) => (
-                <Fragment key={p.text}>
-                  <div className={`px-4 sm:px-5 py-3 sm:py-3.5 border-r border-hair flex items-start sm:items-center gap-2 sm:gap-2.5 ${i > 0 ? 'border-t' : ''}`}>
-                    <p.icon size={14} style={{ color: 'var(--rust)', flexShrink: 0, marginTop: 2 }} />
-                    <span className="text-xs sm:text-sm font-body text-muted">{p.text}</span>
-                  </div>
-                  <div className={`px-4 sm:px-5 py-3 sm:py-3.5 flex items-start sm:items-center gap-2 sm:gap-2.5 ${i > 0 ? 'border-t border-hair' : ''}`}>
-                    <CheckCircle2 size={14} style={{ color: 'var(--brass)', flexShrink: 0, marginTop: 2 }} />
-                    <span className="text-xs sm:text-sm font-body text-primary" style={{ fontWeight: 500 }}>{p.depois}</span>
-                  </div>
-                </Fragment>
-              ))}
-            </div>
+        <section className="lp-secao" style={{ paddingTop: 72, paddingBottom: 40 }}>
+          <Revelar className="flex flex-col gap-3">
+            <h2 className="font-hero lp-h2">E a lista inteira, sem letras pequenas.</h2>
+            <p className="lp-corrido">Tudo isto está incluído em qualquer plano.</p>
           </Revelar>
+          <div className="lp-lista">
+            {LISTA.map((g, i) => (
+              <Revelar key={g.nome} className="lp-grupo" atraso={Math.min(i, 5) * 30}>
+                <h3>{g.nome}</h3>
+                <ul>{g.itens.map((it) => <li key={it}>{it}</li>)}</ul>
+              </Revelar>
+            ))}
+          </div>
         </section>
 
-        {/* Telemóvel interativo */}
-        <FeatureStoryteller />
-
-        {/* Funcionalidades */}
-        <div ref={featuresRef} className="scroll-mt-16">
-          {FEATURE_SECTIONS.map((f, i) => (
-            <Revelar key={f.heading}>
-              <FeatureSection heading={f.heading} body={f.body} bullets={f.bullets} Mockup={f.Mockup} reverse={i % 2 === 1} />
+        <section ref={plansRef} className="lp-secao" style={{ paddingTop: 72, paddingBottom: 40, scrollMarginTop: 40 }}>
+          <Revelar className="flex flex-col gap-3" style={{ paddingBottom: 28 }}>
+            <h2 className="font-hero lp-h2">{trialPlan ? `${trialPlan.trialDays} dias para experimentar. Depois, um preço só.` : 'Um preço só, com tudo incluído.'}</h2>
+            <p className="lp-corrido">A única diferença entre os planos é o preço e o tempo. Preços de lançamento, processados pela Stripe.</p>
+          </Revelar>
+          {plans.map((plan, i) => (
+            <Revelar key={plan.id} className="lp-plano" atraso={i * 60}>
+              <div className="lp-plano-nome">{plan.name}{plan.highlight && <span className="lp-selo">O mais escolhido</span>}</div>
+              <div>
+                {plan.precoLancamento && <span className="lp-riscado font-mono">{plan.precoLancamento.antes}</span>}
+                <span className="lp-preco font-mono">{plan.price}</span>
+                {plan.perMonth && plan.bonusMonths > 0 && <span className="lp-nota font-mono" style={{ display: 'block' }}>≈ {plan.perMonth}</span>}
+              </div>
+              <div className="lp-nota">
+                {plan.note}{plan.trialDays ? ', a partir do 8º dia' : ''}
+                {plan.bonusLabel && <span style={{ display: 'block', color: 'var(--gold)', fontWeight: 600 }}>{plan.bonusLabel}{plan.trialDays ? ' na primeira cobrança' : ''}</span>}
+              </div>
+              <button type="button" onClick={onGetStarted} className="lp-cta" style={{ whiteSpace: 'nowrap' }}>{plan.trialDays ? `${plan.trialDays} dias grátis` : 'Começar'}</button>
             </Revelar>
           ))}
-        </div>
-
-        {/* Tudo o que você precisa — o resto do produto, que não cabe em
-            cinco secções demonstradas sem repetir o que elas já mostraram. */}
-        <section className="max-w-6xl mx-auto px-4 py-12 sm:py-16">
-          <Revelar className="flex flex-col gap-2 text-center items-center mb-10">
-            <h2 className="font-hero text-2xl sm:text-3xl font-semibold text-primary leading-snug" style={{ letterSpacing: '-0.01em' }}>E tudo o resto, no mesmo sítio</h2>
-            <p className="text-sm sm:text-base text-muted font-body max-w-xl">
-              O que não tem uma demonstração própria acima, mas está lá — pronto a usar desde o primeiro dia.
-            </p>
-          </Revelar>
-          {/* Um contentor só, com divisórias finas -- não seis cartões
-              iguais. Mesmo padrão de "Isto soa-lhe familiar?", mais acima:
-              o traço horizontal separa as linhas, o vertical separa as
-              colunas, e só a borda exterior arredonda. */}
-          <Revelar className="border border-hair rounded-2xl bg-surface overflow-hidden">
-            <div className="grid grid-cols-1 sm:grid-cols-2">
-              {FEATURE_INDEX.map((cat, i) => (
-                <div
-                  key={cat.heading}
-                  className={`px-6 py-6 flex flex-col gap-3 ${i % 2 === 0 ? 'sm:border-r sm:border-hair' : ''} ${i > 0 ? 'border-t border-hair' : ''} ${i === 1 ? 'sm:border-t-0' : ''}`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <cat.icon size={16} className="text-brass flex-shrink-0" />
-                    <h3 className="font-display text-sm font-semibold text-primary">{cat.heading}</h3>
-                  </div>
-                  <ul className="flex flex-col gap-1.5">
-                    {cat.items.map((it) => (
-                      <li key={it} className="flex items-start gap-2 text-xs sm:text-sm font-body text-muted">
-                        <CheckCircle2 size={13} className="text-brass flex-shrink-0 mt-0.5" />
-                        <span>{it}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          </Revelar>
-        </section>
-
-        {/* CTA intermédio -- depois de ver as funcionalidades todas, antes
-            dos preços, o momento certo para lembrar que dá para experimentar
-            primeiro. */}
-        {trialPlan && (
-          <section className="max-w-4xl mx-auto px-4 pb-4">
-            <Revelar
-              className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-2xl border border-hair bg-surface px-6 py-5"
-            >
-              <div className="flex items-center gap-3 text-center sm:text-left">
-                <Clock size={20} style={{ color: 'var(--gold)', flexShrink: 0 }} />
-                <span className="text-sm font-body text-primary">
-                  Viu tudo o que o PTMANAGER faz — agora experimente, {trialPlan.trialDays} dias grátis.
-                </span>
-              </div>
-              <PrimaryButton onClick={onGetStarted} className="flex-shrink-0">Começar grátis</PrimaryButton>
-            </Revelar>
-          </section>
-        )}
-
-        {/* Planos */}
-        <section ref={plansRef} className="max-w-6xl mx-auto px-4 py-12 sm:py-16 flex flex-col gap-8 scroll-mt-16">
-          <div className="flex flex-col gap-2 text-center items-center">
-            <div className="inline-flex w-fit items-center gap-2">
-              <Percent size={13} style={{ color: 'var(--gold)', flexShrink: 0 }} />
-              <span className="text-2xs font-body font-semibold uppercase tracking-wide" style={{ color: 'var(--gold)' }}>Preços de lançamento — valor reservado para quem começar agora</span>
-            </div>
-            <h2 className="font-hero text-2xl sm:text-3xl font-semibold text-primary" style={{ letterSpacing: '-0.01em' }}>
-              {trialPlan ? `${trialPlan.trialDays} dias grátis, depois o plano que escolher` : 'Quanto mais tempo, mais meses grátis'}
-            </h2>
-            <p className="text-sm text-muted font-body max-w-xl">
-              Pagamento processado com segurança pela Stripe. Cancele quando quiser.
-            </p>
+          <div style={{ borderTop: '1px solid var(--border-hair)', paddingTop: 16 }}>
+            {supportEmail && <a href={mailto('Dúvida sobre os planos do PTMANAGER')} className="lp-link inline-flex items-center gap-1.5"><Mail size={14} /> Dúvidas antes de começar? Escreva-nos</a>}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {plans.map((plan, pi) => (
-              <Revelar
-                key={plan.id}
-                atraso={pi * 90}
-                className="bg-surface border rounded-2xl p-6 flex flex-col gap-4 relative"
-                style={{
-                  borderColor: plan.highlight ? 'var(--brass)' : 'var(--border-hair)',
-                  boxShadow: plan.highlight ? '0 24px 60px -28px rgba(30,166,180,0.45)' : 'none',
-                }}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <h3 className="font-display text-lg font-semibold text-primary">{plan.name}</h3>
-                  {plan.highlight && (
-                    <span className="text-2xs uppercase tracking-wide font-mono px-2 py-1 rounded-full" style={{ backgroundColor: 'rgba(30,166,180,0.16)', color: 'var(--brass)' }}>
-                      Mais escolhido
-                    </span>
-                  )}
-                </div>
-
-                <div>
-                  <div className="flex items-baseline gap-2 flex-wrap">
-                    {plan.precoLancamento && (
-                      <span className="font-mono text-sm text-faint" style={{ textDecoration: 'line-through' }}>{plan.precoLancamento.antes}</span>
-                    )}
-                    <span className="font-mono text-2xl sm:text-3xl font-semibold text-primary">{plan.price}</span>
-                    {plan.perMonth && plan.bonusMonths > 0 && (
-                      <span className="font-mono text-xs text-faint">≈ {plan.perMonth}</span>
-                    )}
-                  </div>
-                  <div className="text-xs text-faint font-body mt-1">{plan.trialDays ? `${plan.note} — a partir do 8º dia` : plan.note}</div>
-                </div>
-
-                <div className="flex flex-col gap-2 rounded-lg px-3 py-2.5 border border-hair">
-                  {plan.trialDays && (
-                    <div className="flex items-center gap-2" style={{ color: 'var(--gold)' }}>
-                      <Clock size={14} className="flex-shrink-0" />
-                      <span className="text-xs font-body font-semibold">{plan.trialDays} dias grátis, sem cobrança agora</span>
-                    </div>
-                  )}
-                  {plan.bonusLabel && (
-                    <div className="flex items-center gap-2" style={{ color: 'var(--gold)' }}>
-                      <Gift size={14} className="flex-shrink-0" />
-                      <span className="text-xs font-body font-semibold">{plan.trialDays ? `${plan.bonusLabel} na primeira cobrança` : plan.bonusLabel}</span>
-                    </div>
-                  )}
-                  {!plan.trialDays && !plan.bonusLabel && (
-                    <span className="text-xs font-body text-faint">Sem compromisso, cancele a qualquer momento</span>
-                  )}
-                </div>
-
-                <p className="text-xs text-muted font-body">
-                  {plan.trialDays && `Experimente ${plan.trialDays} dias de graça. Depois, ${plan.price}${CADENCIA_POR_PLANO[plan.id] || '/mês'}${plan.bonusLabel ? ` (inclui ${plan.bonusLabel.replace('+', '')})` : ''} — cancele antes do fim do período gratuito e não paga nada.`}
-                  {!plan.trialDays && plan.id === 'mensal' && 'Para começar sem compromisso, ou testar antes de decidir o período.'}
-                  {!plan.trialDays && plan.id === 'trimestral' && 'O equilíbrio entre poupança e liberdade — o mais escolhido pelos treinadores.'}
-                  {!plan.trialDays && plan.id === 'anual' && 'Para quem já sabe que fica — o custo mensal mais baixo dos três.'}
-                </p>
-
-                <PrimaryButton onClick={onGetStarted} className="mt-auto">
-                  {plan.trialDays ? `Experimentar ${plan.trialDays} dias grátis` : 'Começar agora'}
-                </PrimaryButton>
-              </Revelar>
-            ))}
-          </div>
-
-          {/* O carrinho começa aqui: a mesma lista que a Stripe vai mostrar a
-              seguir, uma vez só, porque os três planos não diferem em
-              funcionalidade — só em preço, período e bónus. */}
-          <Revelar className="border border-hair rounded-2xl bg-surface p-6 sm:p-7">
-            <h3 className="font-display text-base font-semibold text-primary mb-4">Incluído em qualquer plano</h3>
-            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
-              {PLAN_INCLUDES.map((inc) => (
-                <li key={inc} className="flex items-start gap-2 text-sm font-body text-muted">
-                  <CheckCircle2 size={15} className="text-brass flex-shrink-0 mt-0.5" />
-                  <span>{inc}</span>
-                </li>
-              ))}
-            </ul>
-          </Revelar>
-
-          <p className="text-center text-xs text-faint font-body max-w-xl mx-auto">
-            Os meses grátis são acrescentados ao primeiro período, logo após a confirmação do pagamento.
-          </p>
-          {supportEmail && (
-            <a href={mailto('Dúvida sobre os planos do PTMANAGER')} className="text-center text-xs font-body link-sky">
-              Prefere esclarecer dúvidas antes? Escreva-nos
-            </a>
-          )}
         </section>
 
-        {/* FAQ */}
-        <section className="max-w-3xl mx-auto px-4 py-12 sm:py-16 flex flex-col gap-6">
-          <Revelar><h2 className="font-hero text-2xl sm:text-3xl font-semibold text-primary text-center" style={{ letterSpacing: '-0.01em' }}>Perguntas frequentes</h2></Revelar>
-          <Revelar className="flex flex-col gap-2.5">
-            {FAQ_ITEMS.map((item, i) => (
-              <FaqItem key={item.q} item={item} index={i} open={openFaq === i} onToggle={() => setOpenFaq(openFaq === i ? null : i)} />
-            ))}
-          </Revelar>
+        <section className="lp-secao" style={{ paddingTop: 64, paddingBottom: 40, maxWidth: 780 }}>
+          <Revelar style={{ paddingBottom: 24 }}><h2 className="font-hero lp-h2">Perguntas que nos fazem.</h2></Revelar>
+          {FAQ_ITEMS.map((item, i) => <Pergunta key={item.q} item={item} aberta={aberta === i} onToggle={() => setAberta(aberta === i ? -1 : i)} />)}
         </section>
 
-        {/* Final CTA */}
-        <section className="max-w-6xl mx-auto px-4 pb-16">
-          <Revelar className="border border-hair rounded-2xl p-8 sm:p-12 flex flex-col items-center text-center gap-4" style={{ backgroundColor: 'rgba(30,166,180,0.08)' }}>
-            <h2 className="font-hero text-2xl sm:text-3xl font-semibold text-primary" style={{ letterSpacing: '-0.01em' }}>Pronto para organizar a sua rotina?</h2>
-            <p className="text-sm text-muted font-body max-w-md">
-              {trialPlan
-                ? `Experimente ${trialPlan.trialDays} dias grátis — sem cobrança até decidir ficar.`
-                : 'Crie a sua conta e comece a usar o PTMANAGER hoje mesmo.'}
-            </p>
-            <PrimaryButton onClick={onGetStarted}>{trialPlan ? `Começar com ${trialPlan.trialDays} dias grátis` : 'Começar agora'}</PrimaryButton>
-            {trialPlan && (
-              <span className="text-2xs font-body text-faint">Depois, {trialPlan.perMonth} no plano mensal — cancele quando quiser.</span>
-            )}
+        <section className="lp-secao" style={{ paddingTop: 48, paddingBottom: 88 }}>
+          <Revelar className="flex flex-col gap-5" style={{ borderTop: '1px solid var(--border-strong)', paddingTop: 44 }}>
+            <h2 className="font-hero lp-h2">Amanhã às 07:00,<br />já pode estar aqui.</h2>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+              <button type="button" onClick={onGetStarted} className="lp-cta">{cta}</button>
+              {trialPlan && <span className="lp-legenda">Depois, {trialPlan.perMonth} no plano mensal.</span>}
+            </div>
           </Revelar>
         </section>
       </main>
 
-      <footer className="px-4 py-5 border-t border-hair flex flex-col items-center gap-2.5">
-        <div className="flex items-center gap-3 text-xs font-body">
-          <button type="button" onClick={() => setLegalDoc('termos')} className="link-sky">Termos de Utilização</button>
-          <span className="text-faint">·</span>
-          <button type="button" onClick={() => setLegalDoc('privacidade')} className="link-sky">Política de Privacidade</button>
+      <footer className="flex flex-col sm:flex-row items-center justify-between gap-3" style={{ maxWidth: 1160, width: '100%', margin: '0 auto', padding: '20px', borderTop: '1px solid var(--border-hair)' }}>
+        <span className="lp-legenda">PTMANAGER</span>
+        <div className="flex items-center gap-4">
+          <button type="button" onClick={() => setLegalDoc('termos')} className="lp-link" style={{ fontSize: 12 }}>Termos de Utilização</button>
+          <button type="button" onClick={() => setLegalDoc('privacidade')} className="lp-link" style={{ fontSize: 12 }}>Política de Privacidade</button>
         </div>
       </footer>
 

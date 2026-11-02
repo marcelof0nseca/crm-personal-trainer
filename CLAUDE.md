@@ -69,7 +69,7 @@ secção 10 para o que ficou de fora.
 | Ficheiro | |
 |---|---|
 | `painel-pt.tsx` | **A aplicação quase toda** (~16 500 linhas): componentes, helpers, modelo de dados, `AppInner` |
-| `src/components/LandingPage.tsx` | Página pública de vendas · **telemóvel interativo** com os mockups reais em modo `chromeless`, sticky no rato (scroll storytelling via `IntersectionObserver`) e por abas no telemóvel |
+| `src/components/LandingPage.tsx` | Página pública de vendas, contada como um dia de trabalho, hora a hora. **Sem mockups:** o que está no telemóvel são gravações da aplicação real, em `public/landing/` (`scripts/landing/`, ver secção 9) · `LISTA` é a lista completa de funcionalidades, e só entra lá o que já funciona |
 | `src/components/AgendaAtoms.tsx` | `SESSION_TYPES`/`EVENT_TYPES`/`STATUS_OPTIONS`, `SessionCard` e os pequenos ajudantes de cor (`acentoTexto`, `iconOf`, `sessionTypeFor`, `eventTypeFor`) |
 | `src/components/DashboardAtoms.tsx` | `StatCard`, `RevenueLoadBar`, `StudentCard` |
 | `src/components/TreinoAtoms.tsx` | `TIPOS_SERIE`, `CAMPOS_POR_METODO`, `ExercicioVista` e os ajudantes da linha de série |
@@ -108,13 +108,10 @@ qualquer meta tag de partilha tem de estar escrita ali, nunca só injetada
 por React.
 
 Os três ficheiros `*Atoms.tsx` existem para um motivo só: são componentes
-**reais** da aplicação (não reproduções) que a landing também usa, para as
-demonstrações mostrarem a interface a sério. `painel-pt.tsx` importa-os de
-lá, nunca o contrário — e a `LandingPage.tsx` também importa diretamente
-deles, nunca de `painel-pt.tsx`. Isto evita uma dependência circular
-(`painel-pt.tsx` já importa `LandingPage`) e evita que a landing pública
-arraste o `App` inteiro — com a base de exercícios de ~300 kB lá dentro —
-só para mostrar um cartão de estatística.
+**reais** da aplicação que a área do aluno também usa. `painel-pt.tsx` importa-os de
+lá, nunca o contrário — e a `AreaDoAluno.tsx` também importa diretamente
+deles, nunca de `painel-pt.tsx`, para não arrastar o `App` inteiro. A landing já não
+os usa: mostra gravações.
 
 ---
 
@@ -819,6 +816,9 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   `media-src`, e os vídeos carregados nunca tocaram em produção, sem nenhum teste dar
   por isso, porque em desenvolvimento só conta o `index.html`. O tipo de letra da
   landing também estava bloqueado.
+- **Um elemento escondido com `display: none` continua a montar.** A landing tinha
+  dois telemóveis por secção, um para cada largura, e o escondido descarregava e tocava o
+  vídeo na mesma. Com um vídeo, decide-se por `matchMedia` e monta-se um só.
 - **O Chromium do Playwright usa o tema claro por omissão.** Sem
   `colorScheme: 'dark'` no contexto, uma captura dita «escura» sai clara e o tema
   escuro fica por testar sem ninguém dar por isso.
@@ -965,8 +965,17 @@ que se confirma que um `DELETE` nunca sai sem a conta e a chave, que não
 apanha as linhas de outra conta, e que `apagarFotosDoBalde` devolve falso quando
 o servidor recusa (o que é o que faz eliminar o aluno parar).
 
-**Reaproveitar um componente real para uma pré-visualização isolada** (a
-landing a mostrar `SessionCard`/`StatCard`/`ExercicioVista`, ou gerar
+**Regravar os vídeos da landing.** A interface mudou e o vídeo mentiria? Regrava-se:
+`npm install --no-save playwright ffmpeg-static`, build com o Supabase falso
+(`VITE_SUPABASE_URL=https://falso.supabase.co VITE_SUPABASE_PUBLISHABLE_KEY=falsa VITE_TURNSTILE_SITE_KEY=chave-teste npx vite build --outDir <pasta-temporária>`),
+`npx vite preview --outDir <pasta-temporária> --port 5202 --strictPort`, e
+`node scripts/landing/gravar.mjs [clipes]`. Os dados são fictícios e estão em
+`scripts/landing/base.mjs`. **Um vídeo não pode mostrar o que a aplicação não faz:** o
+servidor falso devolve o estado real das funcionalidades desligadas, e os clipes não
+passam pelos ecrãs com avisos internos. O Chromium do Playwright não descodifica H.264:
+para ver um vídeo a tocar, `pw.chromium.launch({ channel: 'chrome' })`.
+
+**Reaproveitar um componente real para uma pré-visualização isolada** (gerar
 `og-image.png`): exportar temporariamente `GlobalStyles` de `painel-pt.tsx`,
 criar um `main-*-preview.tsx` + `*.html` descartáveis que importam
 `GlobalStyles` e o componente real, apontar o Playwright para lá, e no fim

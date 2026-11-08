@@ -48,7 +48,7 @@ marcadas como Parcial, Externo e Falta.
 | 5.6.4 | Lembretes | Parcial | Aviso na área do aluno nas 24 h anteriores; sem minutos configuráveis nem envio | `validar-modulos-4` |
 | 5.6.5 | Agenda do aluno, pedidos, cancelamento, reposições à vista | Parcial | Sem reservar em horários livres nem usar o crédito sozinho: tudo passa pelo treinador | `validar-modulos-4`, browser simulado |
 | 5.6.6 | Turmas, lista de espera com ordem determinística | Parcial | Promove à mão; a aceitação com prazo não chega ao aluno | `validar-modulos-3`, browser |
-| 5.7.1 | Push | Externo | Ativar e desligar na área do aluno, lembretes de aula e avisos, silêncio das 22:00 às 08:00. Falta criar as chaves VAPID e o agendador, e **nunca correu com um serviço real** | `validar-modulos-4`, browser simulado |
+| 5.7.1 | Push | Externo | Ativar e desligar na área do aluno, lembretes de aula e avisos, silêncio das 22:00 às 08:00. Chaves VAPID e agendador ligados. **Correu a 08/11/2026 com o serviço real**, no Chrome de secretária: um aviso do treinador chegou ao aluno. Falta confirmar num iPhone com a página no ecrã inicial | `validar-modulos-4`, browser simulado |
 | 5.7.2, 5.7.3 | Modelos com variáveis, WhatsApp por ligação | Feito | | `validar-modulos-3`, browser |
 | 5.7.4 | Feed de atualizações | Parcial | Aniversários, faturas, avaliações em atraso, créditos e pedidos; sem recordes nem treinos concluídos | browser simulado |
 | 5.7.5 | Comentários contextuais | Parcial | Resposta ao feedback; sem progresso nem documentos | |

@@ -8,17 +8,20 @@ const ACCENT_HEX = { brass: '#1EA6B4', rust: '#D6534A', slate: '#8C8C8C', sky: '
 
 function currency(v) { return (Number(v) || 0).toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' }); }
 
-export function StatCard({ label, value, icon: Icon, accent = 'brass', sub }) {
+// `destaque` é o número principal de um grupo: ocupa duas colunas (a classe vem de
+// quem o põe na grelha) e tem o valor maior. É ele que fecha as contas da grelha,
+// para não sobrar um cartão sozinho numa linha.
+export function StatCard({ label, value, icon: Icon, accent = 'brass', sub, destaque = false, className = '' }) {
   const hex = ACCENT_HEX[accent];
   return (
-    <div className="card card-hover p-4 flex flex-col gap-2.5 min-w-0">
+    <div className={`card card-hover p-4 flex flex-col gap-2.5 min-w-0 ${destaque ? 'justify-between' : ''} ${className}`}>
       <div className="flex items-start justify-between gap-2">
         <span className="text-2xs uppercase tracking-wide text-muted font-body leading-tight">{label}</span>
         <span className="rounded-md p-1.5 flex-shrink-0" style={{ backgroundColor: `${hex}1F` }}>
           <Icon size={14} style={{ color: hex, display: 'block' }} />
         </span>
       </div>
-      <span className="font-mono text-xl sm:text-2xl text-primary font-semibold leading-none truncate" style={{ letterSpacing: '-0.02em' }}>{value}</span>
+      <span className={`font-mono ${destaque ? 'text-2xl sm:text-3xl' : 'text-xl sm:text-2xl'} text-primary font-semibold leading-none truncate`} style={{ letterSpacing: '-0.02em' }}>{value}</span>
       {sub && <span className="text-2xs text-faint font-body leading-tight">{sub}</span>}
     </div>
   );

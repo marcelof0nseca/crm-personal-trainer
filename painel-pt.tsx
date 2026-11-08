@@ -6865,11 +6865,11 @@ function StudentFinanceCard({ student, finance }) {
   );
 }
 
-function AlertChip({ icon: Icon, label, count, accent }) {
+function AlertChip({ icon: Icon, label, count, accent, className = '' }) {
   const hex = ACCENT_HEX[accent];
   const active = Number(count) > 0;
   return (
-    <div className="card p-3 flex items-center gap-2.5 min-w-0" style={{ borderColor: active ? `${hex}59` : 'var(--border-hair)' }}>
+    <div className={`card p-3 flex items-center gap-2.5 min-w-0 ${className}`} style={{ borderColor: active ? `${hex}59` : 'var(--border-hair)' }}>
       <div className="p-2 rounded-lg flex-shrink-0" style={{ backgroundColor: active ? `color-mix(in srgb, ${hex} 16%, transparent)` : 'var(--wash)' }}>
         <Icon size={15} style={{ color: active ? hex : 'var(--text-faint)', display: 'block' }} />
       </div>
@@ -8259,9 +8259,11 @@ function Dashboard({ students, sessions, finances, customCategories, definicoes,
         </button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+      {/* 7 cartões: a Receita Líquida ocupa duas colunas e os outros seis enchem o
+          resto, em 2 colunas no telemóvel e 4 no resto. Nenhum fica sozinho numa linha. */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard label="Receita Líquida" value={currency(totals.net)} icon={TrendingUp} accent="brass" destaque className="col-span-2" />
         <StatCard label="Receita Bruta" value={currency(totals.gross)} icon={Wallet} accent="sky" />
-        <StatCard label="Receita Líquida" value={currency(totals.net)} icon={TrendingUp} accent="brass" />
         <StatCard label="Impostos" value={currency(totals.tax)} icon={Percent} accent="rust" />
         <StatCard label="Taxa Ginásio" value={currency(totals.gymFee)} icon={Building2} accent="slate" />
         <StatCard
@@ -8300,12 +8302,12 @@ function Dashboard({ students, sessions, finances, customCategories, definicoes,
 
       <div>
         <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-3">Atividade do Mês{sufixoMes}</div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <StatCard label="Taxa de Comparecimento" value={taxaComparecimento != null ? `${taxaComparecimento}%` : '—'} icon={Activity} accent="brass" destaque className="col-span-2" />
           <StatCard label="Aulas Realizadas" value={aulasRealizadasMes} icon={CheckCircle2} accent="brass" />
           <StatCard label="Avaliações Realizadas" value={avaliacoesRealizadasMes} icon={ClipboardCheck} accent="sky" />
           <StatCard label="Faltas" value={faltasMes} icon={UserX} accent="rust" />
           <StatCard label="Cancelamentos" value={cancelamentosAulasMes + cancelamentosAvaliacoesMes} icon={Ban} accent="slate" sub={`${cancelamentosAulasMes} aulas · ${cancelamentosAvaliacoesMes} avaliações`} />
-          <StatCard label="Taxa de Comparecimento" value={taxaComparecimento != null ? `${taxaComparecimento}%` : '—'} icon={Activity} accent="brass" />
         </div>
       </div>
 
@@ -8360,9 +8362,11 @@ function Dashboard({ students, sessions, finances, customCategories, definicoes,
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      {/* 5 avisos: as faltas pendentes ocupam duas colunas, e os seis lugares enchem
+          2, 3 ou 6 colunas sem deixar um aviso sozinho numa linha. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <AlertChip icon={UserX} label="Faltas pendentes (total)" count={totalFaltasPendentes} accent="rust" className="col-span-2" />
         <AlertChip icon={UserX} label="Faltas (semana)" count={faltasSemana} accent="rust" />
-        <AlertChip icon={UserX} label="Faltas pendentes (total)" count={totalFaltasPendentes} accent="rust" />
         <AlertChip icon={RotateCcw} label="Reposições pendentes" count={reposicoesPendentes} accent="slate" />
         <AlertChip icon={ClipboardCheck} label="Avaliações agendadas" count={avaliacoesAgendadas} accent="sky" />
         <AlertChip icon={Sparkles} label="Experimentais agendadas" count={experimentaisAgendadas} accent="brass" />
@@ -8483,9 +8487,9 @@ function Dashboard({ students, sessions, finances, customCategories, definicoes,
       <div>
         <div className="text-2xs uppercase tracking-wide text-faint font-mono mb-3">Finanças Pessoais (Mês)</div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+          <StatCard label="Saldo" value={currency(financeSaldoMes)} icon={Activity} accent={financeSaldoMes >= 0 ? 'sky' : 'rust'} sub={financePendenciasMes > 0 ? `${plural(financePendenciasMes, 'pendência', 'pendências')}` : undefined} destaque className="col-span-2 sm:col-span-1" />
           <StatCard label="Entradas" value={currency(financeEntradasMes)} icon={TrendingUp} accent="brass" />
           <StatCard label="Saídas" value={currency(financeSaidasMes)} icon={Wallet} accent="rust" />
-          <StatCard label="Saldo" value={currency(financeSaldoMes)} icon={Activity} accent={financeSaldoMes >= 0 ? 'sky' : 'rust'} sub={financePendenciasMes > 0 ? `${plural(financePendenciasMes, 'pendência', 'pendências')}` : undefined} />
         </div>
         {financeCategoryData.length === 0 ? (
           <div className="bg-surface border border-hair rounded-xl">
@@ -17856,10 +17860,10 @@ function FinancesView({ finances, students, monthCursor, setMonthCursor, onOpenT
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <StatCard label="Saldo" value={currency(saldo)} icon={Activity} accent={saldo >= 0 ? 'sky' : 'rust'} destaque className="col-span-2 sm:col-span-1" />
         <StatCard label="Entradas" value={currency(entradas)} icon={TrendingUp} accent="brass" />
         <StatCard label="Saídas" value={currency(saidas)} icon={Wallet} accent="rust" />
-        <StatCard label="Saldo" value={currency(saldo)} icon={Activity} accent={saldo >= 0 ? 'sky' : 'rust'} />
       </div>
 
       <div className="flex items-center flex-wrap justify-between gap-3">

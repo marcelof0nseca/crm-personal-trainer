@@ -1063,6 +1063,13 @@ function AreaDoAlunoInterior({ token }) {
         <p className="text-xs font-body text-faint">
           {erro} {token ? 'Peça ao seu treinador um link novo.' : ''}
         </p>
+        {/* Sem saída, um erro de sessão prendia o aluno neste ecrã. */}
+        {!token && (
+          <div className="flex gap-2 flex-wrap justify-center">
+            <button type="button" onClick={carregarDados} className="btn btn-primary" style={{ fontSize: 13 }}>Tentar de novo</button>
+            <button type="button" onClick={sair} className="btn btn-ghost" style={{ fontSize: 13 }}>Sair e entrar de novo</button>
+          </div>
+        )}
       </EcraCentrado>
     );
   }

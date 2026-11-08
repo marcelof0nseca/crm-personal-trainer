@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
       return json({ url: `${env.url}/functions/v1/publico-calendario?c=${slug}` });
     }
     if (op === 'pagar_fatura') {
-      const cfg = configuracaoConnect();
+      const cfg = configuracaoConnect(quem.userId);
       const origem = Deno.env.get('APP_ORIGIN');
       if (!cfg.ativa || !origem) return json({ error: 'O pagamento online não está disponível. Fale com o seu treinador.' }, 503);
       const fatura = ((blocos.modulos.planos || {}).faturas || []).find((f: any) => f.id === dados.id && f.studentId === quem.alunoId);

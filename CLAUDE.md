@@ -839,6 +839,8 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   `Stripe-Account`. A plataforma Connect é **uma conta Stripe à parte** da da subscrição,
   porque a conta da subscrição não pode ser plataforma. Desligada por omissão
   (`STRIPE_CONNECT_ENABLED`), e chaves de produção só com `STRIPE_CONNECT_LIVE=true`.
+  **Em modo de teste, só as contas em `STRIPE_CONNECT_TESTERS` a veem** (vazio = ninguém):
+  com a chave de teste ligada para todos, um treinador real abria um cadastro de teste.
   O webhook ignora um pagamento cuja conta não seja a desse treinador: o dono de uma conta
   escreve os metadados que quiser.
 - **Notificações (push)** — chaves VAPID, `VITE_VAPID_PUBLIC_KEY` no Vercel, e um

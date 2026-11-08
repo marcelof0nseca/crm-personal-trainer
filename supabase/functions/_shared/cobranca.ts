@@ -4,11 +4,20 @@
 // Chaves de produção só com autorização explícita (STRIPE_CONNECT_LIVE=true).
 import { estadoDaFatura, pagoDaFatura, totalDaFatura } from './vista-aluno.ts';
 
-export function configuracaoConnect() {
+// Em modo de teste, só as contas em STRIPE_CONNECT_TESTERS (ids separados por
+// vírgulas) a veem: um treinador a sério punha os seus dados num cadastro de teste,
+// que nunca recebe dinheiro. Sem a lista, ninguém. Com a chave de produção e
+// STRIPE_CONNECT_LIVE=true, fica para todos.
+export function configuracaoConnect(userId?: string | null) {
   const ligado = Deno.env.get('STRIPE_CONNECT_ENABLED') === 'true';
   const chave = Deno.env.get('STRIPE_CONNECT_SECRET_KEY') || '';
   if (!ligado || !chave) return { ativa: false, motivo: 'A cobrança online ainda não está ligada no servidor.' };
-  if (!chave.startsWith('sk_test_') && Deno.env.get('STRIPE_CONNECT_LIVE') !== 'true') return { ativa: false, motivo: 'A cobrança online está só em modo de teste.' };
+  const teste = chave.startsWith('sk_test_');
+  if (!teste && Deno.env.get('STRIPE_CONNECT_LIVE') !== 'true') return { ativa: false, motivo: 'A cobrança online está só em modo de teste.' };
+  if (teste) {
+    const testadores = (Deno.env.get('STRIPE_CONNECT_TESTERS') || '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (!userId || !testadores.includes(userId)) return { ativa: false, motivo: 'A cobrança online ainda não está disponível. Até lá, registe os pagamentos à mão nas faturas.' };
+  }
   return { ativa: true, chave };
 }
 

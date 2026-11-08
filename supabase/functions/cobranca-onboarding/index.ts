@@ -7,12 +7,12 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
   try {
-    const cfg = configuracaoConnect();
-    if (!cfg.ativa) return json({ ativa: false, motivo: cfg.motivo });
     const env = ambiente();
     if (!env) return json({ error: 'Variáveis de ambiente em falta.' }, 500);
     const userId = await treinadorPede(req, env);
     if (!userId) return json({ error: 'Sessão em falta.' }, 401);
+    const cfg = configuracaoConnect(userId);
+    if (!cfg.ativa) return json({ ativa: false, motivo: cfg.motivo });
     const body = await req.json().catch(() => ({}));
 
     const lida = await env.rest(`cobranca_contas?user_id=eq.${userId}&select=stripe_account_id&limit=1`);

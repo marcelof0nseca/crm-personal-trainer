@@ -832,8 +832,12 @@ Cada uma destas custou tempo a descobrir. Não voltar a cair.
   RGPD. **Mudar de região obriga a atualizar `HOSTING_REGION` em
   `LegalDocs.tsx`** — é uma declaração legal.
 - **Cobrança dos alunos (Stripe Connect)** — à parte da subscrição: outro segredo, outro
-  webhook. Cada treinador tem uma conta **Standard** e a cobrança é direta, por isso as
-  taxas e as disputas são dele e não do PTMANAGER. Desligada por omissão
+  webhook. Cada treinador tem uma conta com painel próprio e a cobrança é direta, por isso as
+  taxas e as disputas são dele e não do PTMANAGER. **As contas criam-se pela API v2**
+  (`/v2/core/accounts`, `dashboard: 'full'`, perdas e taxas com o Stripe): numa plataforma
+  Connect nova, a v1 (`type: 'standard'`) é recusada. O Checkout continua na v1, com
+  `Stripe-Account`. A plataforma Connect é **uma conta Stripe à parte** da da subscrição,
+  porque a conta da subscrição não pode ser plataforma. Desligada por omissão
   (`STRIPE_CONNECT_ENABLED`), e chaves de produção só com `STRIPE_CONNECT_LIVE=true`.
   O webhook ignora um pagamento cuja conta não seja a desse treinador: o dono de uma conta
   escreve os metadados que quiser.

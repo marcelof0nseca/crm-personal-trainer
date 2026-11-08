@@ -23,6 +23,32 @@ export async function stripe(chave: string, caminho: string, campos?: Record<str
   return dados;
 }
 
+// As contas dos treinadores são da API v2 do Stripe: numa plataforma Connect nova, a v1
+// já não cria contas. O resto (Checkout, reembolsos) continua na v1, com Stripe-Account.
+export const VERSAO_V2 = '2026-10-28.endive';
+export async function stripeV2(chave: string, caminho: string, corpo?: Record<string, unknown>) {
+  const r = await fetch(`https://api.stripe.com/v2/${caminho}`, {
+    method: corpo ? 'POST' : 'GET',
+    headers: { Authorization: `Bearer ${chave}`, 'Stripe-Version': VERSAO_V2, ...(corpo ? { 'Content-Type': 'application/json' } : {}) },
+    body: corpo ? JSON.stringify(corpo) : undefined,
+  });
+  const dados = await r.json();
+  if (!r.ok) throw new Error(dados?.error?.message || `Stripe v2 ${r.status}`);
+  return dados;
+}
+
+// Conta com painel próprio, em que as taxas e as perdas ficam com o Stripe e o treinador,
+// nunca com a plataforma: o equivalente da antiga conta Standard.
+export const contaNovaV2 = (userId: string) => ({
+  dashboard: 'full',
+  identity: { country: 'pt' },
+  configuration: { merchant: { capabilities: { card_payments: { requested: true } } } },
+  defaults: { currency: 'eur', locales: ['pt-PT'], responsibilities: { fees_collector: 'stripe', losses_collector: 'stripe' } },
+  metadata: { user_id: userId },
+  include: ['configuration.merchant', 'requirements'],
+});
+export const INCLUIR_V2 = 'include[0]=configuration.merchant&include[1]=requirements';
+
 // A sessão de pagamento de uma fatura. O valor sai sempre da fatura gravada. Uma sessão
 // dura uma hora e pedir de novo nessa hora devolve a mesma, para não haver duas abertas.
 export async function sessaoDaFatura(chave: string, env: any, { userId, fatura, sucesso, cancelado }: any) {
@@ -43,6 +69,12 @@ export async function sessaoDaFatura(chave: string, env: any, { userId, fatura, 
   return { url: sessao.url };
 }
 
+// Lê as duas formas: a da v2 (as contas novas) e a da v1 (o evento account.updated).
 export function estadoDaConta(a: any) {
+  if (a?.object === 'v2.core.account') {
+    const cap = a.configuration?.merchant?.capabilities || {};
+    const emFalta = (a.requirements?.entries || []).filter((e: any) => ['currently_due', 'past_due'].includes(e?.minimum_deadline?.status));
+    return { pagamentos_ativos: cap.card_payments?.status === 'active', transferencias_ativas: cap.stripe_balance?.payouts?.status === 'active', requisitos: emFalta.map((e: any) => String(e.description || 'dado em falta')) };
+  }
   return { pagamentos_ativos: Boolean(a.charges_enabled), transferencias_ativas: Boolean(a.payouts_enabled), requisitos: a.requirements?.currently_due || [] };
 }

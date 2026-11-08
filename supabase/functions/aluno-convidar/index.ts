@@ -43,8 +43,10 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const alunoId = typeof body?.alunoId === 'string' ? body.alunoId.trim() : '';
     const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+    const soEstado = body?.estado === true;
+    const outraConta = body?.outraConta === true;
     if (!alunoId || !ID_VALIDO.test(alunoId)) return json({ error: 'Aluno inválido.' }, 400);
-    if (!email || !EMAIL_VALIDO.test(email)) return json({ error: 'Email inválido.' }, 400);
+    if (!soEstado && (!email || !EMAIL_VALIDO.test(email))) return json({ error: 'Email inválido.' }, 400);
 
     const admin = { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` };
     const rest = (path: string, init?: RequestInit) => fetch(`${supabaseUrl}/rest/v1/${path}`, {
@@ -60,6 +62,22 @@ Deno.serve(async (req) => {
     const alunosBlob = (alunosLinhas[0]?.value as any[]) || [];
     const aluno = alunosBlob.find((a: any) => a && a.id === alunoId);
     if (!aluno) return json({ error: 'Aluno não encontrado.' }, 404);
+
+    // As contas já ligadas a este aluno, com o email (o browser do treinador não
+    // chega a auth.users). Servem para a folha mostrar a conta e para não se criar
+    // uma segunda por um erro de escrita no email.
+    const ligadasRes = await rest(`aluno_contas?user_id=eq.${trainerUserId}&aluno_id=eq.${alunoId}&select=auth_user_id,criado_em&order=criado_em.asc`);
+    const ligadas = ligadasRes.ok ? await ligadasRes.json() : [];
+    const contas = (await Promise.all(ligadas.map(async (l: any) => {
+      const r = await fetch(`${supabaseUrl}/auth/v1/admin/users/${l.auth_user_id}`, { headers: admin });
+      if (!r.ok) return null;
+      const u = await r.json();
+      return { email: String(u.email || ''), ativa: Boolean(u.last_sign_in_at), criadoEm: l.criado_em };
+    }))).filter(Boolean) as { email: string; ativa: boolean; criadoEm: string }[];
+    if (soEstado) return json({ contas });
+    if (contas.length && !contas.some((c) => c.email === email) && !outraConta) {
+      return json({ error: `Este aluno já tem conta com ${contas.map((c) => c.email).join(', ')}. Confirme se quer criar outra conta com ${email}.`, precisaConfirmar: true, contas }, 409);
+    }
 
     const redirectTo = `${APP_URL}/?aluno-convite=1`;
 

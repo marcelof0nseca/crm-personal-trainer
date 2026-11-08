@@ -3624,16 +3624,18 @@ async function contaAtivaDoAluno(idAluno) {
 // Convida (ou reenvia) por email -- passa pela Edge Function porque criar a
 // conta em auth.users e ligar aluno_contas exige a service_role key, que
 // nunca sai do servidor.
-async function convidarAlunoPorEmail(idAluno, email) {
+async function convidarAlunoPorEmail(idAluno, email, outraConta = false) {
   if (!(supabaseConfigured && supabase)) return { ok: false, erro: 'Isto só funciona com uma conta ligada.' };
-  const { data, error } = await supabase.functions.invoke('aluno-convidar', { body: { alunoId: idAluno, email } });
+  const { data, error } = await supabase.functions.invoke('aluno-convidar', { body: { alunoId: idAluno, email, outraConta } });
   if (error) {
     let mensagem = 'Não foi possível enviar o convite.';
+    let precisaConfirmar = false;
     try {
       const corpo = error.context && typeof error.context.json === 'function' ? await error.context.json() : null;
       if (corpo && corpo.error) mensagem = corpo.error;
+      precisaConfirmar = Boolean(corpo && corpo.precisaConfirmar);
     } catch { /* fica a mensagem genérica */ }
-    return { ok: false, erro: mensagem };
+    return { ok: false, erro: mensagem, precisaConfirmar };
   }
   if (!data || data.error) return { ok: false, erro: (data && data.error) || 'Não foi possível enviar o convite.' };
   return { ok: true };
@@ -14715,6 +14717,19 @@ const PERIODOS_FICHA = [
 // password, entra sempre que quiser) ou um link direto sem conta nenhuma. A
 // conta é a forma principal -- o link fica dobrado, para quem só quer
 // partilhar um acesso rápido sem pedir ao aluno para criar password nenhuma.
+// As contas já ligadas ao aluno, com o email -- pela Edge Function, porque o
+// browser do treinador não lê auth.users. Sem resposta, devolve null e a folha
+// fica com o que `contaAtivaDoAluno` sabe (só que há conta).
+async function contasDoAluno(idAluno) {
+  if (!(supabaseConfigured && supabase)) return null;
+  try {
+    const { data, error } = await supabase.functions.invoke('aluno-convidar', { body: { alunoId: idAluno, estado: true } });
+    return !error && data && Array.isArray(data.contas) ? data.contas : null;
+  } catch {
+    return null;
+  }
+}
+
 function AcessoAlunoFolha({ student, onClose }) {
   // conta (convite por email)
   const [estadoConta, setEstadoConta] = useState('a-carregar'); // a-carregar | sem-conta-ligada | sem-convite | convidado | erro
@@ -14723,6 +14738,8 @@ function AcessoAlunoFolha({ student, onClose }) {
   const [aConvidar, setAConvidar] = useState(false);
   const [erroConvite, setErroConvite] = useState('');
   const [conviteEnviadoAgora, setConviteEnviadoAgora] = useState(false);
+  const [contas, setContas] = useState([]);
+  const [aConfirmarOutra, setAConfirmarOutra] = useState(false);
 
   // link direto, sem conta -- lógica igual à de sempre, só menos em destaque.
   const [mostrarLink, setMostrarLink] = useState(false);
@@ -14737,11 +14754,16 @@ function AcessoAlunoFolha({ student, onClose }) {
   useEffect(() => {
     if (!supabaseConfigured) { setEstadoConta('sem-conta-ligada'); setEstadoLink('sem-conta-ligada'); return undefined; }
     let vivo = true;
-    Promise.all([contaAtivaDoAluno(student.id), acessoAtivoDoAluno(student.id)])
-      .then(([conta, link]) => {
+    Promise.all([contaAtivaDoAluno(student.id), acessoAtivoDoAluno(student.id), contasDoAluno(student.id)])
+      .then(([conta, link, lista]) => {
         if (!vivo) return;
         setCriadoEmConta(conta ? conta.criadoEm : null);
         setEstadoConta(conta ? 'convidado' : 'sem-convite');
+        const ligadas = lista || [];
+        setContas(ligadas);
+        // O campo vem com o email que já está ligado (ou o da ficha): um reenvio
+        // com o email escrito à mão já criou uma segunda conta por um erro de escrita.
+        setEmail(ligadas.length ? ligadas[ligadas.length - 1].email : (student.email || ''));
         setCriadoEmLink(link ? link.criadoEm : null);
         setEstadoLink(link ? 'ativo' : 'sem-acesso');
       })
@@ -14749,14 +14771,16 @@ function AcessoAlunoFolha({ student, onClose }) {
     return () => { vivo = false; };
   }, [student.id]);
 
-  async function enviarConvite() {
+  async function enviarConvite(outraConta = false) {
     const valor = email.trim();
     if (!valor) return;
     setAConvidar(true);
     setErroConvite('');
-    const r = await convidarAlunoPorEmail(student.id, valor);
+    setAConfirmarOutra(false);
+    const r = await convidarAlunoPorEmail(student.id, valor, outraConta);
     setAConvidar(false);
-    if (!r.ok) { setErroConvite(r.erro); return; }
+    if (!r.ok) { setErroConvite(r.erro); setAConfirmarOutra(Boolean(r.precisaConfirmar)); return; }
+    if (!contas.some((c) => c.email === valor.toLowerCase())) setContas((l) => [...l, { email: valor.toLowerCase(), ativa: false, criadoEm: new Date().toISOString() }]);
     setConviteEnviadoAgora(true);
     setCriadoEmConta(new Date().toISOString());
     setEstadoConta('convidado');
@@ -14830,6 +14854,15 @@ function AcessoAlunoFolha({ student, onClose }) {
               </span>
             </div>
           )}
+          {contas.length > 0 && (
+            <ul className="flex flex-col gap-1" style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+              {contas.map((c) => (
+                <li key={c.email} className="text-xs font-body text-muted">
+                  <span className="text-primary">{c.email}</span> · {c.ativa ? 'já entrou' : 'ainda não entrou'}
+                </li>
+              ))}
+            </ul>
+          )}
 
           {(estadoConta === 'sem-convite' || estadoConta === 'convidado') && (
             <div className="flex gap-2 flex-wrap items-start">
@@ -14842,12 +14875,17 @@ function AcessoAlunoFolha({ student, onClose }) {
                 className="input-field"
                 style={{ flex: '1 1 200px', fontSize: 14 }}
               />
-              <button type="button" onClick={enviarConvite} disabled={aConvidar || !email.trim()} className="btn btn-primary flex-shrink-0">
+              <button type="button" onClick={() => enviarConvite(false)} disabled={aConvidar || !email.trim()} className="btn btn-primary flex-shrink-0">
                 <Send size={14} /> {aConvidar ? 'A enviar...' : estadoConta === 'convidado' ? 'Reenviar convite' : 'Enviar convite'}
               </button>
             </div>
           )}
-          {erroConvite && <p className="text-xs font-body" style={{ color: 'var(--rust)', margin: 0 }}>{erroConvite}</p>}
+          {erroConvite && <p className="text-xs font-body" style={{ color: aConfirmarOutra ? acentoTexto('#F5B44C') : 'var(--rust)', margin: 0 }}>{erroConvite}</p>}
+          {aConfirmarOutra && (
+            <button type="button" onClick={() => enviarConvite(true)} disabled={aConvidar} className="btn btn-ghost" style={{ alignSelf: 'flex-start', fontSize: 12 }}>
+              Criar outra conta com {email.trim()}
+            </button>
+          )}
         </div>
 
         {/* ---------- link direto, sem conta -- secundário, dobrável ---------- */}

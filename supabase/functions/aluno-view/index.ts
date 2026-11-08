@@ -78,19 +78,26 @@ Deno.serve(async (req) => {
       const userRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
         headers: { Authorization: authHeader, apikey: supabaseAnonKey },
       });
-      if (userRes.ok) {
-        const callerUser = await userRes.json();
-        const authUserId = callerUser?.id as string | undefined;
-        if (authUserId) {
-          const contaRes = await rest(`aluno_contas?auth_user_id=eq.${authUserId}&select=user_id,aluno_id&limit=1`);
-          const contas = contaRes.ok ? await contaRes.json() : [];
-          const conta = contas[0];
-          if (conta && ID_VALIDO.test(String(conta.aluno_id))) {
-            userId = conta.user_id as string;
-            alunoId = conta.aluno_id as string;
-          }
-        }
+      // Cada recusa diz o seu motivo: com uma mensagem só para tudo, não se
+      // distinguia uma sessão caducada de uma conta por ligar.
+      if (!userRes.ok) {
+        console.error('[aluno-view] sessão recusada pelo Auth:', userRes.status);
+        return json({ error: 'A sua sessão já não é válida. Entre de novo.' }, 401);
       }
+      const callerUser = await userRes.json();
+      const authUserId = callerUser?.id as string | undefined;
+      if (!authUserId) return json({ error: 'A sua sessão já não é válida. Entre de novo.' }, 401);
+      const contaRes = await rest(`aluno_contas?auth_user_id=eq.${authUserId}&select=user_id,aluno_id&limit=1`);
+      if (!contaRes.ok) {
+        console.error('[aluno-view] não foi possível ler aluno_contas:', contaRes.status);
+        return json({ error: 'Não foi possível confirmar o acesso.' }, 500);
+      }
+      const conta = (await contaRes.json())[0];
+      if (!conta || !ID_VALIDO.test(String(conta.aluno_id))) {
+        return json({ error: 'Esta conta ainda não está ligada a nenhum aluno. Peça ao seu treinador para reenviar o convite.' }, 403);
+      }
+      userId = conta.user_id as string;
+      alunoId = conta.aluno_id as string;
     }
 
     if (!userId || !alunoId) return json({ error: 'Link inválido ou revogado.' }, 401);
@@ -103,7 +110,7 @@ Deno.serve(async (req) => {
     // não se apaga sozinho em todos os caminhos, por isso a vista também o confirma.
     const agoraMs = Date.now();
     const vista = vistaDoAluno(blocos, alunoId, { hoje: new Date(agoraMs).toISOString().slice(0, 10), agoraMs, via });
-    if (!vista) return json({ error: 'Link inválido ou revogado.' }, 401);
+    if (!vista) return json({ error: via === 'conta' ? 'Este acesso já não está ativo. Fale com o seu treinador.' : 'Link inválido ou revogado.' }, 401);
     return json(vista);
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : 'Erro inesperado.' }, 500);

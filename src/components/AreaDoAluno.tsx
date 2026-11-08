@@ -88,6 +88,8 @@ async function mensagemDeErro(error, data, omissao) {
     try {
       const corpo = error.context && typeof error.context.json === 'function' ? await error.context.json() : null;
       if (corpo && corpo.error) return corpo.error;
+      // A recusa do próprio Supabase, antes da função: a sessão não serve.
+      if (corpo && /JWT/i.test(String(corpo.code || corpo.message || ''))) return 'A sua sessão já não é válida. Entre de novo.';
     } catch {
       // Resposta sem JSON -- fica a mensagem por omissão.
     }

@@ -4546,11 +4546,36 @@ function GlobalStyles() {
 
 /* ============================== ERROR BOUNDARY ============================== */
 
+// Depois de uma versão nova, uma página aberta pede ficheiros que já não existem no
+// servidor. Não é um erro de ninguém: recarrega-se a página, uma vez, e fica a versão nova.
+const eFicheiroDeVersaoAntiga = (e) => /Importing a module script failed|dynamically imported module|ChunkLoadError|Loading chunk/i.test(String((e && e.message) || e));
+function recarregarParaVersaoNova() {
+  try {
+    const ultima = Number(sessionStorage.getItem('ptmanager:recarregou') || 0);
+    if (Date.now() - ultima < 15000) return false;
+    sessionStorage.setItem('ptmanager:recarregou', String(Date.now()));
+  } catch { /* sem sessionStorage, recarrega na mesma */ }
+  window.location.reload();
+  return true;
+}
+
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { error: null }; }
   static getDerivedStateFromError(error) { return { error }; }
-  componentDidCatch(error, info) { console.error('Erro no PTMANAGER:', error, info); }
+  componentDidCatch(error, info) {
+    if (eFicheiroDeVersaoAntiga(error) && recarregarParaVersaoNova()) return;
+    console.error('Erro no PTMANAGER:', error, info);
+  }
   render() {
+    if (this.state.error && eFicheiroDeVersaoAntiga(this.state.error) && !this.props.compact) {
+      return (
+        <div className="min-h-screen bg-base flex flex-col items-center justify-center gap-4 px-6 text-center">
+          <div className="font-display font-semibold text-lg text-primary">Há uma versão nova da aplicação</div>
+          <p className="text-sm text-muted font-body max-w-md">Recarregue a página para continuar. Nada do que gravou se perdeu.</p>
+          <button onClick={() => window.location.reload()} type="button" className="btn btn-primary">Recarregar</button>
+        </div>
+      );
+    }
     if (this.state.error) {
       if (this.props.compact) {
         return (

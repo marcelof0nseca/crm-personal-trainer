@@ -14,8 +14,9 @@ documento a 30/10/2026.
 
 **O que «Feito» ainda não quer dizer.** Nada do que depende de `supabase-schema.sql`
 novo ou das Edge Functions novas está aplicado em produção (ver «Para ligar»). Foi
-testado com um servidor simulado que corre as mesmas funções puras; não foi testado
-num Supabase real, nem num telemóvel real. Pela definição de pronto do documento
+testado com um servidor simulado que corre as mesmas funções puras. A 08/11/2026 o SQL
+e as funções foram aplicados, e a cobrança online correu num Supabase real, no Stripe
+em modo de teste e num iPhone; o resto ainda não foi testado assim. Pela definição de pronto do documento
 (secção 11), o roteiro **não está concluído**: faltam estes passos e as linhas abaixo
 marcadas como Parcial, Externo e Falta.
 
@@ -56,7 +57,7 @@ marcadas como Parcial, Externo e Falta.
 | 5.10 | Documentos | Parcial | PDF e imagem, balde privado, visibilidade; sem substituir por versão, validade nem profissional parceiro | browser simulado |
 | 5.11 | Área do aluno | Parcial | Início, agenda, progresso, histórico, avisos, formulários, contratos, avaliações, faturas, documentos, língua; sem unidades, sem gerir password a partir do perfil | `validar-modulos-4`, browser simulado |
 | 5.12 | Planos, faturas, estados, IVA, inadimplência, relatórios | Parcial | Em cêntimos; sem parcelamento, upgrade nem lembretes automáticos | `validar-modulos-3`, browser |
-| 5.12 | Cobrança online, KYC, payout | Externo | Botão «Pagar» do aluno e ligação do treinador, em conta Stripe Standard de cada treinador, que paga as taxas e responde às disputas. Desligada por omissão e só em modo de teste; sem saldo nem lista de payouts. **Nunca correu contra o Stripe** | `validar-modulos-4`, browser simulado |
+| 5.12 | Cobrança online, KYC, payout | Externo | Botão «Pagar» do aluno e ligação do treinador, em conta Stripe de cada treinador (Accounts v2, painel próprio), que paga as taxas e responde às disputas. Desligada por omissão e só em modo de teste; sem saldo nem lista de payouts. **Correu contra o Stripe a 08/11/2026, em sandbox e num iPhone:** verificação do treinador, pagamento do aluno, webhook e fatura paga. Produção por autorizar | `validar-modulos-4`, browser simulado |
 | 5.13 | Página pública de vendas | Parcial | Publicação por retrato, consentimento, Turnstile, limite de pedidos; sem checkout, FAQ, fotografia, funil UTM nem Open Graph por página (a aplicação é SPA) | `validar-modulos-4`, browser simulado |
 | 5.14 | Desafios | Parcial | Link público, etapas, acompanhamento, passar a contacto; sem duplicar, capacidade, recado nem converter logo em aluno | `validar-modulos-3`, `validar-modulos-4` |
 | 5.15 | Pontos, conquistas, recompensas | Parcial | Registo imutável, idempotência, resgate e reversão; só treinos pontuam sozinhos, e não se desliga por aluno | `validar-modulos-3`, browser |
@@ -93,7 +94,10 @@ marcadas como Parcial, Externo e Falta.
 
 ## Para ligar
 
-Nada disto foi feito: é do dono do produto, quando decidir.
+Feito a 08/11/2026: os passos 1 e 2, os segredos do Connect e das notificações, a
+plataforma Connect (uma conta Stripe à parte da da subscrição, em sandbox) e o agendador
+de `notificacoes-despachar` (Supabase Cron, a cada 15 minutos). Por confirmar: o
+`TURNSTILE_SECRET_KEY` e o domínio no Turnstile. A revisão legal continua por fazer.
 
 1. Correr `supabase-schema.sql` (aditivo e repetível). **Antes disso as áreas novas
    gravam, mas as tabelas novas não existem.** O `check` `modulo:` é o primeiro a

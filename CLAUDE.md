@@ -1282,8 +1282,9 @@ Combinado por níveis, do mais barato ao mais caro:
     IA continua de fora. O estado de cada área vive em
     `docs/PTMANAGER_MFIT_PARIDADE.md`. Cobranças, payouts e mensagens reais só em
     modo de teste até haver autorização explícita para produção. **Falta correr o
-    SQL e publicar as funções novas** (lista em «Para ligar», na matriz), e nada foi
-    testado num Supabase real, no Stripe nem num telemóvel. Lacunas por área, na
+    SQL e publicar as funções novas** (lista em «Para ligar», na matriz). A 08/11/2026 o
+    SQL e as funções foram aplicados e a cobrança online correu de ponta a ponta no
+    Stripe em modo de teste, num iPhone; o resto ainda não foi testado assim. Lacunas por área, na
     matriz; o documento só se dá por concluído quando essas linhas fecharem. **Falta a
     revisão legal**, mais urgente do que nunca: cobrança, contratos, fotografias
     enviadas pelo aluno e formulários públicos

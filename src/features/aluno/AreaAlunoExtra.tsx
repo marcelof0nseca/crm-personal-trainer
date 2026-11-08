@@ -531,6 +531,7 @@ export function MaisDoAluno({ dados, invocar, onRecarregar, onLerLocal }) {
         <select value={idioma} onChange={(e) => mudar(e.target.value)} className="input-field">{Object.entries(IDIOMAS).map(([k, r]) => <option key={k} value={k}>{r}</option>)}</select>
       </FormField>
       {conta && <Notificacoes invocar={invocar} />}
+      {!conta && <p className="text-xs font-body text-muted" style={{ margin: 0 }}>{t('so_com_conta')}</p>}
       <p className="text-xs font-body text-faint" style={{ margin: 0 }}>{t('dados_ajuda')}</p>
     </div>
   );

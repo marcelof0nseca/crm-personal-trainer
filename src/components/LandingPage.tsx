@@ -69,7 +69,7 @@ const MOMENTOS = [
     texto: 'O aluno tem a área dele, com conta ou por um link. Vê o treino e regista o que fez, sem lhe pedir nada.',
     areas: [
       { clip: 'aluno-inicio', nome: 'O treino dele', texto: 'Próximo treino, um toque para começar, última carga à vista e vídeo do exercício. O registo chega à sua ficha.' },
-      { clip: 'aluno-areas', nome: 'Agenda, progresso e mais', texto: 'Próximas aulas, pedidos, metas, evolução, avisos, formulários, faturas e documentos. Em português, inglês ou espanhol.' },
+      { clip: 'aluno-areas', nome: 'Agenda, progresso e mais', texto: 'Próximas aulas, pedidos, metas, evolução, avisos, formulários, faturas e documentos, e notificações no telemóvel. Em português, inglês ou espanhol.' },
     ],
   },
   {
@@ -78,7 +78,7 @@ const MOMENTOS = [
     texto: 'Antes de perder um aluno, costuma haver sinais. Aqui ficam à vista, com o motivo escrito.',
     areas: [
       { clip: 'retencao', nome: 'Retenção', texto: 'Engajado, oscilando, em risco, abandono e recuperado, por regras suas. Mostra porque está ali e abre o WhatsApp com a mensagem.' },
-      { clip: 'mensagens', nome: 'Mensagens', texto: 'Modelos com o nome do aluno já preenchido, e avisos que aparecem na área dele. Quem envia é sempre o treinador.' },
+      { clip: 'mensagens', nome: 'Mensagens', texto: 'Modelos com o nome do aluno já preenchido, e avisos que aparecem na área dele e chegam ao telemóvel como notificação. Quem envia é sempre o treinador.' },
       { clip: 'contactos', nome: 'Contactos', texto: 'Quem ainda não é aluno, etapa a etapa. Converter não duplica ninguém, e há importação por CSV, grupos, etiquetas e lixeira.' },
     ],
   },
@@ -118,9 +118,9 @@ const LISTA = [
   { nome: 'Avaliações', itens: ['Dobras cutâneas: 6 protocolos', 'Bioimpedância com 12 campos', '14 perímetros e cintura-anca', 'Conversão de Siri e de Brozek', 'Fotografias de progresso em armazenamento privado', 'Rascunho, final e revisões com motivo', 'Comparar avaliações e repor versões', 'Avaliação postural com grelha, fio de prumo e ângulos', 'Baterias funcional, neuromotora e de força', 'Condicionamento e mobilidade', 'Modelos seus e recorrência', 'Medidas preenchidas pelo aluno, para rever', 'Faixas de referência que assinalam, sem diagnosticar'] },
   { nome: 'Formulários', itens: ['PAR-Q, anamnese e consentimentos', 'Construtor de formulários', 'Assinatura desenhada no ecrã', 'Envio para o aluno preencher', 'Pontos a ter em conta, ditos como avisos', 'PDF timbrado'] },
   { nome: 'Documentos', itens: ['Timbre com logótipo, estúdio e nº profissional', 'Aviso de confidencialidade em todas as folhas', 'Escolher secções e pré-visualizar', 'Ficheiros PDF e imagem por aluno', 'Partilhar resultados com o aluno, sem fotografias'] },
-  { nome: 'Área do aluno', itens: ['Entrada por conta ou por link, à sua escolha', 'Próximo treino e registo da sessão', 'Vídeo do exercício no treino', 'Agenda, pedidos e reposições', 'Check-in «Como está hoje?»', 'Metas, evolução, recordes e pontos', 'Fotografias de progresso com autorização', 'Avisos, formulários, contratos, faturas e documentos', 'Português, inglês e espanhol', 'Instalável no ecrã do telemóvel'] },
+  { nome: 'Área do aluno', itens: ['Entrada por conta ou por link, à sua escolha', 'Próximo treino e registo da sessão', 'Vídeo do exercício no treino', 'Agenda, pedidos e reposições', 'Check-in «Como está hoje?»', 'Metas, evolução, recordes e pontos', 'Fotografias de progresso com autorização', 'Avisos, formulários, contratos, faturas e documentos', 'Português, inglês e espanhol', 'Instalável no ecrã do telemóvel', 'Notificações de lembretes de aula e de avisos, nunca entre as 22:00 e as 08:00'] },
   { nome: 'Retenção e tarefas', itens: ['Cinco estados, por regras que pode alterar', 'O motivo escrito, aluno a aluno', 'Números com o denominador à vista', 'Retrato semanal e tendência', 'WhatsApp com a mensagem pronta', 'Tarefas de hoje, atrasadas e próximas', 'Regras quando/então'] },
-  { nome: 'Contactos e mensagens', itens: ['Etapas, do contacto novo ao convertido', 'Próximo contacto, notas e motivo de perda', 'Converter sem duplicar', 'Modelos com variáveis e pré-visualização', 'Avisos na área do aluno, únicos ou repetidos', 'Novidades com tudo o que chegou'] },
+  { nome: 'Contactos e mensagens', itens: ['Etapas, do contacto novo ao convertido', 'Próximo contacto, notas e motivo de perda', 'Converter sem duplicar', 'Modelos com variáveis e pré-visualização', 'Avisos na área do aluno e por notificação, únicos ou repetidos', 'Novidades com tudo o que chegou'] },
   { nome: 'Planos e faturas dos alunos', itens: ['Mensal, trimestral, anual, livre e pacote', 'Faturas com IVA, desconto e estados', 'Registo de pagamentos e devoluções', 'Atrasos, tolerância e exceções', 'Contratos com versão e aceite do aluno', 'Comprovativos internos e exportação CSV', 'Receita recorrente dos alunos, à parte'] },
   { nome: 'Vendas e fidelização', itens: ['Página de vendas sua, publicada por ligação', 'Depoimentos só com autorização', 'Ligações de inscrição e de indicação', 'Imagens para publicações e histórias', 'Desafios por link, com etapas', 'Pontos, conquistas, recompensas e resgates', 'NPS e alerta de nota baixa'] },
   { nome: 'Finanças e relatórios', itens: ['Painel: bruto, líquido, impostos e taxa do ginásio', 'Horas pagas, calculadas pelo plano', 'Entradas e saídas por categoria', 'Pendências destacadas', 'Relatório do período', 'Relatório de progresso do aluno'] },

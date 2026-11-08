@@ -267,10 +267,12 @@ const CLIPES = {
     await mais(page, 'Tarefas e regras');
     await grava(page, 'tarefas', async () => {
       await espera(page, 700);
-      await desliza(page, 280, 800);
-      await toca(page, page.getByText('Renovar o plano do Bruno'), 900);
-      await desliza(page, -280, 500);
-      await aba(page, 'Regras');
+      await escreve(page, page.getByLabel('Nova tarefa'), 'Enviar o plano novo à Marta');
+      await page.evaluate(() => document.activeElement && document.activeElement.blur());
+      await toca(page, botao(page, 'Criar tarefa'), 1000);
+      await toca(page, page.getByText('Renovar o plano do Bruno'), 1000);
+      // Não abre «Regras»: começa por um aviso técnico, e os clipes não mostram avisos internos.
+      await espera(page, 600);
     });
   },
   async mensagens(page) {
@@ -405,7 +407,11 @@ const ALUNO = {
       await toca(page, bar('Histórico'), 900);
       await toca(page, bar('Mais'), 900);
       await desliza(page, 620, 1300);
-      await espera(page, 500);
+      await espera(page, 400);
+      const ativar = botao(page, 'Ativar notificações');
+      await ativar.scrollIntoViewIfNeeded();
+      await toca(page, ativar, 1400);
+      await espera(page, 600);
     });
   },
   async publica(page) {
@@ -426,9 +432,10 @@ const ALUNO = {
 };
 
 const pedidos = process.argv.slice(2);
-const browser = await pw.chromium.launch();
+// Em português: sem isto, os campos de data saem no formato americano (mês/dia).
+const browser = await pw.chromium.launch({ args: ['--lang=pt-PT'] });
 for (const nome of (pedidos.length ? pedidos : [...Object.keys(CLIPES), ...Object.keys(ALUNO)])) {
-  const opcoes = nome === 'publica' ? { url: '/?p=anamartins', sessao: false } : (ALUNO[nome] ? { url: '/?a=tokentokentokentokentoken1', via: 'conta' } : {});
+  const opcoes = nome === 'publica' ? { url: '/?p=anamartins', sessao: false } : (ALUNO[nome] ? { url: '/?a=tokentokentokentokentoken1', via: 'conta', push: true } : {});
   const { page, ctx } = await abrir(browser, opcoes);
   try { await (CLIPES[nome] || ALUNO[nome])(page); } catch (e) { console.log(`${nome}: FALHOU ANTES: ${String(e.message).split('\n').slice(0, 2).join(' ').slice(0, 240)}`); await page.screenshot({ path: `${SP}/${nome}-ERRO.png` }).catch(() => {}); }
   await ctx.close();

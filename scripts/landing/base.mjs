@@ -26,6 +26,9 @@ const pad = (n) => String(n).padStart(2, '0');
 const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 export const dia = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return iso(d); };
 const hoje = dia(0);
+// Gravado a um domingo, o dia de hoje também tem aulas (e o horário abre), senão a agenda aparecia vazia.
+const DOMINGO = new Date(`${hoje}T12:00:00`).getDay() === 0;
+const ABERTO = { aberto: true, intervalos: [{ inicio: '07:00', fim: '21:00' }] };
 const segunda = (() => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; })();
 const naSemana = (n) => { const d = new Date(segunda); d.setDate(d.getDate() + n); return iso(d); };
 
@@ -38,7 +41,8 @@ function aula(id, studentId, date, startTime, endTime, status = 'agendado', extr
 function agenda() {
   const l = [];
   const horas = [['07:00', '08:00'], ['08:00', '09:00'], ['09:30', '10:30'], ['11:00', '12:00'], ['17:00', '18:00'], ['18:00', '19:00'], ['19:00', '20:00']];
-  for (let d = 0; d < 6; d += 1) {
+  const dias = DOMINGO ? 7 : 6;
+  for (let d = 0; d < dias; d += 1) {
     const dt = naSemana(d);
     horas.forEach(([a, b], h) => {
       if ((d + h) % 3 === 2) return;
@@ -90,7 +94,7 @@ export function novoBanco() {
       linhaD('alunos', ALUNOS), linhaD('agenda', agenda()),
       linhaD('financas', [{ id: 'f1', type: 'entrada', description: 'Aulas particulares', category: 'rendimento_pt', amount: 320, date: dia(-3), status: 'concluido', notes: '' }, { id: 'f2', type: 'gasto', description: 'Renda do estúdio', category: 'moradia', amount: 450, date: dia(-8), status: 'concluido', notes: '' }, { id: 'f3', type: 'gasto', description: 'Combustível', category: 'transporte', amount: 62.4, date: dia(-2), status: 'concluido', notes: '' }, { id: 'f4', type: 'gasto', description: 'Supermercado', category: 'alimentacao', amount: 88.9, date: dia(-1), status: 'concluido', notes: '' }, { id: 'f5', type: 'gasto', description: 'Seguro profissional', category: 'contas', amount: 39, date: dia(4), status: 'pendente', notes: '' }]),
       linhaD('fotos', []), linhaD('categorias', { expense: [], income: [], planTypes: [], sessionTypes: [], eventTypes: [] }),
-      linhaD('definicoes', { timbre: { estudio: 'Estúdio Ana Martins', numeroProfissional: 'TPTF 12345', telefone: '912 345 678', email: 'ana@exemplo.pt', morada: 'Lisboa', avisoConfidencial: true } }),
+      linhaD('definicoes', { ...(DOMINGO ? { horarios: { 0: ABERTO, 1: ABERTO, 2: ABERTO, 3: ABERTO, 4: ABERTO, 5: ABERTO, 6: { aberto: true, intervalos: [{ inicio: '09:00', fim: '13:00' }] } } } : {}), timbre: { estudio: 'Estúdio Ana Martins', numeroProfissional: 'TPTF 12345', telefone: '912 345 678', email: 'ana@exemplo.pt', morada: 'Lisboa', avisoConfidencial: true } }),
       linhaD('treinos', { modelos: [], prescricoes: [PROGRAMA, { ...PROGRAMA, id: 'p2', studentId: 'a2' }, { ...PROGRAMA, id: 'p3', studentId: 'a3' }, { ...PROGRAMA, id: 'p4', studentId: 'a4' }, { ...PROGRAMA, id: 'p5', studentId: 'a5' }, { ...PROGRAMA, id: 'p6', studentId: 'a6' }, { ...PROGRAMA, id: 'p7', studentId: 'a7' }, { ...PROGRAMA, id: 'p8', studentId: 'a8' }], bibliotecaEdicoes: { 'e:Agachamento livre': { videoYoutube: 'aclHkVaku9U' } } }),
       linhaD('formularios', { modelos: [], respostas: [] }),
       ...Object.entries(exec).map(([k, v]) => linhaD(`execucoes:${k}`, v)),
@@ -132,11 +136,25 @@ const TOQUES = () => {
   document.addEventListener('pointerdown', (e) => { const d = document.createElement('div'); d.className = '__t'; d.style.left = `${e.clientX}px`; d.style.top = `${e.clientY}px`; document.documentElement.appendChild(d); setTimeout(() => d.remove(), 500); }, true);
 };
 
-export async function abrir(browser, { url = '/', sessao: comSessao = true, via = 'conta', banco = novoBanco(), tema = 'dark' } = {}) {
+// O navegador do Playwright não tem um serviço de push a sério: simula-se só a
+// subscrição, para o ecrã do aluno mostrar o botão real a funcionar. O envio
+// verdadeiro foi confirmado com o serviço real (ver docs/PTMANAGER_MFIT_PARIDADE.md).
+const PUSH_SIMULADO = () => {
+  const chave = new Uint8Array(65).fill(7).buffer; const aut = new Uint8Array(16).fill(9).buffer;
+  let sub = null;
+  const nova = { endpoint: 'https://fcm.googleapis.com/fcm/send/exemplo', getKey: (n) => (n === 'p256dh' ? chave : aut), unsubscribe: async () => { sub = null; return true; } };
+  const reg = { pushManager: { getSubscription: async () => sub, subscribe: async () => { sub = nova; return nova; } } };
+  Object.defineProperty(navigator, 'serviceWorker', { value: { getRegistration: async () => reg, register: async () => reg } });
+  window.PushManager = window.PushManager || function PushManager() {};
+  window.Notification = { permission: 'default', requestPermission: async () => 'granted' };
+};
+
+export async function abrir(browser, { url = '/', sessao: comSessao = true, via = 'conta', banco = novoBanco(), tema = 'dark', push = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: tema, serviceWorkers: 'block', locale: 'pt-PT', timezoneId: 'Europe/Lisbon' });
   const page = await ctx.newPage();
   page.setDefaultTimeout(9000);
   await page.addInitScript(TOQUES);
+  if (push) await page.addInitScript(PUSH_SIMULADO);
   if (comSessao) await page.addInitScript((s) => { localStorage.setItem('sb-falso-auth-token', s); localStorage.setItem('ptmanager:idioma', 'pt'); }, JSON.stringify({ access_token: jwt, refresh_token: 'r', expires_at: 4102444800, expires_in: 99999999, token_type: 'bearer', user }));
   const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': '*', 'Content-Type': 'application/json' };
   await page.route('**/turnstile/**', (r) => r.fulfill({ contentType: 'text/javascript', body: 'window.turnstile={render:(e,o)=>{setTimeout(()=>o.callback("tok"),0);return "i"},remove(){},reset(){}};' }));

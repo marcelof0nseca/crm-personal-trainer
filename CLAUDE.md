@@ -990,6 +990,9 @@ o servidor recusa (o que é o que faz eliminar o aluno parar).
 servidor falso devolve o estado real das funcionalidades desligadas, e os clipes não
 passam pelos ecrãs com avisos internos. O Chromium do Playwright não descodifica H.264:
 para ver um vídeo a tocar, `pw.chromium.launch({ channel: 'chrome' })`.
+O gravador abre o navegador com `--lang=pt-PT`: sem isso, os campos de data saem no formato
+americano (mês/dia). Os dados de exemplo são relativos ao dia em que se grava; a um domingo,
+a demonstração também tem aulas e horário no domingo, senão a agenda de hoje aparece vazia.
 
 **Reaproveitar um componente real para uma pré-visualização isolada** (gerar
 `og-image.png`): exportar temporariamente `GlobalStyles` de `painel-pt.tsx`,

@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
 
     const origem = Deno.env.get('APP_ORIGIN');
     if (!origem) return json({ error: 'Falta configurar o endereço da aplicação.' }, 500);
-    const ligacao = await stripeV2(cfg.chave!, 'core/account_links', { account: contaId, use_case: { type: 'account_onboarding', account_onboarding: { configurations: ['merchant'], refresh_url: origem, return_url: origem } } });
+    const ligacao = await stripeV2(cfg.chave!, 'core/account_links', { account: contaId, use_case: { type: 'account_onboarding', account_onboarding: { refresh_url: origem, return_url: origem } } });
     return json({ ativa: true, url: ligacao.url });
   } catch (error) {
     console.error('[cobranca-onboarding]', error);

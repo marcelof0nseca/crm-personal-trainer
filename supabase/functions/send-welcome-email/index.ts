@@ -25,6 +25,8 @@ Deno.serve(async (req) => {
     const userId = body?.record?.id;
     const email = body?.record?.email;
     if (!userId || !email) return json({ ignored: true });
+    // A conta de um aluno (criada pelo convite do treinador) não escolhe plano.
+    if (body?.record?.raw_user_meta_data?.papel === 'aluno') return json({ ignored: true, aluno: true });
 
     // A esta hora o campo quase nunca está preenchido -- "nome" só se define
     // depois, em Definições (ver painel-pt.tsx) -- mas se algum dia o

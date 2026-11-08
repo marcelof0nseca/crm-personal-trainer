@@ -73,30 +73,34 @@ Deno.serve(async (req) => {
       const res = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
         method: 'POST',
         headers: { ...admin, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, email, options: { redirect_to: redirectTo } }),
+        // `papel` marca a conta como de aluno logo no INSERT, para o e-mail de
+        // boas-vindas de treinador («escolha um plano») não lhe chegar.
+        body: JSON.stringify({ type, email, ...(type === 'invite' ? { data: { papel: 'aluno' } } : {}), options: { redirect_to: redirectTo } }),
       });
       const data = await res.json().catch(() => ({}));
       return { ok: res.ok, data };
     };
+    // A API REST devolve os campos do utilizador ao lado do link (o `user` à
+    // parte é só do cliente JavaScript).
+    const idDe = (d: any) => d?.user?.id || d?.id || null;
 
     let resultado = await gerarLink('invite');
     if (resultado.ok) {
       actionLink = resultado.data.action_link || null;
-      authUserId = resultado.data.user?.id || null;
+      authUserId = idDe(resultado.data);
     } else {
-      // Já existe conta com este email -- só é um reenvio legítimo se já for
-      // a conta ligada a ESTE aluno (nunca se envia para uma conta de outra
-      // pessoa, nem se liga uma conta alheia a este aluno).
-      const existenteRes = await rest(`aluno_contas?user_id=eq.${trainerUserId}&aluno_id=eq.${alunoId}&select=auth_user_id`);
-      const existente = existenteRes.ok ? await existenteRes.json() : [];
-      const contaJaLigada = existente[0]?.auth_user_id;
-      if (!contaJaLigada) {
-        return json({ error: 'Este email já está associado a outra conta.' }, 409);
-      }
+      // Já existe conta com este email -- só é um reenvio legítimo se ESSA conta
+      // já estiver ligada a ESTE aluno (nunca se envia para uma conta de outra
+      // pessoa, nem se liga uma conta alheia a este aluno). O link de recuperação
+      // só se gera para saber de quem é o email; só sai se a conta for a certa.
       const reenvio = await gerarLink('recovery');
       if (!reenvio.ok) return json({ error: 'Não foi possível gerar o convite.' }, 500);
+      const idDoEmail = idDe(reenvio.data);
+      const ligadaRes = idDoEmail ? await rest(`aluno_contas?auth_user_id=eq.${idDoEmail}&user_id=eq.${trainerUserId}&aluno_id=eq.${alunoId}&select=auth_user_id`) : null;
+      const ligada = ligadaRes && ligadaRes.ok ? await ligadaRes.json() : [];
+      if (!ligada[0]) return json({ error: 'Este email já está associado a outra conta.' }, 409);
       actionLink = reenvio.data.action_link || null;
-      authUserId = contaJaLigada;
+      authUserId = idDoEmail;
     }
 
     if (!actionLink || !authUserId) return json({ error: 'Não foi possível gerar o convite.' }, 500);
